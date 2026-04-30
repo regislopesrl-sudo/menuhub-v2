@@ -24,6 +24,7 @@ services:
     working_dir: /app
     command: >
       sh -c "npm ci &&
+      npm run prisma:generate --workspace @delivery-futuro/api-v2 &&
       npm run build --workspace @delivery-futuro/shared-types &&
       npm run build --workspace @delivery-futuro/order-core &&
       npm run build --workspace @delivery-futuro/api-v2 &&

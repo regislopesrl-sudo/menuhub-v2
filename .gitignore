@@ -9,6 +9,8 @@
 !packages/shared-types/**
 !packages/order-core/
 !packages/order-core/**
+!packages/tsconfig/
+!packages/tsconfig/**
 !packages/payment-core/
 !packages/payment-core/**
 !packages/menu-core/
