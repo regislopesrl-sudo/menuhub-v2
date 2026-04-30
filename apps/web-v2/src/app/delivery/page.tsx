@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
@@ -8,6 +8,12 @@ import { postCheckoutQuote, type CheckoutQuoteResponse } from '@/features/checko
 import { fetchPixPaymentStatus } from '@/features/checkout/payment-status.api';
 import { fetchDeliveryMenu, getMenuFallback } from '@/features/menu/menu.api';
 import type { MenuProduct } from '@/features/menu/menu.mock';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input, Select } from '@/components/ui/Input';
+import { LoadingState } from '@/components/ui/LoadingState';
 
 function brl(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -101,6 +107,10 @@ export default function DeliveryPage() {
   const deliveryFee = quote?.deliveryFee ?? 0;
   const estimatedTotal = quote?.total ?? Math.max(0, subtotal + deliveryFee);
 
+  const hasAddress = cep.replace(/\D/g, '').length === 8 && !!number.trim();
+  const hasCustomer = !!customerName.trim() && !!customerPhone.trim();
+  const checkoutStep = !items.length ? 1 : !hasAddress ? 2 : paymentMethod ? 3 : 3;
+
   useEffect(() => {
     let active = true;
     const loadMenu = async () => {
@@ -115,9 +125,7 @@ export default function DeliveryPage() {
         setProducts(getMenuFallback());
         setMenuError('Cardapio real indisponivel no momento. Exibindo cardapio de contingencia.');
       } finally {
-        if (active) {
-          setMenuLoading(false);
-        }
+        if (active) setMenuLoading(false);
       }
     };
 
@@ -130,7 +138,7 @@ export default function DeliveryPage() {
   useEffect(() => {
     let active = true;
     const loadQuote = async () => {
-      if (cep.replace(/\D/g, '').length !== 8 || !number.trim()) {
+      if (!hasAddress) {
         setQuote(null);
         setQuoteError(null);
         return;
@@ -145,10 +153,7 @@ export default function DeliveryPage() {
           storeId: 'store-demo',
           items,
           couponCode,
-          deliveryAddress: {
-            cep,
-            number,
-          },
+          deliveryAddress: { cep, number },
         });
         if (!active) return;
         setQuote(nextQuote);
@@ -165,19 +170,15 @@ export default function DeliveryPage() {
     return () => {
       active = false;
     };
-  }, [headers, cep, number, items, couponCode]);
+  }, [hasAddress, headers, cep, number, items, couponCode]);
 
   useEffect(() => {
-    if (!success?.providerPaymentId) return;
-    if (success.paymentStatus !== 'PENDING') return;
+    if (!success?.providerPaymentId || success.paymentStatus !== 'PENDING') return;
 
     let stopped = false;
     const interval = setInterval(async () => {
       try {
-        const status = await fetchPixPaymentStatus({
-          headers,
-          providerPaymentId: success.providerPaymentId!,
-        });
+        const status = await fetchPixPaymentStatus({ headers, providerPaymentId: success.providerPaymentId! });
         if (stopped) return;
 
         setSuccess((prev) =>
@@ -193,20 +194,19 @@ export default function DeliveryPage() {
         );
 
         if (status.paymentStatus === 'PAID' || status.paymentStatus === 'APPROVED') {
-          setPaymentStatusMessage('Pagamento aprovado.');
+          setPaymentStatusMessage('Pagamento aprovado. Pedido confirmado com sucesso.');
           clearInterval(interval);
         } else if (status.paymentStatus === 'DECLINED') {
-          setPaymentStatusMessage('Pagamento recusado.');
+          setPaymentStatusMessage('Pagamento recusado. Tente outro metodo de pagamento.');
           clearInterval(interval);
         } else if (status.paymentStatus === 'EXPIRED') {
-          setPaymentStatusMessage('Pagamento expirado.');
+          setPaymentStatusMessage('Pagamento expirado. Gere um novo pedido para continuar.');
           clearInterval(interval);
         } else {
           setPaymentStatusMessage('Aguardando pagamento PIX...');
         }
       } catch {
-        if (stopped) return;
-        setPaymentStatusMessage('Aguardando pagamento PIX...');
+        if (!stopped) setPaymentStatusMessage('Aguardando pagamento PIX...');
       }
     }, 5000);
 
@@ -217,13 +217,12 @@ export default function DeliveryPage() {
   }, [headers, success?.providerPaymentId, success?.paymentStatus]);
 
   const validateCheckoutForm = (): string | null => {
-    if (!customerName.trim()) return 'Informe seu nome.';
-    if (!customerPhone.trim()) return 'Informe seu telefone.';
-    if (cep.replace(/\D/g, '').length !== 8) return 'Informe um CEP valido.';
+    if (!customerName.trim()) return 'Informe seu nome para continuar.';
+    if (!customerPhone.trim()) return 'Informe seu telefone para contato.';
+    if (!hasAddress) return 'Preencha um CEP valido e numero.';
     if (!street.trim()) return 'Informe a rua.';
-    if (!number.trim()) return 'Informe o numero.';
     if (!neighborhood.trim()) return 'Informe o bairro.';
-    if (items.length === 0) return 'Seu carrinho esta vazio.';
+    if (!items.length) return 'Seu carrinho esta vazio.';
     if (!quote) return 'Nao foi possivel calcular o pre-checkout.';
     return null;
   };
@@ -242,10 +241,7 @@ export default function DeliveryPage() {
       const response = await submitDeliveryCheckout({
         headers,
         storeId: 'store-demo',
-        customer: {
-          name: customerName.trim(),
-          phone: customerPhone.trim(),
-        },
+        customer: { name: customerName.trim(), phone: customerPhone.trim() },
         deliveryAddress: {
           cep: cep.trim(),
           street: street.trim(),
@@ -261,7 +257,7 @@ export default function DeliveryPage() {
 
       setSuccess({
         orderId: response.order.id,
-        orderNumber: (response.order as { orderNumber?: string }).orderNumber,
+        orderNumber: response.order.orderNumber,
         orderStatus: response.order.status,
         total: response.order.totals.total,
         paymentStatus: response.payment.status,
@@ -294,19 +290,12 @@ export default function DeliveryPage() {
   const confirmCustomize = () => {
     if (!customizingProduct) return;
     const validationErrors = validateGroups(customizingProduct, selectedAddons);
-    if (validationErrors.length > 0) {
-      return;
-    }
+    if (validationErrors.length > 0) return;
 
     const selectedAddonData = (customizingProduct.addonGroups ?? []).flatMap((group) =>
       group.options
         .filter((option) => selectedAddons.includes(`${group.id}:${option.id}`))
-        .map((option) => ({
-          groupId: group.id,
-          optionId: option.id,
-          name: option.name,
-          price: option.price,
-        })),
+        .map((option) => ({ groupId: group.id, optionId: option.id, name: option.name, price: option.price })),
     );
 
     addItem(customizingProduct, selectedAddonData);
@@ -315,251 +304,257 @@ export default function DeliveryPage() {
   };
 
   return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Delivery V2</h1>
-      <p className={styles.muted}>Escolha produtos, personalize com adicionais e finalize seu pedido.</p>
-
-      <div className={styles.layout}>
-        <section className={styles.products}>
-          {menuLoading ? <p className={styles.muted}>Carregando cardapio...</p> : null}
-          {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
-          {!menuLoading && products.length === 0 ? (
-            <div className={styles.feedbackError}>Nenhum produto disponivel para delivery.</div>
-          ) : null}
-          {products.map((product) => (
-            <article key={product.id} className={styles.productCard}>
-              <div className={styles.productTop}>
-                <div>
-                  <div className={styles.productName}>{product.name}</div>
-                  <div className={styles.muted}>{product.description}</div>
-                </div>
-                <strong>{brl(product.price)}</strong>
-              </div>
-              <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={() => openCustomize(product)}>
-                {product.addonGroups && product.addonGroups.length > 0 ? 'Personalizar' : 'Adicionar'}
-              </button>
-            </article>
-          ))}
-        </section>
-
-        <aside className={`${styles.cart} ${styles.mobileSticky}`}>
-          <div className={styles.row}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>Carrinho</h2>
-            <span className={styles.muted}>{totalItems} itens</span>
+    <>
+      <header className={styles.topbar}>
+        <div className={styles.topbarInner}>
+          <div>
+            <h1 className={styles.title}>MenuHub Delivery</h1>
+            <small className={styles.muted}>Checkout inteligente com quote e pagamento PIX</small>
           </div>
-
-          <label className={styles.muted}>Nome</label>
-          <input className={styles.input} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Seu nome" />
-
-          <label className={styles.muted}>Telefone</label>
-          <input
-            className={styles.input}
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(normalizePhone(e.target.value))}
-            placeholder="(11) 99999-0000"
-          />
-
-          <label className={styles.muted}>CEP</label>
-          <input
-            className={styles.input}
-            value={cep}
-            onChange={(e) => setCep(e.target.value)}
-            placeholder="00000-000"
-          />
-
-          <label className={styles.muted}>Rua</label>
-          <input className={styles.input} value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
-
-          <div className={styles.row}>
-            <div style={{ flex: 1 }}>
-              <label className={styles.muted}>Numero</label>
-              <input className={styles.input} value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
-            </div>
-            <div style={{ flex: 2 }}>
-              <label className={styles.muted}>Bairro</label>
-              <input className={styles.input} value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
-            </div>
-          </div>
-
-          <label className={styles.muted}>Cidade (opcional)</label>
-          <input className={styles.input} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
-
-          <label className={styles.muted}>Referencia (opcional)</label>
-          <input className={styles.input} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Perto de..." />
-
-          {items.length === 0 ? <p className={styles.muted}>Nenhum item no carrinho.</p> : null}
-
-          {items.map((item, index) => {
-            const addonPrice = item.addons.reduce((sum, addon) => sum + addon.price, 0);
-            return (
-              <div key={`${item.productId}-${index}`} className={styles.cartItem}>
-                <div className={styles.row}>
-                  <strong>{item.name}</strong>
-                  <strong>{brl(item.quantity * (item.unitPrice + addonPrice))}</strong>
-                </div>
-                {item.addons.length > 0 ? (
-                  <div className={styles.muted}>+ {item.addons.map((addon) => `${addon.name} (${brl(addon.price)})`).join(', ')}</div>
-                ) : null}
-                <div className={styles.row}>
-                  <span className={styles.muted}>{brl(item.unitPrice + addonPrice)} cada</span>
-                  <div className={styles.qtyControls}>
-                    <button className={styles.button} onClick={() => updateQuantity(index, item.quantity - 1)}>
-                      -
-                    </button>
-                    <span>{item.quantity}</span>
-                    <button className={styles.button} onClick={() => updateQuantity(index, item.quantity + 1)}>
-                      +
-                    </button>
-                    <button className={`${styles.button} ${styles.buttonDanger}`} onClick={() => removeItem(index)}>
-                      Remover
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          <label className={styles.muted}>Cupom</label>
-          <input
-            className={styles.input}
-            placeholder="Ex: BEMVINDO10"
-            value={couponCode}
-            onChange={(e) => setCouponCode(e.target.value)}
-          />
-
-          <label className={styles.muted}>Pagamento</label>
-          <select className={styles.select} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-            <option value="PIX">PIX</option>
-            <option value="CREDIT_CARD">Cartao de credito</option>
-            <option value="CASH">Dinheiro</option>
-          </select>
-
-          <div className={styles.row}>
-            <span>Subtotal</span>
-            <strong>{brl(subtotal)}</strong>
-          </div>
-          <div className={styles.row}>
-            <span>Frete {quoteLoading ? '(cotando...)' : ''}</span>
-            <strong>{brl(deliveryFee)}</strong>
-          </div>
-          {quote ? (
-            <div className={styles.muted}>
-              Area: {quote.deliveryQuote.areaName ?? '-'} | Distancia: {quote.deliveryQuote.distanceKm ?? 0} km | Tempo: {Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min
-            </div>
-          ) : null}
-          <div className={styles.row}>
-            <span>Total estimado</span>
-            <strong>{brl(estimatedTotal)}</strong>
-          </div>
-
-          {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
-          {error ? <div className={styles.feedbackError}>{error}</div> : null}
-          {success ? (
-            <div className={styles.feedbackSuccess}>
-              Pedido criado com sucesso. ID: {success.orderId} | Total: {brl(success.total)}
-              <div>Pedido: {success.orderStatus}</div>
-              <div>Pagamento: {success.paymentStatus}</div>
-              {paymentStatusMessage ? <div>{paymentStatusMessage}</div> : null}
-              {success.orderNumber ? <div>Numero do pedido: {success.orderNumber}</div> : null}
-              {success.provider ? <div>Provider: {success.provider}</div> : null}
-              {success.providerPaymentId ? <div>Provider Payment ID: {success.providerPaymentId}</div> : null}
-              {success.paymentStatus === 'PENDING' && success.qrCodeText ? (
-                <div style={{ marginTop: 10 }}>
-                  <strong>Aguardando pagamento PIX</strong>
-                  <div className={styles.muted}>Expira em: {success.expiresAt ? new Date(success.expiresAt).toLocaleString('pt-BR') : '-'}</div>
-                  {success.qrCode ? <img src={success.qrCode} alt="QR Code PIX" style={{ maxWidth: 180, marginTop: 8 }} /> : null}
-                  <div style={{ wordBreak: 'break-all', marginTop: 8 }}>{success.qrCodeText}</div>
-                  <button
-                    className={styles.button}
-                    type="button"
-                    onClick={() => void navigator.clipboard.writeText(success.qrCodeText ?? '')}
-                  >
-                    Copiar codigo PIX
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          <button
-            className={`${styles.button} ${styles.buttonPrimary}`}
-            disabled={loading || quoteLoading || !quote?.deliveryQuote.available}
-            onClick={() => void handleCheckout()}
-          >
-            {loading ? 'Finalizando...' : 'Finalizar pedido'}
-          </button>
-        </aside>
-      </div>
-
-      {customizingProduct ? (
-        <div className={styles.modalBackdrop} onClick={() => setCustomizingProduct(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            {(() => {
-              const localErrors = validateGroups(customizingProduct, selectedAddons);
-              return (
-                <>
-                  <h3 style={{ margin: 0 }}>{customizingProduct.name}</h3>
-                  <p className={styles.muted}>{customizingProduct.description}</p>
-
-                  {(customizingProduct.addonGroups ?? []).length === 0 ? (
-                    <p className={styles.muted}>Sem opcionais para este produto.</p>
-                  ) : (
-                    (customizingProduct.addonGroups ?? []).map((group) => (
-                      <section key={group.id} className={styles.productCard}>
-                        <strong>{group.name}</strong>
-                        <span className={styles.muted}>
-                          {group.required ? 'Obrigatorio' : 'Opcional'} | Min {group.minSelect} | Max {group.maxSelect}{' '}
-                          | {group.allowMultiple ? 'Multiplas opcoes permitidas' : 'Apenas uma opcao'}
-                        </span>
-                        {group.options.map((option) => {
-                          const checked = selectedAddons.includes(`${group.id}:${option.id}`);
-                          return (
-                            <label key={option.id} className={styles.optionRow}>
-                              <span>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleAddon(group.id, option.id)}
-                                />{' '}
-                                {option.name}
-                              </span>
-                              <strong>{brl(option.price)}</strong>
-                            </label>
-                          );
-                        })}
-                      </section>
-                    ))
-                  )}
-
-                  {localErrors.length > 0 ? (
-                    <div className={styles.feedbackError}>
-                      {localErrors.map((errorText) => (
-                        <div key={errorText}>{errorText}</div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className={styles.row}>
-                    <strong>Total unitario: {brl(customizingProduct.price + addonTotal(customizingProduct, selectedAddons))}</strong>
-                    <div className={styles.qtyControls}>
-                      <button className={styles.button} onClick={() => setCustomizingProduct(null)}>
-                        Cancelar
-                      </button>
-                      <button
-                        className={`${styles.button} ${styles.buttonPrimary}`}
-                        onClick={confirmCustomize}
-                        disabled={localErrors.length > 0}
-                      >
-                        Adicionar ao carrinho
-                      </button>
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
+          <div className={styles.steps}>
+            <Badge tone={checkoutStep >= 1 ? 'success' : 'default'}>1. Itens</Badge>
+            <Badge tone={checkoutStep >= 2 ? 'success' : 'default'}>2. Endereço</Badge>
+            <Badge tone={checkoutStep >= 3 ? 'success' : 'default'}>3. Pagamento</Badge>
+            <Badge tone={success ? 'success' : 'default'}>4. Confirmação</Badge>
           </div>
         </div>
-      ) : null}
-    </main>
+      </header>
+
+      <main className={styles.page}>
+        <div className={styles.layout}>
+          <section className={styles.leftCol}>
+            <Card className={styles.section}>
+              <h2 className={styles.sectionTitle}>Cardápio</h2>
+              {menuLoading ? <LoadingState label="Carregando cardápio..." /> : null}
+              {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
+              {!menuLoading && products.length === 0 ? (
+                <EmptyState title="Nenhum produto disponível" description="Verifique o menu no admin para liberar itens." />
+              ) : null}
+              <div className={styles.productsGrid}>
+                {products.map((product) => (
+                  <article key={product.id} className={styles.productCard}>
+                    <div className={styles.productMedia} aria-hidden />
+                    <div className={styles.row}>
+                      <strong>{product.name}</strong>
+                      <strong>{brl(product.price)}</strong>
+                    </div>
+                    <div className={styles.muted}>{product.description}</div>
+                    <Button variant="primary" onClick={() => openCustomize(product)}>
+                      {product.addonGroups && product.addonGroups.length > 0 ? 'Personalizar' : 'Adicionar ao carrinho'}
+                    </Button>
+                  </article>
+                ))}
+              </div>
+            </Card>
+
+            <Card className={styles.section}>
+              <h2 className={styles.sectionTitle}>Endereço e cliente</h2>
+              <div className={styles.inline}>
+                <div>
+                  <label className="ui-label">Nome</label>
+                  <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Seu nome" />
+                </div>
+                <div>
+                  <label className="ui-label">Telefone</label>
+                  <Input
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(normalizePhone(e.target.value))}
+                    placeholder="(11) 99999-0000"
+                  />
+                </div>
+              </div>
+
+              <div className={styles.inline}>
+                <div>
+                  <label className="ui-label">CEP</label>
+                  <Input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" />
+                </div>
+                <div>
+                  <label className="ui-label">Número</label>
+                  <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
+                </div>
+              </div>
+
+              <div className={styles.inline}>
+                <div>
+                  <label className="ui-label">Rua</label>
+                  <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
+                </div>
+                <div>
+                  <label className="ui-label">Bairro</label>
+                  <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
+                </div>
+              </div>
+
+              <div className={styles.inline}>
+                <div>
+                  <label className="ui-label">Cidade (opcional)</label>
+                  <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
+                </div>
+                <div>
+                  <label className="ui-label">Referência (opcional)</label>
+                  <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ponto de referência" />
+                </div>
+              </div>
+            </Card>
+          </section>
+
+          <aside className={styles.rightCol}>
+            <Card className={styles.section}>
+              <div className={styles.row}>
+                <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Seu carrinho</h2>
+                <Badge tone="default">{totalItems} itens</Badge>
+              </div>
+
+              {items.length === 0 ? <EmptyState title="Carrinho vazio" description="Adicione itens no cardápio para continuar." /> : null}
+
+              {items.map((item, index) => {
+                const addonPrice = item.addons.reduce((sum, addon) => sum + addon.price, 0);
+                return (
+                  <div key={`${item.productId}-${index}`} className={styles.cartItem}>
+                    <div className={styles.row}>
+                      <strong>{item.name}</strong>
+                      <strong>{brl(item.quantity * (item.unitPrice + addonPrice))}</strong>
+                    </div>
+                    {item.addons.length > 0 ? (
+                      <div className={styles.muted}>
+                        + {item.addons.map((addon) => `${addon.name} (${brl(addon.price)})`).join(', ')}
+                      </div>
+                    ) : null}
+                    <div className={styles.row}>
+                      <small className={styles.muted}>{brl(item.unitPrice + addonPrice)} cada</small>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Button onClick={() => updateQuantity(index, item.quantity - 1)}>-</Button>
+                        <Badge>{item.quantity}</Badge>
+                        <Button onClick={() => updateQuantity(index, item.quantity + 1)}>+</Button>
+                        <Button variant="danger" onClick={() => removeItem(index)}>Remover</Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <label className="ui-label">Cupom</label>
+              <Input
+                placeholder="Ex: BEMVINDO10"
+                value={couponCode}
+                onChange={(e) => setCouponCode(e.target.value)}
+              />
+
+              <label className="ui-label">Pagamento</label>
+              <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                <option value="PIX">PIX</option>
+                <option value="CREDIT_CARD">Cartão de crédito</option>
+                <option value="CASH">Dinheiro</option>
+              </Select>
+
+              <div className={styles.row}><span>Subtotal</span><strong>{brl(subtotal)}</strong></div>
+              <div className={styles.row}><span>Frete {quoteLoading ? '(cotando...)' : ''}</span><strong>{brl(deliveryFee)}</strong></div>
+              {quote ? (
+                <div className={styles.muted}>
+                  Área: {quote.deliveryQuote.areaName ?? '-'} | Distância: {quote.deliveryQuote.distanceKm ?? 0} km | Tempo: {Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min
+                </div>
+              ) : null}
+              <div className={styles.row}><span>Total estimado</span><strong>{brl(estimatedTotal)}</strong></div>
+
+              {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
+              {error ? <div className={styles.feedbackError}>{error}</div> : null}
+              {success ? (
+                <div className={styles.feedbackSuccess}>
+                  Pedido criado com sucesso. ID: {success.orderId} | Total: {brl(success.total)}
+                  <div>Pedido: {success.orderStatus}</div>
+                  <div>Pagamento: {success.paymentStatus}</div>
+                  {paymentStatusMessage ? <div>{paymentStatusMessage}</div> : null}
+                  {success.orderNumber ? <div>Número do pedido: {success.orderNumber}</div> : null}
+                  {success.provider ? <div>Provider: {success.provider}</div> : null}
+                  {success.providerPaymentId ? <div>Provider Payment ID: {success.providerPaymentId}</div> : null}
+
+                  {success.paymentStatus === 'PENDING' && success.qrCodeText ? (
+                    <div className={styles.pixBox}>
+                      <strong>Aguardando pagamento PIX</strong>
+                      <div className={styles.muted}>Expira em: {success.expiresAt ? new Date(success.expiresAt).toLocaleString('pt-BR') : '-'}</div>
+                      {success.qrCode ? <img src={success.qrCode} alt="QR Code PIX" className={styles.qrImage} /> : null}
+                      <div style={{ wordBreak: 'break-all', marginTop: 8 }}>{success.qrCodeText}</div>
+                      <Button type="button" onClick={() => void navigator.clipboard.writeText(success.qrCodeText ?? '')}>Copiar código PIX</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <Button
+                variant="primary"
+                disabled={loading || quoteLoading || !quote?.deliveryQuote.available}
+                onClick={() => void handleCheckout()}
+              >
+                {loading ? 'Finalizando...' : 'Finalizar pedido'}
+              </Button>
+            </Card>
+          </aside>
+        </div>
+
+        {customizingProduct ? (
+          <div className={styles.modalBackdrop} onClick={() => setCustomizingProduct(null)}>
+            <Card className={styles.modal} onClick={(e: any) => e.stopPropagation()}>
+              {(() => {
+                const localErrors = validateGroups(customizingProduct, selectedAddons);
+                return (
+                  <>
+                    <h3 style={{ margin: 0 }}>{customizingProduct.name}</h3>
+                    <p className={styles.muted}>{customizingProduct.description}</p>
+
+                    {(customizingProduct.addonGroups ?? []).length === 0 ? (
+                      <p className={styles.muted}>Sem opcionais para este produto.</p>
+                    ) : (
+                      (customizingProduct.addonGroups ?? []).map((group) => (
+                        <section key={group.id} className={styles.productCard}>
+                          <strong>{group.name}</strong>
+                          <span className={styles.muted}>
+                            {group.required ? 'Obrigatório' : 'Opcional'} | Min {group.minSelect} | Max {group.maxSelect} | {group.allowMultiple ? 'Múltiplas opções permitidas' : 'Apenas uma opção'}
+                          </span>
+                          {group.options.map((option) => {
+                            const checked = selectedAddons.includes(`${group.id}:${option.id}`);
+                            return (
+                              <label key={option.id} className={styles.optionRow}>
+                                <span>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleAddon(group.id, option.id)}
+                                  />{' '}
+                                  {option.name}
+                                </span>
+                                <strong>{brl(option.price)}</strong>
+                              </label>
+                            );
+                          })}
+                        </section>
+                      ))
+                    )}
+
+                    {localErrors.length > 0 ? (
+                      <div className={styles.feedbackError}>
+                        {localErrors.map((errorText) => (
+                          <div key={errorText}>{errorText}</div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className={styles.row}>
+                      <strong>Total unitário: {brl(customizingProduct.price + addonTotal(customizingProduct, selectedAddons))}</strong>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <Button onClick={() => setCustomizingProduct(null)}>Cancelar</Button>
+                        <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0}>
+                          Adicionar ao carrinho
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </Card>
+          </div>
+        ) : null}
+      </main>
+    </>
   );
 }

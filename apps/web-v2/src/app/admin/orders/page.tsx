@@ -1,8 +1,15 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState } from 'react';
 import styles from './page.module.css';
 import { useOrders } from '@/features/orders/use-orders';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input, Select } from '@/components/ui/Input';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { StatCard } from '@/components/ui/StatCard';
 
 const STATUS_OPTIONS = [
   'DRAFT',
@@ -34,29 +41,14 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 }
 
-function statusColor(status: string): string {
-  switch (status) {
-    case 'CONFIRMED':
-    case 'READY':
-      return '#166534';
-    case 'OUT_FOR_DELIVERY':
-    case 'IN_PREPARATION':
-      return '#92400e';
-    case 'DELIVERED':
-    case 'FINALIZED':
-      return '#0f766e';
-    case 'CANCELED':
-    case 'REFUNDED':
-      return '#991b1b';
-    default:
-      return '#334155';
-  }
+function statusTone(status: string): 'default' | 'success' | 'warning' | 'danger' {
+  if (['CONFIRMED', 'READY', 'DELIVERED', 'FINALIZED'].includes(status)) return 'success';
+  if (['IN_PREPARATION', 'OUT_FOR_DELIVERY', 'WAITING_PICKUP', 'WAITING_DISPATCH'].includes(status)) return 'warning';
+  if (['CANCELED', 'REFUNDED'].includes(status)) return 'danger';
+  return 'default';
 }
 
 function connectionLabel(status: 'connecting' | 'connected' | 'disconnected') {
@@ -101,40 +93,49 @@ export default function AdminOrdersPage() {
   const [fromFilter, setFromFilter] = useState(filters.createdFrom ?? '');
   const [toFilter, setToFilter] = useState(filters.createdTo ?? '');
 
-  const connectionClass =
-    socketStatus === 'connected' ? styles.connected : socketStatus === 'connecting' ? styles.connecting : styles.disconnected;
+  const pending = orders.filter((o) => o.status === 'PENDING_CONFIRMATION').length;
+  const confirmed = orders.filter((o) => o.status === 'CONFIRMED').length;
+  const revenue = orders.reduce((sum, o) => sum + o.total, 0);
 
   return (
     <main className={styles.page}>
-      <div className={styles.toolbar}>
-        <h1 className={styles.title}>Painel de Pedidos V2</h1>
-        <div className={styles.actions}>
-          <span className={`${styles.connection} ${connectionClass}`}>{connectionLabel(socketStatus)}</span>
-          <button className={`${styles.button} ${styles.primary}`} onClick={() => void reload()}>
-            Atualizar
-          </button>
+      <section className={styles.topbar}>
+        <div>
+          <h1 className={styles.title}>Painel de Pedidos</h1>
+          <p className={styles.sub}>Operação em tempo real para acompanhamento e atualização de status</p>
         </div>
-      </div>
+        <div className={styles.actions}>
+          <Badge tone={socketStatus === 'connected' ? 'success' : socketStatus === 'connecting' ? 'warning' : 'danger'}>
+            {connectionLabel(socketStatus)}
+          </Badge>
+          <Button variant="primary" onClick={() => void reload()}>Atualizar</Button>
+        </div>
+      </section>
 
-      <div className={styles.filters}>
-        <select className={styles.select} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+      <section className={styles.gridKpi}>
+        <StatCard label="Total pedidos" value={paginationInfo.total} />
+        <StatCard label="Pendentes" value={pending} hint="Aguardando confirmação" />
+        <StatCard label="Confirmados" value={confirmed} hint="Pedidos ativos" />
+        <StatCard label="Faturamento (página)" value={formatCurrency(revenue)} />
+      </section>
+
+      <Card className={styles.filters}>
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Todos os status</option>
           {STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
+            <option key={status} value={status}>{status}</option>
           ))}
-        </select>
-        <input className={styles.input} type="date" value={fromFilter} onChange={(e) => setFromFilter(e.target.value)} />
-        <input className={styles.input} type="date" value={toFilter} onChange={(e) => setToFilter(e.target.value)} />
-        <select className={styles.select} value={String(pagination.limit)} onChange={(e) => changeLimit(Number(e.target.value))}>
+        </Select>
+        <Input type="date" value={fromFilter} onChange={(e) => setFromFilter(e.target.value)} />
+        <Input type="date" value={toFilter} onChange={(e) => setToFilter(e.target.value)} />
+        <Select value={String(pagination.limit)} onChange={(e) => changeLimit(Number(e.target.value))}>
           <option value="10">10 / página</option>
           <option value="20">20 / página</option>
           <option value="50">50 / página</option>
           <option value="100">100 / página</option>
-        </select>
-        <button
-          className={`${styles.button} ${styles.primary}`}
+        </Select>
+        <Button
+          variant="primary"
           onClick={() =>
             setFilters({
               status: statusFilter || undefined,
@@ -144,19 +145,17 @@ export default function AdminOrdersPage() {
           }
         >
           Aplicar filtros
-        </button>
-      </div>
+        </Button>
+      </Card>
 
       {error ? (
         <div className={styles.errorBox}>
           <span>{error}</span>
-          <button className={styles.button} onClick={() => void reload()}>
-            Tentar novamente
-          </button>
+          <Button onClick={() => void reload()}>Tentar novamente</Button>
         </div>
       ) : null}
 
-      <section className={styles.container}>
+      <Card className={styles.tableCard}>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -171,34 +170,33 @@ export default function AdminOrdersPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td className={styles.td} colSpan={6}>
-                    Carregando pedidos...
-                  </td>
-                </tr>
+                <>
+                  {[1, 2, 3, 4].map((n) => (
+                    <tr key={n}>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 14 }} /></td>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 14 }} /></td>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 14 }} /></td>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 14 }} /></td>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 14 }} /></td>
+                      <td className={styles.td}><div className="ui-skeleton" style={{ height: 34 }} /></td>
+                    </tr>
+                  ))}
+                </>
               ) : orders.length === 0 ? (
                 <tr>
                   <td className={styles.td} colSpan={6}>
-                    Nenhum pedido encontrado com os filtros atuais.
+                    <EmptyState title="Sem pedidos" description="Nenhum pedido encontrado com os filtros atuais." />
                   </td>
                 </tr>
               ) : (
                 orders.map((order) => (
                   <tr key={order.id}>
                     <td className={styles.td}>{order.orderNumber}</td>
-                    <td className={styles.td}>
-                      <span className={styles.status} style={{ color: statusColor(order.status), border: `1px solid ${statusColor(order.status)}33` }}>
-                        {order.status}
-                      </span>
-                    </td>
+                    <td className={styles.td}><Badge tone={statusTone(order.status)}>{order.status}</Badge></td>
                     <td className={styles.td}>{formatCurrency(order.total)}</td>
                     <td className={styles.td}>{order.paymentStatus}</td>
                     <td className={styles.td}>{formatDate(order.createdAt)}</td>
-                    <td className={styles.td}>
-                      <button className={styles.button} onClick={() => openOrderDetail(order.id)}>
-                        Ver detalhe
-                      </button>
-                    </td>
+                    <td className={styles.td}><Button onClick={() => openOrderDetail(order.id)}>Ver detalhe</Button></td>
                   </tr>
                 ))
               )}
@@ -206,157 +204,94 @@ export default function AdminOrdersPage() {
           </table>
         </div>
 
-        <div className={styles.cardList}>
-          {loading ? <div className={styles.card}>Carregando pedidos...</div> : null}
-          {!loading && orders.length === 0 ? <div className={styles.card}>Nenhum pedido encontrado.</div> : null}
+        <div className={styles.mobileList}>
+          {loading ? <LoadingState label="Carregando pedidos..." /> : null}
+          {!loading && orders.length === 0 ? <EmptyState title="Sem pedidos" description="Nenhum pedido encontrado." /> : null}
           {!loading
             ? orders.map((order) => (
-                <article key={order.id} className={styles.card}>
-                  <div className={styles.cardRow}>
-                    <strong>{order.orderNumber}</strong>
-                    <span className={styles.status} style={{ color: statusColor(order.status), border: `1px solid ${statusColor(order.status)}33` }}>
-                      {order.status}
-                    </span>
-                  </div>
-                  <div className={styles.cardRow}>
-                    <span>Total</span>
-                    <strong>{formatCurrency(order.total)}</strong>
-                  </div>
-                  <div className={styles.cardRow}>
-                    <span>Pagamento</span>
-                    <span>{order.paymentStatus}</span>
-                  </div>
-                  <div className={styles.cardRow}>
-                    <span>Criado em</span>
-                    <span>{formatDate(order.createdAt)}</span>
-                  </div>
-                  <button className={styles.button} onClick={() => openOrderDetail(order.id)}>
-                    Ver detalhe
-                  </button>
-                </article>
+                <Card key={order.id} className={styles.itemCard}>
+                  <div className={styles.row}><strong>{order.orderNumber}</strong><Badge tone={statusTone(order.status)}>{order.status}</Badge></div>
+                  <div className={styles.row}><span>Total</span><strong>{formatCurrency(order.total)}</strong></div>
+                  <div className={styles.row}><span>Pagamento</span><span>{order.paymentStatus}</span></div>
+                  <div className={styles.row}><span>Criado em</span><span>{formatDate(order.createdAt)}</span></div>
+                  <Button onClick={() => openOrderDetail(order.id)}>Ver detalhe</Button>
+                </Card>
               ))
             : null}
         </div>
 
         <div className={styles.pagination}>
-          <span>
-            Página {paginationInfo.page} de {paginationInfo.totalPages} | Total: {paginationInfo.total}
-          </span>
+          <span>Página {paginationInfo.page} de {paginationInfo.totalPages} | Total: {paginationInfo.total}</span>
           <div className={styles.actions}>
-            <button
-              className={styles.button}
-              disabled={pagination.page <= 1}
-              onClick={() => changePage(pagination.page - 1)}
-            >
-              Anterior
-            </button>
-            <button
-              className={styles.button}
-              disabled={pagination.page >= paginationInfo.totalPages}
-              onClick={() => changePage(pagination.page + 1)}
-            >
-              Próxima
-            </button>
+            <Button disabled={pagination.page <= 1} onClick={() => changePage(pagination.page - 1)}>Anterior</Button>
+            <Button disabled={pagination.page >= paginationInfo.totalPages} onClick={() => changePage(pagination.page + 1)}>Próxima</Button>
           </div>
         </div>
-      </section>
+      </Card>
 
       {selectedOrderId ? (
         <div className={styles.detailBackdrop} onClick={closeOrderDetail}>
           <aside className={styles.detail} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.toolbar}>
-              <h2 className={styles.title} style={{ fontSize: 20 }}>
-                Pedido {selectedOrder?.orderNumber ?? selectedOrderId}
-              </h2>
-              <button className={styles.button} onClick={closeOrderDetail}>
-                Fechar
-              </button>
+            <div className={styles.topbar}>
+              <h2 className={styles.title} style={{ fontSize: 22 }}>Pedido {selectedOrder?.orderNumber ?? selectedOrderId}</h2>
+              <Button onClick={closeOrderDetail}>Fechar</Button>
             </div>
 
-            {detailLoading ? <p>Carregando detalhe...</p> : null}
+            {detailLoading ? <LoadingState label="Carregando detalhe..." /> : null}
             {detailError ? (
               <div className={styles.errorBox}>
                 <span>{detailError}</span>
-                <button className={styles.button} onClick={() => openOrderDetail(selectedOrderId)}>
-                  Tentar novamente
-                </button>
+                <Button onClick={() => openOrderDetail(selectedOrderId)}>Tentar novamente</Button>
               </div>
             ) : null}
 
             {selectedOrder ? (
               <>
-                <section className={styles.section}>
-                  <div className={styles.totalRow}>
-                    <span>Status</span>
-                    <span className={styles.status} style={{ color: statusColor(selectedOrder.status), border: `1px solid ${statusColor(selectedOrder.status)}33` }}>
-                      {selectedOrder.status}
-                    </span>
-                  </div>
-                  <div className={styles.totalRow}>
-                    <span>Pagamento</span>
-                    <strong>{selectedOrder.paymentSummary?.status ?? '-'}</strong>
-                  </div>
-                  <div className={styles.totalRow}>
-                    <span>Data</span>
-                    <strong>{formatDate(selectedOrder.createdAt)}</strong>
-                  </div>
-                </section>
+                <Card className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Resumo</h3>
+                  <div className={styles.row}><span>Status</span><Badge tone={statusTone(selectedOrder.status)}>{selectedOrder.status}</Badge></div>
+                  <div className={styles.row}><span>Pagamento</span><strong>{selectedOrder.paymentSummary?.status ?? '-'}</strong></div>
+                  <div className={styles.row}><span>Data</span><strong>{formatDate(selectedOrder.createdAt)}</strong></div>
+                </Card>
 
-                <section className={styles.section}>
-                  <h3>Itens</h3>
+                <Card className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Itens</h3>
                   {selectedOrder.items.map((item) => (
                     <div key={item.id} className={styles.itemRow}>
-                      <div>{item.name}</div>
-                      <div>Qtd: {item.quantity}</div>
-                      <div>{formatCurrency(item.unitPrice)}</div>
-                      <div>{formatCurrency(item.totalPrice)}</div>
+                      <div><strong>{item.name}</strong> - Qtd {item.quantity}</div>
+                      <div>{formatCurrency(item.unitPrice)} un | Total {formatCurrency(item.totalPrice)}</div>
                       {item.selectedOptions && item.selectedOptions.length > 0 ? (
-                        <div className={styles.muted}>
-                          +{' '}
-                          {item.selectedOptions
-                            .map((option) => `${option.name} (${formatCurrency(option.price)})`)
-                            .join(', ')}
-                        </div>
+                        <small style={{ color: '#64748b' }}>
+                          + {item.selectedOptions.map((option) => `${option.name} (${formatCurrency(option.price)})`).join(', ')}
+                        </small>
                       ) : null}
                     </div>
                   ))}
-                </section>
+                </Card>
 
-                <section className={styles.section}>
-                  <h3>Totais</h3>
-                  <div className={styles.totalRow}>
-                    <span>Subtotal</span>
-                    <strong>{formatCurrency(selectedOrder.totals.subtotal)}</strong>
-                  </div>
-                  <div className={styles.totalRow}>
-                    <span>Desconto</span>
-                    <strong>- {formatCurrency(selectedOrder.totals.discount)}</strong>
-                  </div>
-                  <div className={styles.totalRow}>
-                    <span>Taxa entrega</span>
-                    <strong>{formatCurrency(selectedOrder.totals.deliveryFee)}</strong>
-                  </div>
-                  <div className={styles.totalRow}>
-                    <span>Total final</span>
-                    <strong>{formatCurrency(selectedOrder.totals.total)}</strong>
-                  </div>
-                </section>
+                <Card className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Totais</h3>
+                  <div className={styles.row}><span>Subtotal</span><strong>{formatCurrency(selectedOrder.totals.subtotal)}</strong></div>
+                  <div className={styles.row}><span>Desconto</span><strong>- {formatCurrency(selectedOrder.totals.discount)}</strong></div>
+                  <div className={styles.row}><span>Taxa entrega</span><strong>{formatCurrency(selectedOrder.totals.deliveryFee)}</strong></div>
+                  <div className={styles.row}><span>Total final</span><strong>{formatCurrency(selectedOrder.totals.total)}</strong></div>
+                </Card>
 
-                <section className={styles.section}>
-                  <h3>Ações de status</h3>
-                  <div className={styles.actions} style={{ flexWrap: 'wrap' }}>
+                <Card className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Atualizar status</h3>
+                  <div className={styles.statusActions}>
                     {STATUS_ACTIONS.map((action) => (
-                      <button
+                      <Button
                         key={action.status}
-                        className={`${styles.button} ${action.danger ? styles.danger : styles.primary}`}
+                        variant={action.danger ? 'danger' : 'primary'}
                         disabled={isUpdatingStatus === action.status || selectedOrder.status === action.status}
                         onClick={() => void updateOrderStatus(selectedOrder.id, action.status)}
                       >
                         {isUpdatingStatus === action.status ? 'Atualizando...' : action.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
-                </section>
+                </Card>
               </>
             ) : null}
           </aside>

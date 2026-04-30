@@ -1,0 +1,73 @@
+﻿.page {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 24px;
+  padding: 30px 0;
+}
+
+.hero {
+  padding: 26px;
+}
+
+.tag {
+  color: #0f766e;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.title {
+  margin: 8px 0;
+  font-size: clamp(30px, 4vw, 46px);
+}
+
+.subtitle {
+  margin: 0;
+  color: #475569;
+  max-width: 740px;
+}
+
+.statusRow {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.linkCard {
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+  transition: 160ms ease;
+}
+
+.linkCard:hover {
+  transform: translateY(-2px);
+  border-color: #7dd3fc;
+}
+
+.linkTitle {
+  margin: 0;
+  font-size: 20px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
