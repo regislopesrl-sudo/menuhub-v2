@@ -1,0 +1,21 @@
+{
+  "name": "@delivery-futuro/order-core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.js"
+  },
+  "dependencies": {
+    "@delivery-futuro/shared-types": "0.1.0"
+  }
+}

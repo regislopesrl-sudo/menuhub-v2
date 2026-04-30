@@ -1,0 +1,28 @@
+{
+  "name": "@delivery-futuro/api-v2",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@delivery-futuro/order-core": "0.1.0",
+    "@delivery-futuro/shared-types": "0.1.0",
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.1.18",
+    "@nestjs/platform-express": "^11.1.18",
+    "@nestjs/websockets": "^11.1.18",
+    "@prisma/client": "^6.19.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.9",
+    "typescript": "^5.7.3"
+  }
+}

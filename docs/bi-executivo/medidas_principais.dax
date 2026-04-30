@@ -1,0 +1,57 @@
+-- Measures for the star model imported from:
+-- Fato_Pedidos, Fato_Itens_Pedido, Fato_Kardex, Fato_Financeiro,
+-- Fato_DRE_Mensal, Fato_CMV_Mensal, Fato_Margem_Produto, Fato_Resultado_Operacional.
+
+Pedidos Finalizados =
+CALCULATE (
+    DISTINCTCOUNT ( 'Fato_Pedidos'[order_id] ),
+    'Fato_Pedidos'[order_finalized] = TRUE ()
+)
+
+Receita Bruta =
+SUM ( 'Fato_Itens_Pedido'[gross_revenue] )
+
+Descontos Comerciais =
+SUM ( 'Fato_Itens_Pedido'[discount_allocated] )
+
+Receita Liquida =
+SUM ( 'Fato_Itens_Pedido'[net_revenue] )
+
+CMV Total =
+SUM ( 'Fato_CMV_Mensal'[cmv_total] )
+
+CMV Consumo Venda =
+SUM ( 'Fato_CMV_Mensal'[cmv_consumo_venda] )
+
+CMV Perda =
+SUM ( 'Fato_CMV_Mensal'[cmv_perda] )
+
+CMV Teorico =
+SUM ( 'Fato_Itens_Pedido'[theoretical_cost_total] )
+
+Desvio CMV =
+[CMV Total] - [CMV Teorico]
+
+Lucro Bruto =
+[Receita Liquida] - [CMV Total]
+
+Margem Bruta % =
+DIVIDE ( [Lucro Bruto], [Receita Liquida], 0 )
+
+Despesas Operacionais =
+CALCULATE (
+    SUMX (
+        'Fato_Financeiro',
+        ABS ( 'Fato_Financeiro'[amount_signed] )
+    ),
+    'Fato_Financeiro'[natureza] = "DESPESA"
+)
+
+Resultado Operacional =
+[Lucro Bruto] - [Despesas Operacionais]
+
+Margem Operacional % =
+DIVIDE ( [Resultado Operacional], [Receita Liquida], 0 )
+
+Ticket Medio =
+DIVIDE ( [Receita Liquida], [Pedidos Finalizados], 0 )

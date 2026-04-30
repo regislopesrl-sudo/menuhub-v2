@@ -1,0 +1,60 @@
+-- Optional fallback if you do not import vw_dim_calendario from PostgreSQL.
+-- Preferred approach: import Dim_Calendario from vw_dim_calendario.
+
+Dim_Calendario =
+VAR MinPedidos =
+    MINX ( ALL ( 'Fato_Pedidos' ), 'Fato_Pedidos'[order_date] )
+VAR MinKardex =
+    MINX ( ALL ( 'Fato_Kardex' ), 'Fato_Kardex'[movement_date] )
+VAR MinFinanceiro =
+    MINX ( ALL ( 'Fato_Financeiro' ), 'Fato_Financeiro'[reference_date] )
+VAR MaxPedidos =
+    MAXX ( ALL ( 'Fato_Pedidos' ), 'Fato_Pedidos'[order_date] )
+VAR MaxKardex =
+    MAXX ( ALL ( 'Fato_Kardex' ), 'Fato_Kardex'[movement_date] )
+VAR MaxFinanceiro =
+    MAXX ( ALL ( 'Fato_Financeiro' ), 'Fato_Financeiro'[reference_date] )
+VAR StartDate =
+    COALESCE ( MinPedidos, MinKardex, MinFinanceiro, DATE ( YEAR ( TODAY () ) - 2, 1, 1 ) )
+VAR EndDate =
+    COALESCE ( MaxPedidos, MaxKardex, MaxFinanceiro, DATE ( YEAR ( TODAY () ) + 1, 12, 31 ) )
+RETURN
+ADDCOLUMNS (
+    CALENDAR ( StartDate, EndDate ),
+    "DateKey", YEAR ( [Date] ) * 10000 + MONTH ( [Date] ) * 100 + DAY ( [Date] ),
+    "Ano", YEAR ( [Date] ),
+    "MesNumero", MONTH ( [Date] ),
+    "MesNome", SWITCH (
+        MONTH ( [Date] ),
+        1, "Jan",
+        2, "Fev",
+        3, "Mar",
+        4, "Abr",
+        5, "Mai",
+        6, "Jun",
+        7, "Jul",
+        8, "Ago",
+        9, "Set",
+        10, "Out",
+        11, "Nov",
+        12, "Dez"
+    ),
+    "AnoMes", FORMAT ( [Date], "yyyy-MM" ),
+    "AnoMesKey", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+    "TrimestreNumero", QUARTER ( [Date] ),
+    "Trimestre", "T" & QUARTER ( [Date] ),
+    "DiaMes", DAY ( [Date] ),
+    "DiaSemanaNumero", WEEKDAY ( [Date], 2 ),
+    "DiaSemanaNome", SWITCH (
+        WEEKDAY ( [Date], 2 ),
+        1, "Seg",
+        2, "Ter",
+        3, "Qua",
+        4, "Qui",
+        5, "Sex",
+        6, "Sab",
+        7, "Dom"
+    ),
+    "SemanaAno", WEEKNUM ( [Date], 2 ),
+    "EhFimDeSemana", WEEKDAY ( [Date], 2 ) > 5
+)

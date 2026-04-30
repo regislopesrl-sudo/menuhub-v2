@@ -1,0 +1,2 @@
+export const MENU_PORT_TOKEN = 'MENU_PORT_TOKEN';
+

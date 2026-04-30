@@ -1,0 +1,49 @@
+{
+  "name": "Tema Executivo DRE",
+  "background": "#F8FAFC",
+  "firstLevelElements": "#0F172A",
+  "secondLevelElements": "#475569",
+  "thirdLevelElements": "#E2E8F0",
+  "fourthLevelElements": "#94A3B8",
+  "secondaryBackground": "#E2E8F0",
+  "tableAccent": "#1D4ED8",
+  "dataColors": [
+    "#1D4ED8",
+    "#0F766E",
+    "#16A34A",
+    "#DC2626",
+    "#F59E0B",
+    "#0EA5E9",
+    "#64748B",
+    "#334155"
+  ],
+  "good": "#16A34A",
+  "neutral": "#64748B",
+  "bad": "#DC2626",
+  "maximum": "#16A34A",
+  "center": "#F59E0B",
+  "minimum": "#DC2626",
+  "null": "#CBD5E1",
+  "textClasses": {
+    "callout": {
+      "fontSize": 44,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#0F172A"
+    },
+    "title": {
+      "fontSize": 12,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#0F172A"
+    },
+    "header": {
+      "fontSize": 11,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#334155"
+    },
+    "label": {
+      "fontSize": 10,
+      "fontFace": "Segoe UI",
+      "color": "#334155"
+    }
+  }
+}
