@@ -74,6 +74,15 @@ Abrir `https://app-hml.menuhub.net.br/admin/orders` e validar:
 - status inicial do pedido está coerente
 - após PATCH, status atualizado aparece
 - erros de conexão/socket não bloqueiam a visualização
+- home sai de `API Verificando` para `API Online`
+- badge de WebSocket fica `Conectado`
+
+### Validação de assets Next (obrigatória)
+
+1. Abrir `https://app-hml.menuhub.net.br` e capturar o HTML.
+2. Confirmar que pelo menos um arquivo CSS de `/_next/static/css` retorna `200`.
+3. Confirmar que pelo menos um chunk JS referenciado no HTML (`/_next/static/chunks/...`) retorna `200`.
+4. Se houver `404` em `/_next/static`, revisar proxy Nginx do HML para `/_next/` e `/_next/static/`.
 
 ## Saída esperada
 
