@@ -7,6 +7,7 @@ import { OrdersEventsService } from './orders-events.service';
 export interface OrderReadDto {
   id: string;
   orderNumber: string;
+  channel?: string;
   status: string;
   totals: {
     subtotal: number;
@@ -46,11 +47,14 @@ export interface OrderReadDto {
     refundedAmount: number;
   };
   createdAt: string;
+  preparationStartedAt?: string;
+  readyAt?: string;
 }
 
 export interface OrderListItemDto {
   id: string;
   orderNumber: string;
+  channel?: string;
   status: string;
   total: number;
   paymentStatus: string;
@@ -87,6 +91,7 @@ export class OrdersService {
     id: string,
     status: string,
     ctx: RequestContext,
+    options?: { emitEvent?: boolean },
   ): Promise<OrderReadDto> {
     if (!Object.values(OrderStatus).includes(status as OrderStatus)) {
       throw new BadRequestException(`Status inválido: '${status}'.`);
@@ -97,17 +102,19 @@ export class OrdersService {
       throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
     }
 
-    try {
-      await this.ordersEvents.emitOrderStatusUpdated(
-        {
-          id: order.id,
-          orderNumber: order.orderNumber,
-          status: order.status,
-        },
-        ctx,
-      );
-    } catch {
-      // emitter non-blocking by design
+    if (options?.emitEvent !== false) {
+      try {
+        await this.ordersEvents.emitOrderStatusUpdated(
+          {
+            id: order.id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+          },
+          ctx,
+        );
+      } catch {
+        // emitter non-blocking by design
+      }
     }
 
     return this.toOrderReadDto(order);
@@ -118,6 +125,7 @@ export class OrdersService {
     return {
       id: order.id,
       orderNumber: order.orderNumber,
+      channel: order.channel,
       status: order.status,
       totals: {
         subtotal: Number(order.subtotal),
@@ -148,6 +156,8 @@ export class OrdersService {
         refundedAmount: Number(order.refundedAmount),
       },
       createdAt: order.createdAt.toISOString(),
+      preparationStartedAt: order.preparationStartedAt ? order.preparationStartedAt.toISOString() : undefined,
+      readyAt: order.readyAt ? order.readyAt.toISOString() : undefined,
     };
   }
 
@@ -212,6 +222,7 @@ export class OrdersService {
     const data: OrderListItemDto[] = result.rows.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
+      channel: order.channel,
       status: order.status,
       total: Number(order.totalAmount),
       paymentStatus: order.paymentStatus,

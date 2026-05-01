@@ -3,6 +3,7 @@ export interface MenuProduct {
   name: string;
   description: string;
   price: number;
+  categoryName?: string;
   addonGroups?: Array<{
     id: string;
     name: string;
@@ -25,6 +26,7 @@ export const mockMenuProducts: MenuProduct[] = [
     name: 'X-Burger',
     description: 'Pao, carne e queijo',
     price: 29.9,
+    categoryName: 'Lanches',
     addonGroups: [
       {
         id: 'grp_1',
@@ -40,7 +42,7 @@ export const mockMenuProducts: MenuProduct[] = [
       },
     ],
   },
-  { id: 'prod-2', name: 'Batata Frita', description: 'Porcao media crocante', price: 18.5 },
-  { id: 'prod-3', name: 'Refrigerante Lata', description: '350ml gelado', price: 7.0 },
-  { id: 'prod-4', name: 'Pizza Calabresa', description: 'Mussarela e calabresa', price: 59.9 },
+  { id: 'prod-2', name: 'Batata Frita', description: 'Porcao media crocante', price: 18.5, categoryName: 'Acompanhamentos' },
+  { id: 'prod-3', name: 'Refrigerante Lata', description: '350ml gelado', price: 7.0, categoryName: 'Bebidas' },
+  { id: 'prod-4', name: 'Pizza Calabresa', description: 'Mussarela e calabresa', price: 59.9, categoryName: 'Pizzas' },
 ];

@@ -25,6 +25,7 @@ export interface OrderDetailItem {
 export interface OrderDetail {
   id: string;
   orderNumber: string;
+  channel?: string;
   status: string;
   totals: {
     subtotal: number;
@@ -33,12 +34,24 @@ export interface OrderDetail {
     total: number;
   };
   items: OrderDetailItem[];
+  customer?: {
+    name: string;
+    phone?: string;
+  };
+  deliveryAddress?: {
+    street?: string;
+    number?: string;
+    neighborhood?: string;
+    reference?: string;
+  };
   paymentSummary?: {
     status: string;
     paidAmount: number;
     refundedAmount: number;
   };
   createdAt: string;
+  preparationStartedAt?: string;
+  readyAt?: string;
 }
 
 export interface OrdersListResponse {

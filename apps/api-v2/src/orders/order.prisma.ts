@@ -17,7 +17,12 @@ export interface FindManyOrdersFilters {
 export class OrderPrismaRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createOrder(result: CheckoutResult, ctx: RequestContext, deliveryQuote?: DeliveryQuoteResponse) {
+  async createOrder(
+    result: CheckoutResult,
+    ctx: RequestContext,
+    deliveryQuote?: DeliveryQuoteResponse,
+    options?: { pdvSessionId?: string },
+  ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
     const customerSnapshot = result.order.customer
@@ -38,8 +43,8 @@ export class OrderPrismaRepository {
             companyId: ctx.companyId,
             branchId,
             orderNumber: this.buildOrderNumber(),
-            orderType: 'DELIVERY',
-            channel: 'WEB',
+            orderType: result.order.channel === 'pdv' ? 'COUNTER' : 'DELIVERY',
+            channel: result.order.channel === 'pdv' ? 'PDV' : 'WEB',
             status: this.mapOrderStatus(result.order.status),
             paymentStatus: result.payment.status === 'APPROVED' ? 'PAID' : 'UNPAID',
             subtotal: result.order.totals.subtotal,
@@ -53,8 +58,14 @@ export class OrderPrismaRepository {
             internalNotes: JSON.stringify({
               payment: {
                 status: result.payment.status,
+                method: result.payment.method,
                 reason: paymentReason,
               },
+              pdv: options?.pdvSessionId
+                ? {
+                    sessionId: options.pdvSessionId,
+                  }
+                : undefined,
               checkoutSnapshot: customerSnapshot,
               deliveryQuote,
             }),
@@ -277,6 +288,36 @@ export class OrderPrismaRepository {
     ]);
 
     return { total, rows };
+  }
+
+  async findPdvOrdersForSession(input: {
+    companyId: string;
+    branchId: string;
+    sessionId: string;
+    openedAt: Date;
+    closedAt?: Date | null;
+  }) {
+    return this.prisma.order.findMany({
+      where: {
+        companyId: input.companyId,
+        branchId: input.branchId,
+        channel: 'PDV',
+        createdAt: {
+          gte: input.openedAt,
+          ...(input.closedAt ? { lte: input.closedAt } : {}),
+        },
+        internalNotes: {
+          contains: `"sessionId":"${input.sessionId}"`,
+        },
+      },
+      select: {
+        id: true,
+        totalAmount: true,
+        internalNotes: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   async updateStatus(id: string, status: string, ctx: RequestContext) {

@@ -23,11 +23,14 @@ interface ModuleAccessRepository {
   getCompanyProfile(companyId: string): Promise<CompanyProfile>;
   listCompanyModuleOverrides(companyId: string): Promise<CompanyModuleOverride[]>;
   listPlanModules(planKey: PlanKey): Promise<ModuleKey[]>;
+  upsertCompanyModuleOverride(input: CompanyModuleOverride): Promise<CompanyModuleOverride>;
 }
 
 class InMemoryModuleAccessRepository implements ModuleAccessRepository {
   private readonly modules: ModuleDefinition[] = [
     { key: 'delivery', name: 'Delivery', enabledByDefault: true, adminOnly: false },
+    { key: 'pdv' as ModuleKey, name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
+    { key: 'kds' as ModuleKey, name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
     { key: 'whatsapp', name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
     { key: 'kiosk', name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
     { key: 'waiter_app', name: 'App Garcom', enabledByDefault: false, adminOnly: false },
@@ -48,10 +51,12 @@ class InMemoryModuleAccessRepository implements ModuleAccessRepository {
   ]);
 
   private readonly planModules: Record<PlanKey, ModuleKey[]> = {
-    basic: ['delivery', 'orders', 'menu', 'payments'],
-    pro: ['delivery', 'orders', 'menu', 'payments', 'whatsapp', 'kiosk', 'waiter_app', 'reports'],
+    basic: ['delivery', 'pdv' as ModuleKey, 'kds' as ModuleKey, 'orders', 'menu', 'payments'],
+    pro: ['delivery', 'pdv' as ModuleKey, 'kds' as ModuleKey, 'orders', 'menu', 'payments', 'whatsapp', 'kiosk', 'waiter_app', 'reports'],
     enterprise: [
       'delivery',
+      'pdv' as ModuleKey,
+      'kds' as ModuleKey,
       'orders',
       'menu',
       'payments',
@@ -85,6 +90,18 @@ class InMemoryModuleAccessRepository implements ModuleAccessRepository {
 
   async listPlanModules(planKey: PlanKey): Promise<ModuleKey[]> {
     return this.planModules[planKey] ?? [];
+  }
+
+  async upsertCompanyModuleOverride(input: CompanyModuleOverride): Promise<CompanyModuleOverride> {
+    const index = this.companyOverrides.findIndex(
+      (item) => item.companyId === input.companyId && item.moduleKey === input.moduleKey,
+    );
+    if (index >= 0) {
+      this.companyOverrides[index] = input;
+      return this.companyOverrides[index];
+    }
+    this.companyOverrides.push(input);
+    return input;
   }
 }
 
@@ -206,5 +223,30 @@ export class ModulesService {
       source: companyModule?.source ?? 'default',
       planKey: companyModule?.planKey,
     };
+  }
+
+  async updateCurrentCompanyModule(input: {
+    companyId: string;
+    moduleKey: ModuleKey;
+    enabled: boolean;
+  }): Promise<CompanyModuleAccess> {
+    const modules = await this.repository.listModules();
+    const moduleDef = modules.find((item) => item.key === input.moduleKey);
+    if (!moduleDef) {
+      throw new Error(`Modulo '${input.moduleKey}' nao cadastrado na V2.`);
+    }
+
+    await this.repository.upsertCompanyModuleOverride({
+      companyId: input.companyId,
+      moduleKey: input.moduleKey,
+      enabled: input.enabled,
+    });
+
+    const list = await this.listCurrentCompanyModules(input.companyId);
+    const updated = list.find((item) => item.moduleKey === input.moduleKey);
+    if (!updated) {
+      throw new Error(`Falha ao atualizar modulo '${input.moduleKey}'.`);
+    }
+    return updated;
   }
 }

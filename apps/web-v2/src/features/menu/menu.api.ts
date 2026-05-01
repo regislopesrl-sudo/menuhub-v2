@@ -27,6 +27,7 @@ export async function fetchDeliveryMenu(input: {
     name: string;
     description?: string;
     price: number;
+    categoryName?: string;
     available?: boolean;
     addonGroups?: Array<{
       id: string;
@@ -51,6 +52,7 @@ export async function fetchDeliveryMenu(input: {
       name: item.name,
       description: item.description ?? '',
       price: Number(item.price),
+      categoryName: item.categoryName,
       addonGroups: (item.addonGroups ?? []).map((group) => ({
         ...group,
         options: group.options.map((option) => ({

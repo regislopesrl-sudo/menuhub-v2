@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { StatCard } from '@/components/ui/StatCard';
+import { useModuleAccess } from '@/features/modules/use-module-access';
+import { ModuleDisabled } from '@/components/module-disabled';
 
 const STATUS_OPTIONS = [
   'DRAFT',
@@ -88,6 +90,7 @@ export default function AdminOrdersPage() {
     closeOrderDetail,
     updateOrderStatus,
   } = useOrders(headers);
+  const access = useModuleAccess(headers, 'orders');
 
   const [statusFilter, setStatusFilter] = useState(filters.status ?? '');
   const [fromFilter, setFromFilter] = useState(filters.createdFrom ?? '');
@@ -96,6 +99,13 @@ export default function AdminOrdersPage() {
   const pending = orders.filter((o) => o.status === 'PENDING_CONFIRMATION').length;
   const confirmed = orders.filter((o) => o.status === 'CONFIRMED').length;
   const revenue = orders.reduce((sum, o) => sum + o.total, 0);
+
+  if (access.loading) {
+    return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
+  }
+  if (!access.allowed) {
+    return <ModuleDisabled moduleName="Pedidos" reason={access.error ?? 'Módulo orders desativado.'} />;
+  }
 
   return (
     <main className={styles.page}>

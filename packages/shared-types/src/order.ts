@@ -1,4 +1,4 @@
-export type OrderChannel = 'delivery' | 'whatsapp' | 'kiosk' | 'waiter';
+export type OrderChannel = 'delivery' | 'pdv' | 'whatsapp' | 'kiosk' | 'waiter';
 
 export type OrderStatus =
   | 'CREATED'
@@ -101,4 +101,28 @@ export interface DeliveryCheckoutInput {
   }>;
   couponCode?: string;
   paymentMethod: string;
+}
+
+export interface PdvCheckoutInput {
+  companyId: string;
+  storeId: string;
+  channel: 'pdv';
+  customerId?: string;
+  customer?: {
+    name: string;
+    phone: string;
+  };
+  items: Array<{
+    productId: string;
+    quantity: number;
+    selectedOptions?: Array<{
+      groupId: string;
+      optionId: string;
+      name: string;
+      price: number;
+    }>;
+  }>;
+  couponCode?: string;
+  paymentMethod: string;
+  startInPreparation?: boolean;
 }

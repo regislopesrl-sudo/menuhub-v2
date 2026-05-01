@@ -1,12 +1,15 @@
-ï»¿# Deploy HML V2 com Docker Compose + Caddy
+# Deploy HML V2 com Docker Compose + Caddy
 
-Este guia sobe a V2 em homologaÃ§Ã£o com:
+Status atual: HML validado em 100% HTTPS.
+
+
+Este guia sobe a V2 em homologação com:
 - `api-v2`
 - `web-v2`
 - `postgres`
-- `caddy` (HTTPS automÃ¡tico)
+- `caddy` (HTTPS automático)
 
-DomÃ­nios HML:
+Domínios HML:
 - `https://api-hml.menuhub.net.br` -> `api-v2`
 - `https://app-hml.menuhub.net.br` -> `web-v2`
 - painel admin: `https://app-hml.menuhub.net.br/admin/orders`
@@ -21,9 +24,9 @@ IP atual esperado nos registros DNS:
 - `apps/api-v2/.env.hml.example`
 - `apps/web-v2/.env.hml.example`
 
-## 2) PreparaÃ§Ã£o
+## 2) Preparação
 
-Na raiz do repositÃ³rio:
+Na raiz do repositório:
 
 ```bash
 cp apps/api-v2/.env.hml.example apps/api-v2/.env.hml
@@ -47,7 +50,7 @@ docker compose -f docker-compose.hml.yml up -d
 
 ## 4) Logs
 
-Todos os serviÃ§os:
+Todos os serviços:
 
 ```bash
 docker compose -f docker-compose.hml.yml logs -f
@@ -83,7 +86,7 @@ Parar e remover volumes (cuidado: remove banco HML local):
 docker compose -f docker-compose.hml.yml down -v
 ```
 
-## 6) Smoke test rÃ¡pido
+## 6) Smoke test rápido
 
 ### 6.1 Health
 
@@ -149,9 +152,9 @@ Abrir:
 Validar:
 - listagem de pedidos
 - status atualizado
-- conexÃ£o realtime sem erro crÃ­tico
+- conexão realtime sem erro crítico
 
-## 7) ConfiguraÃ§Ã£o exigida no deploy
+## 7) Configuração exigida no deploy
 
 - API interna na porta `3202`
 - WEB interna na porta `3112`
@@ -168,5 +171,5 @@ Checklist DNS (A -> `157.180.123.181`):
 
 Checklist SSL:
 - portas `80` e `443` abertas no firewall
-- Caddy com acesso de saÃ­da para ACME/Let's Encrypt
+- Caddy com acesso de saída para ACME/Let's Encrypt
 - logs do Caddy sem erro de challenge/certificado

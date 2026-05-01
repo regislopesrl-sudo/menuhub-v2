@@ -1,5 +1,7 @@
 export type ModuleKey =
   | 'delivery'
+  | 'pdv'
+  | 'kds'
   | 'whatsapp'
   | 'kiosk'
   | 'waiter_app'

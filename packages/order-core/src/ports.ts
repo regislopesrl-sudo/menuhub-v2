@@ -1,5 +1,6 @@
 import type {
   DeliveryCheckoutInput,
+  OrderChannel,
   MenuValidationItemInput,
   MenuValidationResult,
   PaymentRequest,
@@ -10,7 +11,7 @@ export interface MenuPort {
   validateItems(input: {
     companyId: string;
     storeId: string;
-    channel: DeliveryCheckoutInput['channel'];
+    channel: DeliveryCheckoutInput['channel'] | OrderChannel;
     items: MenuValidationItemInput[];
   }): Promise<MenuValidationResult>;
 }

@@ -1,5 +1,5 @@
 ﻿import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import type { DeliveryCheckoutInput } from '@delivery-futuro/shared-types';
+import type { DeliveryCheckoutInput, PdvCheckoutInput } from '@delivery-futuro/shared-types';
 import { orderCore, type CheckoutResult, type MenuPort, type PaymentPort } from '@delivery-futuro/order-core';
 import { MENU_PORT_TOKEN } from '../ports/menu.tokens';
 import { PaymentPortMock } from '../ports/payment.mock';
@@ -8,6 +8,7 @@ import { OrderPrismaRepository } from '../orders/order.prisma';
 import { OrdersEventsService } from '../orders/orders-events.service';
 import { DeliveryQuoteService } from '../delivery/delivery-quote.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PdvService } from '../pdv/pdv.service';
 
 export interface CheckoutQuoteInput {
   storeId: string;
@@ -44,6 +45,7 @@ export class CheckoutService {
     private readonly paymentsService: PaymentsService,
     private readonly orderRepository: OrderPrismaRepository,
     private readonly ordersEvents: OrdersEventsService,
+    private readonly pdvService: PdvService,
   ) {}
 
   async quoteDeliveryCheckout(input: CheckoutQuoteInput, ctx: RequestContext): Promise<CheckoutQuoteOutput> {
@@ -195,6 +197,97 @@ export class CheckoutService {
     };
   }
 
+  async runPdvCheckout(input: PdvCheckoutInput, ctx: RequestContext): Promise<CheckoutResult> {
+    this.validatePdvInput(input);
+
+    const validated = await this.menuPort.validateItems({
+      companyId: ctx.companyId,
+      storeId: input.storeId,
+      channel: 'pdv',
+      items: input.items,
+    });
+
+    const draft = orderCore.createOrder({
+      channel: 'pdv',
+      customerId: input.customerId,
+      customer: input.customer,
+      deliveryFee: 0,
+      items: validated.items,
+    });
+    const withTotals = {
+      ...draft,
+      totals: orderCore.calculateTotal(draft),
+    };
+    const discounted = orderCore.applyDiscount({
+      order: withTotals,
+      couponCode: input.couponCode,
+    });
+
+    const payment = this.buildImmediatePdvPayment(input.paymentMethod, discounted.id);
+    const targetStatus = input.startInPreparation ? 'PREPARING' : 'CONFIRMED';
+    const finalOrder = orderCore.updateStatus(
+      discounted,
+      payment.status === 'DECLINED' ? 'PAYMENT_FAILED' : targetStatus,
+    );
+    const checkoutResult: CheckoutResult = {
+      order: finalOrder,
+      payment,
+    };
+
+    const session = await this.pdvService.getOpenSessionOrThrow(ctx);
+    const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, undefined, {
+      pdvSessionId: session.id,
+    });
+    try {
+      await this.ordersEvents.emitOrderCreated(
+        {
+          id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          status: persisted.status,
+        },
+        ctx,
+      );
+    } catch {
+      // emitter non-blocking by design
+    }
+
+    let response: CheckoutResult = {
+      ...checkoutResult,
+      order: {
+        ...checkoutResult.order,
+        id: persisted.id,
+      },
+    };
+
+    if (input.paymentMethod.toUpperCase() === 'PIX') {
+      const pix = await this.paymentsService.createPixPayment(
+        {
+          id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          total: checkoutResult.order.totals.total,
+        },
+        ctx,
+      );
+      await this.orderRepository.attachPaymentIntent(persisted.id, pix, ctx);
+      response = {
+        ...response,
+        payment: {
+          ...response.payment,
+          id: pix.id,
+          provider: pix.provider,
+          providerPaymentId: pix.providerPaymentId,
+          method: 'PIX',
+          status: 'PENDING',
+          qrCode: pix.qrCode,
+          qrCodeText: pix.qrCodeText,
+          expiresAt: pix.expiresAt,
+        },
+      };
+    }
+
+    return response;
+  }
+
   private validateQuoteInput(input: CheckoutQuoteInput): void {
     if (!input.storeId?.trim()) {
       throw new BadRequestException('storeId e obrigatorio.');
@@ -230,5 +323,39 @@ export class CheckoutService {
     if (!deliveryAddress?.neighborhood?.trim()) {
       throw new BadRequestException('Bairro e obrigatorio.');
     }
+  }
+
+  private validatePdvInput(input: PdvCheckoutInput): void {
+    if (!input.storeId?.trim()) {
+      throw new BadRequestException('storeId e obrigatorio.');
+    }
+    if (!input.items?.length) {
+      throw new BadRequestException('Carrinho vazio: informe ao menos um item.');
+    }
+    if (!input.paymentMethod?.trim()) {
+      throw new BadRequestException('paymentMethod e obrigatorio.');
+    }
+  }
+
+  private buildImmediatePdvPayment(method: string, orderId: string): CheckoutResult['payment'] {
+    if (method.toUpperCase() === 'DENY') {
+      return {
+        status: 'DECLINED',
+        reason: 'Pagamento recusado pelo mock',
+      };
+    }
+
+    return {
+      status: 'APPROVED',
+      transactionId: `pdv_txn_${orderId}`,
+      method: this.mapPdvPaymentMethod(method),
+    };
+  }
+
+  private mapPdvPaymentMethod(method: string): 'PIX' | 'CREDIT_CARD' | 'CASH' {
+    const value = method.toUpperCase();
+    if (value === 'PIX') return 'PIX';
+    if (value === 'CARD' || value === 'CREDIT_CARD') return 'CREDIT_CARD';
+    return 'CASH';
   }
 }

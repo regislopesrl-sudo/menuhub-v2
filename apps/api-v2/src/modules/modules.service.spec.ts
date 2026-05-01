@@ -26,5 +26,16 @@ describe('ModulesService', () => {
     expect(result.reason).toBe('BLOCKED_COMPANY_OVERRIDE');
     expect(result.source).toBe('company_override');
   });
-});
 
+  it('atualiza override do modulo da empresa atual', async () => {
+    const updated = await service.updateCurrentCompanyModule({
+      companyId: 'default-company',
+      moduleKey: 'delivery',
+      enabled: false,
+    });
+
+    expect(updated.moduleKey).toBe('delivery');
+    expect(updated.enabled).toBe(false);
+    expect(updated.source).toBe('company_override');
+  });
+});

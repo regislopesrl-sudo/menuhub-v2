@@ -14,6 +14,8 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { useModuleAccess } from '@/features/modules/use-module-access';
+import { ModuleDisabled } from '@/components/module-disabled';
 
 function brl(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -102,6 +104,10 @@ export default function DeliveryPage() {
     }),
     [],
   );
+  const access = useModuleAccess(
+    { companyId: headers.companyId, branchId: headers.branchId, userRole: 'user' },
+    'delivery',
+  );
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const deliveryFee = quote?.deliveryFee ?? 0;
@@ -110,6 +116,13 @@ export default function DeliveryPage() {
   const hasAddress = cep.replace(/\D/g, '').length === 8 && !!number.trim();
   const hasCustomer = !!customerName.trim() && !!customerPhone.trim();
   const checkoutStep = !items.length ? 1 : !hasAddress ? 2 : paymentMethod ? 3 : 3;
+
+  if (access.loading) {
+    return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
+  }
+  if (!access.allowed) {
+    return <ModuleDisabled moduleName="Delivery" reason={access.error ?? 'Módulo delivery desativado.'} />;
+  }
 
   useEffect(() => {
     let active = true;

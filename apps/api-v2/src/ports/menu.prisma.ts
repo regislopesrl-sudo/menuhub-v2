@@ -40,8 +40,11 @@ export class MenuPrismaPort implements MenuPort {
       if (!product) {
         throw new Error(`Item inexistente ou sem acesso para a empresa atual: ${item.productId}`);
       }
-      if (!product.isActive || !product.availableDelivery || product.deletedAt) {
-        throw new Error(`Item indisponivel para delivery: ${item.productId}`);
+      const isDeliveryChannel = input.channel === 'delivery';
+      const deliveryUnavailable = isDeliveryChannel && !product.availableDelivery;
+      if (!product.isActive || deliveryUnavailable || product.deletedAt) {
+        const reason = isDeliveryChannel ? 'delivery' : input.channel;
+        throw new Error(`Item indisponivel para ${reason}: ${item.productId}`);
       }
 
       const deliveryPrice = this.resolveDeliveryPrice({
