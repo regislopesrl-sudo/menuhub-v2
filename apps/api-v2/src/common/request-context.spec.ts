@@ -37,5 +37,12 @@ describe('buildRequestContextFromHeaders', () => {
 
     expect(ctx.branchId).toBe('branch_a');
   });
-});
 
+  it('aceita role developer', () => {
+    const ctx = buildRequestContextFromHeaders({
+      'x-company-id': 'company_a',
+      'x-user-role': 'developer',
+    });
+    expect(ctx.userRole).toBe('developer');
+  });
+});

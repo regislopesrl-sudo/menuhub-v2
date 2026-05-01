@@ -56,24 +56,7 @@ services:
     depends_on:
       - api-v2
 
-  caddy:
-    image: caddy:2.8-alpine
-    container_name: menuhub-caddy-hml
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile.hml:/etc/caddy/Caddyfile:ro
-      - caddy_hml_data:/data
-      - caddy_hml_config:/config
-    depends_on:
-      - api-v2
-      - web-v2
-
 volumes:
   postgres_v2_hml_data:
   api_v2_hml_node_modules:
   web_v2_hml_node_modules:
-  caddy_hml_data:
-  caddy_hml_config:

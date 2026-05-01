@@ -7,6 +7,7 @@ import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { useModules } from '@/features/modules/use-modules';
+import { hasDeveloperSession } from '@/lib/developer-session';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 const WS_BASE = process.env.NEXT_PUBLIC_API_V2_WS_URL ?? API_BASE;
@@ -17,6 +18,7 @@ export default function HomePage() {
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'up' | 'down'>('checking');
   const [wsStatus, setWsStatus] = useState<'checking' | 'up' | 'down'>('checking');
+  const [canManageModules, setCanManageModules] = useState(false);
   const modulesState = useModules({ companyId, branchId, userRole: 'admin' });
 
   const headers = useMemo(
@@ -27,6 +29,10 @@ export default function HomePage() {
     }),
     [branchId, companyId],
   );
+
+  useEffect(() => {
+    setCanManageModules(hasDeveloperSession());
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -82,83 +88,49 @@ export default function HomePage() {
 
       <section className={styles.grid}>
         {modulesState.isEnabled('delivery') ? (
-        <Link href="/delivery" className="ui-card">
+        <article className="ui-card">
           <article className={styles.linkCard}>
-            <Badge tone="success">Cliente</Badge>
+            <span className={styles.sectionLabel}>Cliente</span>
             <h2 className={styles.linkTitle}>Cardápio Online</h2>
             <p style={{ margin: 0, color: '#475569' }}>
-              Experiência mobile-first para montar pedido, personalizar adicionais e pagar com PIX.
+              Monte seu pedido, personalize itens e finalize com pagamento digital de forma rápida.
             </p>
             <div className={styles.meta}>
-              <small style={{ color: '#64748b' }}>Acessar /delivery</small>
-              <strong style={{ color: '#0f766e' }}>Entrar</strong>
+              <small style={{ color: '#64748b' }}>Entrada pública para clientes</small>
+              <Link href="/delivery" className={styles.ctaButton}>Fazer Pedido</Link>
             </div>
           </article>
-        </Link>
+        </article>
         ) : null}
 
-        {modulesState.isEnabled('orders') ? (
-        <Link href="/admin/orders" className="ui-card">
+        <article className="ui-card">
           <article className={styles.linkCard}>
-            <Badge tone="warning">Operação</Badge>
-            <h2 className={styles.linkTitle}>Painel de Pedidos</h2>
+            <span className={styles.sectionLabel}>Sistema (Operação)</span>
+            <h2 className={styles.linkTitle}>Entrar no Sistema</h2>
             <p style={{ margin: 0, color: '#475569' }}>
-              Visualização operacional com filtros, atualização de status e acompanhamento em tempo real.
+              Acesse o painel interno para operar pedidos, cozinha e PDV em um único fluxo.
             </p>
             <div className={styles.meta}>
-              <small style={{ color: '#64748b' }}>Acessar /admin/orders</small>
-              <strong style={{ color: '#0f766e' }}>Entrar</strong>
+              <small style={{ color: '#64748b' }}>Área interna</small>
+              <Link href="/admin" className={styles.ctaButton}>Entrar no Sistema</Link>
             </div>
           </article>
-        </Link>
-        ) : null}
+        </article>
 
-        {modulesState.isEnabled('kds') ? (
-        <Link href="/admin/kds" className="ui-card">
-          <article className={styles.linkCard}>
-            <Badge tone="warning">Cozinha</Badge>
-            <h2 className={styles.linkTitle}>KDS Cozinha</h2>
-            <p style={{ margin: 0, color: '#475569' }}>
-              Painel de producao em Kanban para iniciar preparo, marcar pronto e finalizar pedidos.
-            </p>
-            <div className={styles.meta}>
-              <small style={{ color: '#64748b' }}>Acessar /admin/kds</small>
-              <strong style={{ color: '#0f766e' }}>Entrar</strong>
-            </div>
+        {canManageModules ? (
+          <article className="ui-card">
+            <article className={styles.linkCard}>
+              <span className={styles.sectionLabel}>Tecnico</span>
+              <h2 className={styles.linkTitle}>Gestao de Modulos</h2>
+              <p style={{ margin: 0, color: '#475569' }}>
+                Area tecnica restrita ao desenvolvedor da plataforma.
+              </p>
+              <div className={styles.meta}>
+                <small style={{ color: '#64748b' }}>Sessao developer ativa</small>
+                <Link href="/admin/modules" className={styles.ctaButton}>Abrir Gestao</Link>
+              </div>
+            </article>
           </article>
-        </Link>
-        ) : null}
-
-        {modulesState.isEnabled('pdv') ? (
-        <Link href="/admin/pdv" className="ui-card">
-          <article className={styles.linkCard}>
-            <Badge tone="warning">Balcao</Badge>
-            <h2 className={styles.linkTitle}>PDV Rapido</h2>
-            <p style={{ margin: 0, color: '#475569' }}>
-              Operacao de caixa para criar pedidos presenciais e enviar direto para a cozinha.
-            </p>
-            <div className={styles.meta}>
-              <small style={{ color: '#64748b' }}>Acessar /admin/pdv</small>
-              <strong style={{ color: '#0f766e' }}>Entrar</strong>
-            </div>
-          </article>
-        </Link>
-        ) : null}
-
-        {modulesState.isEnabled('admin_panel') ? (
-        <Link href="/admin/modules" className="ui-card">
-          <article className={styles.linkCard}>
-            <Badge tone="warning">Config</Badge>
-            <h2 className={styles.linkTitle}>Gestao de Modulos</h2>
-            <p style={{ margin: 0, color: '#475569' }}>
-              Habilite ou desabilite modulos por empresa com override sobre plano e default.
-            </p>
-            <div className={styles.meta}>
-              <small style={{ color: '#64748b' }}>Acessar /admin/modules</small>
-              <strong style={{ color: '#0f766e' }}>Entrar</strong>
-            </div>
-          </article>
-        </Link>
         ) : null}
       </section>
     </main>

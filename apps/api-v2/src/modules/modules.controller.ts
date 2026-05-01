@@ -3,6 +3,7 @@ import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { ModulesService } from './modules.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
+import { requireDeveloper } from '../common/developer-role';
 
 @Controller('v2')
 export class ModulesController {
@@ -24,6 +25,7 @@ export class ModulesController {
     @Body() body: { enabled: boolean },
     @CurrentContext() ctx: RequestContext,
   ) {
+    requireDeveloper(ctx);
     return this.modulesService.updateCurrentCompanyModule({
       companyId: ctx.companyId,
       moduleKey,

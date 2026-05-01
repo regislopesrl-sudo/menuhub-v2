@@ -13,6 +13,11 @@
   flex-wrap: wrap;
 }
 
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
 .title {
   margin: 0;
   font-size: 28px;
@@ -73,4 +78,3 @@
     grid-template-columns: 1fr;
   }
 }
-

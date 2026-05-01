@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { listCurrentCompanyModules, type CompanyModuleAccess } from './modules.api';
+import { listCurrentCompanyModules, type AppUserRole, type CompanyModuleAccess } from './modules.api';
 
 export interface UseModulesInput {
   companyId: string;
   branchId?: string;
-  userRole?: 'admin' | 'master' | 'user';
+  userRole?: AppUserRole;
 }
 
 export function useModules(input: UseModulesInput) {
@@ -51,4 +51,3 @@ export function useModules(input: UseModulesInput) {
     },
   };
 }
-

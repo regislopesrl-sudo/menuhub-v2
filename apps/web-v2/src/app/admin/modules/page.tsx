@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +17,7 @@ import {
 } from '@/features/modules/modules.api';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
+import { clearDeveloperSession, hasDeveloperSession } from '@/lib/developer-session';
 
 const MODULE_ORDER = [
   'delivery',
@@ -31,11 +33,14 @@ const MODULE_ORDER = [
 ];
 
 export default function AdminModulesPage() {
+  const router = useRouter();
+  const [isDeveloper, setIsDeveloper] = useState(false);
+
   const headers = useMemo(
     () => ({
       companyId: process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'default-company',
       branchId: process.env.NEXT_PUBLIC_MOCK_BRANCH_ID,
-      userRole: 'admin' as const,
+      userRole: 'developer' as const,
     }),
     [],
   );
@@ -63,6 +68,10 @@ export default function AdminModulesPage() {
       setLoading(false);
     }
   }, [headers]);
+
+  useEffect(() => {
+    setIsDeveloper(hasDeveloperSession());
+  }, []);
 
   useEffect(() => {
     void load();
@@ -112,10 +121,13 @@ export default function AdminModulesPage() {
   };
 
   if (access.loading) {
-    return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
+    return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
   }
   if (!access.allowed) {
-    return <ModuleDisabled moduleName="Admin Panel" reason={access.error ?? 'Módulo admin_panel desativado.'} />;
+    return <ModuleDisabled moduleName="Admin Panel" reason={access.error ?? 'Modulo admin_panel desativado.'} />;
+  }
+  if (!isDeveloper) {
+    return <ModuleDisabled moduleName="Admin Modules" reason="Area tecnica restrita" />;
   }
 
   return (
@@ -124,8 +136,20 @@ export default function AdminModulesPage() {
         <div>
           <h1 className={styles.title}>Gestao de Modulos</h1>
           <p className={styles.sub}>Controle de habilitacao por empresa com base em override/plano/default.</p>
+          <p className={styles.sub}>Area tecnica restrita ao desenvolvedor da plataforma.</p>
         </div>
-        <Button onClick={() => void load()}>Atualizar</Button>
+        <div className={styles.actions}>
+          <Button onClick={() => void load()}>Atualizar</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              clearDeveloperSession();
+              router.push('/developer-login');
+            }}
+          >
+            Sair
+          </Button>
+        </div>
       </section>
 
       {loading ? <LoadingState label="Carregando modulos..." /> : null}

@@ -16,8 +16,9 @@ export interface CompanyModuleAccess {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
+export type AppUserRole = 'admin' | 'master' | 'user' | 'developer';
 
-function buildHeaders(input: { companyId: string; branchId?: string; userRole?: 'admin' | 'master' | 'user' }) {
+function buildHeaders(input: { companyId: string; branchId?: string; userRole?: AppUserRole }) {
   return {
     'Content-Type': 'application/json',
     'x-company-id': input.companyId,
@@ -26,7 +27,7 @@ function buildHeaders(input: { companyId: string; branchId?: string; userRole?: 
   };
 }
 
-export async function listModules(headers: { companyId: string; branchId?: string; userRole?: 'admin' | 'master' | 'user' }) {
+export async function listModules(headers: { companyId: string; branchId?: string; userRole?: AppUserRole }) {
   const res = await fetch(`${API_BASE}/v2/modules`, {
     method: 'GET',
     headers: buildHeaders(headers),
@@ -41,7 +42,7 @@ export async function listModules(headers: { companyId: string; branchId?: strin
 export async function listCurrentCompanyModules(headers: {
   companyId: string;
   branchId?: string;
-  userRole?: 'admin' | 'master' | 'user';
+  userRole?: AppUserRole;
 }) {
   const res = await fetch(`${API_BASE}/v2/companies/current/modules`, {
     method: 'GET',
@@ -55,7 +56,7 @@ export async function listCurrentCompanyModules(headers: {
 }
 
 export async function patchCurrentCompanyModule(input: {
-  headers: { companyId: string; branchId?: string; userRole?: 'admin' | 'master' | 'user' };
+  headers: { companyId: string; branchId?: string; userRole?: AppUserRole };
   moduleKey: string;
   enabled: boolean;
 }) {
@@ -80,4 +81,3 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
-

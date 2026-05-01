@@ -1,13 +1,14 @@
-﻿.page {
+.page {
   min-height: 100vh;
   display: grid;
-  align-content: center;
+  align-content: start;
   gap: 24px;
-  padding: 30px 0;
+  padding: 34px 0;
 }
 
 .hero {
-  padding: 26px;
+  padding: 32px;
+  text-align: center;
 }
 
 .tag {
@@ -24,9 +25,9 @@
 }
 
 .subtitle {
-  margin: 0;
+  margin: 0 auto;
   color: #475569;
-  max-width: 740px;
+  max-width: 760px;
 }
 
 .statusRow {
@@ -34,18 +35,19 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .grid {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .linkCard {
-  padding: 20px;
+  padding: 24px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   transition: 160ms ease;
 }
 
@@ -54,9 +56,14 @@
   border-color: #7dd3fc;
 }
 
+.sectionLabel {
+  color: #0f172a;
+  font-weight: 700;
+}
+
 .linkTitle {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
 }
 
 .meta {
@@ -64,6 +71,23 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.ctaButton {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff, #dbeafe);
+  color: #1d4ed8;
+}
+
+.ctaButton:hover {
+  border-color: #60a5fa;
 }
 
 @media (max-width: 860px) {

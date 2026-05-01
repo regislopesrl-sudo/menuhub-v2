@@ -7,8 +7,9 @@ import { DeliveryModule } from './delivery/delivery.module';
 import { PaymentsModule } from './payments/payments.module';
 import { KdsModule } from './kds/kds.module';
 import { PdvModule } from './pdv/pdv.module';
+import { DeveloperModule } from './developer/developer.module';
 
 @Module({
-  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule],
+  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule],
 })
 export class AppModule {}
