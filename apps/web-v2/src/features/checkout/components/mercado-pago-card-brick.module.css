@@ -1,0 +1,42 @@
+.wrapper {
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 22px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
+  display: grid;
+  gap: 14px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.header strong {
+  color: #0f172a;
+}
+
+.header p {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
+.container {
+  min-height: 320px;
+}
+
+.error {
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .header {
+    flex-direction: column;
+  }
+}
