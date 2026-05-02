@@ -1,0 +1,60 @@
+.page {
+  min-height: 100vh;
+  padding: 28px 0;
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  padding: 24px;
+  display: grid;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 40px);
+}
+
+.sub {
+  margin: 0;
+  color: #64748b;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cardLink {
+  text-decoration: none;
+}
+
+.card {
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+  transition: 160ms ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #93c5fd;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #0f172a;
+}
+
+.cardText {
+  margin: 0;
+  color: #475569;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

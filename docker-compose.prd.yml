@@ -1,0 +1,75 @@
+services:
+  postgres-v2:
+    image: postgres:16-alpine
+    container_name: menuhub-postgres-v2-prd
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-menuhub_v2_prd}
+      POSTGRES_USER: ${POSTGRES_USER:-menuhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-menuhub_prd_change_me}
+    volumes:
+      - postgres_v2_prd_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-menuhub} -d ${POSTGRES_DB:-menuhub_v2_prd}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  api-v2:
+    image: node:20-alpine
+    container_name: menuhub-api-v2-prd
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      npm run prisma:generate --workspace @delivery-futuro/api-v2 &&
+      npm run build --workspace @delivery-futuro/shared-types &&
+      npm run build --workspace @delivery-futuro/order-core &&
+      npm run build --workspace @delivery-futuro/api-v2 &&
+      npm run start --workspace @delivery-futuro/api-v2"
+    env_file:
+      - ./apps/api-v2/.env.prd
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-menuhub}:${POSTGRES_PASSWORD:-menuhub_prd_change_me}@postgres-v2:5432/${POSTGRES_DB:-menuhub_v2_prd}
+    volumes:
+      - ./:/app
+      - api_v2_prd_node_modules:/app/node_modules
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  web-v2:
+    image: node:20-alpine
+    container_name: menuhub-web-v2-prd
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      npm run build --workspace @delivery-futuro/web-v2 &&
+      npm run start --workspace @delivery-futuro/web-v2 -- --port 3112"
+    env_file:
+      - ./apps/web-v2/.env.prd
+    volumes:
+      - ./:/app
+      - web_v2_prd_node_modules:/app/node_modules
+    depends_on:
+      - api-v2
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: menuhub-nginx-v2-prd
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/menuhub-v2-prd.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api-v2
+      - web-v2
+
+volumes:
+  postgres_v2_prd_data:
+  api_v2_prd_node_modules:
+  web_v2_prd_node_modules:

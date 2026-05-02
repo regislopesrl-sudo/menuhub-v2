@@ -1,0 +1,160 @@
+.page {
+  min-height: 100vh;
+  padding: 24px 0;
+  display: grid;
+  gap: 14px;
+  background: #f1f5f9;
+}
+
+.fullscreen {
+  padding: 10px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 30px;
+  color: #0f172a;
+}
+
+.sub {
+  margin: 4px 0 0;
+  color: #334155;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.errorBox {
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #9f1239;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.column {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: #0f172a;
+  color: #f8fafc;
+  min-height: 70vh;
+}
+
+.columnHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.columnHeader h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.columnContent {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.orderCard {
+  padding: 14px;
+  background: #fff;
+  color: #0f172a;
+  display: grid;
+  gap: 10px;
+  border: 2px solid transparent;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.time {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.timeBadge {
+  font-size: 20px;
+  color: #7f1d1d;
+}
+
+.meta {
+  color: #334155;
+  font-size: 14px;
+}
+
+.overdue {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.attention {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.urgent {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.25);
+  background: #fff5f5;
+}
+
+.orderNumber {
+  font-size: 22px;
+}
+
+.item {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed #cbd5e1;
+  font-size: 17px;
+}
+
+.item small {
+  color: #64748b;
+}
+
+.actionBtn {
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .column {
+    min-height: auto;
+  }
+}

@@ -1,0 +1,67 @@
+
+services:
+  postgres-v2:
+    image: postgres:16-alpine
+    container_name: menuhub-postgres-v2-hml
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-menuhub_v2_hml}
+      POSTGRES_USER: ${POSTGRES_USER:-menuhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-menuhub_hml_change_me}
+    volumes:
+      - postgres_v2_hml_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-menuhub} -d ${POSTGRES_DB:-menuhub_v2_hml}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  api-v2:
+    image: node:20-alpine
+    container_name: menuhub-api-v2-hml
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      npm run prisma:generate --workspace @delivery-futuro/api-v2 &&
+      npm run build --workspace @delivery-futuro/shared-types &&
+      npm run build --workspace @delivery-futuro/order-core &&
+      npm run build --workspace @delivery-futuro/api-v2 &&
+      npm run start --workspace @delivery-futuro/api-v2"
+    env_file:
+      - ./apps/api-v2/.env.hml
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-menuhub}:${POSTGRES_PASSWORD:-menuhub_hml_change_me}@postgres-v2:5432/${POSTGRES_DB:-menuhub_v2_hml}
+    ports:
+      - "127.0.0.1:3202:3202"
+    volumes:
+      - ./:/app
+      - api_v2_hml_node_modules:/app/node_modules
+    depends_on:
+      postgres-v2:
+        condition: service_healthy
+
+  web-v2:
+    image: node:20-alpine
+    container_name: menuhub-web-v2-hml
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      rm -rf apps/web-v2/.next &&
+      npm run build --workspace @delivery-futuro/web-v2 &&
+      npm run start --workspace @delivery-futuro/web-v2 -- --port 3112"
+    env_file:
+      - ./apps/web-v2/.env.hml
+    volumes:
+      - ./:/app
+      - web_v2_hml_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:3112:3112"
+    depends_on:
+      - api-v2
+
+volumes:
+  postgres_v2_hml_data:
+  api_v2_hml_node_modules:
+  web_v2_hml_node_modules:

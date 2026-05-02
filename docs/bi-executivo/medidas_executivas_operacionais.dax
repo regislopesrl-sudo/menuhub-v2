@@ -1,0 +1,581 @@
+// =========================================================
+// PACOTE DAX EXECUTIVO + OPERACIONAL
+// Modelo alvo: Dim_* e Fato_* (power_query_import.m)
+// Dependencia central: Dim_Calendario[date_day] marcada como Date Table
+// =========================================================
+
+// =========================================================
+// 1) MEDIDAS BASE
+// =========================================================
+
+// Objetivo: volume total de pedidos no contexto atual.
+Orders All =
+COALESCE(DISTINCTCOUNT('Fato_Pedidos'[order_id]); 0)
+
+// Objetivo: pedidos criados (exclui rascunho).
+Orders Created =
+CALCULATE(
+    [Orders All];
+    FILTER('Fato_Pedidos'; 'Fato_Pedidos'[order_status] <> "DRAFT")
+)
+
+// Objetivo: pedidos que avancaram no funil operacional.
+Orders Confirmed =
+CALCULATE(
+    [Orders All];
+    FILTER(
+        'Fato_Pedidos';
+        'Fato_Pedidos'[order_status] = "CONFIRMED" ||
+        'Fato_Pedidos'[order_status] = "IN_PREPARATION" ||
+        'Fato_Pedidos'[order_status] = "READY" ||
+        'Fato_Pedidos'[order_status] = "WAITING_PICKUP" ||
+        'Fato_Pedidos'[order_status] = "WAITING_DISPATCH" ||
+        'Fato_Pedidos'[order_status] = "OUT_FOR_DELIVERY" ||
+        'Fato_Pedidos'[order_status] = "DELIVERED" ||
+        'Fato_Pedidos'[order_status] = "FINALIZED" ||
+        'Fato_Pedidos'[order_status] = "REFUNDED"
+    )
+)
+
+// Objetivo: pedidos finalizados (entregue/finalizado/reembolso, conforme view).
+Orders Finalized =
+CALCULATE(
+    [Orders All];
+    FILTER('Fato_Pedidos'; 'Fato_Pedidos'[order_finalized] = TRUE())
+)
+
+// Objetivo: perdas do funil por cancelamento/reembolso.
+Orders Canceled =
+CALCULATE(
+    [Orders All];
+    FILTER(
+        'Fato_Pedidos';
+        'Fato_Pedidos'[order_status] = "CANCELED" ||
+        'Fato_Pedidos'[order_status] = "REFUNDED"
+    )
+)
+
+// Objetivo: receita bruta por item (sem deducao de desconto).
+Gross Revenue Base =
+COALESCE(SUM('Fato_Itens_Pedido'[gross_revenue]); 0)
+
+// Objetivo: receita liquida por item (ja com desconto alocado).
+Net Revenue Base =
+COALESCE(SUM('Fato_Itens_Pedido'[net_revenue]); 0)
+
+// Objetivo: descontos alocados na granularidade de item.
+Discount Base =
+COALESCE(SUM('Fato_Itens_Pedido'[discount_allocated]); 0)
+
+// Objetivo: total de taxas (entrega + extras) em pedidos finalizados.
+Fees Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Pedidos'[delivery_fee]); 0) + COALESCE(SUM('Fato_Pedidos'[extra_fee]); 0);
+    FILTER('Fato_Pedidos'; 'Fato_Pedidos'[order_finalized] = TRUE())
+)
+
+// Objetivo: volume de itens vendidos.
+Items Qty Base =
+COALESCE(SUM('Fato_Itens_Pedido'[quantity]); 0)
+
+// Objetivo: CMV teorico da venda.
+CMV Theoretical Base =
+COALESCE(SUM('Fato_Itens_Pedido'[theoretical_cost_total]); 0)
+
+// Objetivo: CMV real (consumo de venda + perda) pelo kardex.
+CMV Real Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Kardex'[total_cost_abs]); 0);
+    FILTER('Fato_Kardex'; 'Fato_Kardex'[considera_cmv] = TRUE())
+)
+
+// Objetivo: despesas operacionais validas.
+Operational Expenses Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "DESPESA" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "canceled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "cancelado"
+    )
+)
+
+// Objetivo: outras receitas (fora pedido), quando existir.
+Other Revenue Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "RECEITA" &&
+        ISBLANK('Fato_Financeiro'[order_id]) &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "canceled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "cancelado"
+    )
+)
+
+// Objetivo: contas a receber em aberto.
+Accounts Receivable Open Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "RECEITA" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "paid" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "received" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "settled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "canceled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "cancelado"
+    )
+)
+
+// Objetivo: contas a pagar em aberto.
+Accounts Payable Open Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "DESPESA" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "paid" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "settled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "canceled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "cancelado"
+    )
+)
+
+// Objetivo: recebimentos quitados.
+Receipts Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "RECEITA" &&
+        (
+            LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) = "paid" ||
+            LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) = "received" ||
+            LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) = "settled"
+        )
+    )
+)
+
+// Objetivo: pagamentos quitados.
+Payments Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "DESPESA" &&
+        (
+            LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) = "paid" ||
+            LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) = "settled"
+        )
+    )
+)
+
+// Objetivo: quantidade consumida no estoque.
+Stock Consumption Qty Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Kardex'[quantity]); 0);
+    FILTER(
+        'Fato_Kardex';
+        'Fato_Kardex'[movement_type] = "SALE_CONSUMPTION" ||
+        'Fato_Kardex'[movement_type] = "PRODUCTION_CONSUMPTION" ||
+        'Fato_Kardex'[movement_type] = "EXIT"
+    )
+)
+
+// Objetivo: custo consumido no estoque.
+Stock Consumption Cost Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Kardex'[total_cost_abs]); 0);
+    FILTER(
+        'Fato_Kardex';
+        'Fato_Kardex'[movement_type] = "SALE_CONSUMPTION" ||
+        'Fato_Kardex'[movement_type] = "PRODUCTION_CONSUMPTION" ||
+        'Fato_Kardex'[movement_type] = "EXIT"
+    )
+)
+
+// Objetivo: perdas e ajustes no estoque.
+Losses and Adjustments Base =
+CALCULATE(
+    COALESCE(SUM('Fato_Kardex'[total_cost_abs]); 0);
+    FILTER(
+        'Fato_Kardex';
+        'Fato_Kardex'[movement_type] = "LOSS" ||
+        'Fato_Kardex'[movement_type] = "ADJUSTMENT"
+    )
+)
+
+// Objetivo: horas com pedidos para produtividade por hora.
+Order Hour Buckets =
+    VAR _hours =
+    SUMMARIZE(
+        FILTER('Fato_Pedidos'; 'Fato_Pedidos'[order_status] <> "DRAFT");
+        'Fato_Pedidos'[order_date];
+        "HourBucket"; HOUR('Fato_Pedidos'[order_datetime_ref])
+    )
+RETURN
+COALESCE(COUNTROWS(_hours); 0)
+
+// =========================================================
+// 2) MEDIDAS DE VENDAS
+// =========================================================
+
+Gross Revenue = [Gross Revenue Base]
+Net Revenue = [Net Revenue Base]
+Total Discounts = [Discount Base]
+Total Fees = [Fees Base]
+Total Orders = [Orders Finalized]
+
+Average Ticket =
+DIVIDE([Net Revenue]; [Total Orders]; 0)
+
+Average Item Value =
+DIVIDE([Net Revenue]; [Items Qty Base]; 0)
+
+Orders by Branch = [Total Orders]
+Orders by Status = [Orders All]
+
+Order Conversion % =
+DIVIDE([Orders Finalized]; [Orders Created]; 0)
+
+// =========================================================
+// 3) MEDIDAS DE CMV E MARGEM
+// =========================================================
+
+CMV Theoretical = [CMV Theoretical Base]
+CMV Real = [CMV Real Base]
+
+CMV Real % =
+DIVIDE([CMV Real]; [Net Revenue]; 0)
+
+Gross Margin =
+[Net Revenue] - [CMV Real]
+
+Gross Margin % =
+DIVIDE([Gross Margin]; [Net Revenue]; 0)
+
+Margin by Product =
+COALESCE(SUM('Fato_Itens_Pedido'[gross_profit]); 0)
+
+Margin by Branch =
+[Gross Margin]
+
+CMV Divergence (Real - Theoretical) =
+[CMV Real] - [CMV Theoretical]
+
+CMV Divergence % =
+DIVIDE([CMV Divergence (Real - Theoretical)]; [CMV Theoretical]; 0)
+
+// =========================================================
+// 4) MEDIDAS DE DRE
+// =========================================================
+
+Operational Expenses = [Operational Expenses Base]
+Other Revenue = [Other Revenue Base]
+
+Gross Profit =
+[Net Revenue] - [CMV Real]
+
+Operating Result =
+[Gross Profit] - [Operational Expenses] + [Other Revenue]
+
+Operating Result % =
+DIVIDE([Operating Result]; [Net Revenue]; 0)
+
+Managerial Net Profit =
+[Operating Result]
+
+// =========================================================
+// 5) MEDIDAS DE ESTOQUE
+// =========================================================
+
+Stock Consumption = [Stock Consumption Cost Base]
+Quantity Consumed = [Stock Consumption Qty Base]
+
+Average Consumed Cost =
+DIVIDE([Stock Consumption]; [Quantity Consumed]; 0)
+
+Stock Opening Qty =
+COALESCE(
+    SUMX(
+        VALUES('Fato_Kardex'[stock_item_id]);
+        VAR _firstDT = CALCULATE(MIN('Fato_Kardex'[movement_datetime]))
+        RETURN
+            CALCULATE(
+                MAX('Fato_Kardex'[previous_stock]);
+                'Fato_Kardex'[movement_datetime] = _firstDT
+            )
+    );
+    0
+)
+
+Stock Closing Qty =
+COALESCE(
+    SUMX(
+        VALUES('Fato_Kardex'[stock_item_id]);
+        VAR _lastDT = CALCULATE(MAX('Fato_Kardex'[movement_datetime]))
+        RETURN
+            CALCULATE(
+                MAX('Fato_Kardex'[new_stock]);
+                'Fato_Kardex'[movement_datetime] = _lastDT
+            )
+    );
+    0
+)
+
+Stock Variation =
+[Stock Closing Qty] - [Stock Opening Qty]
+
+Stock Opening Value =
+COALESCE(
+    SUMX(
+        VALUES('Fato_Kardex'[stock_item_id]);
+        VAR _firstDT = CALCULATE(MIN('Fato_Kardex'[movement_datetime]))
+        VAR _qty =
+            CALCULATE(
+                MAX('Fato_Kardex'[previous_stock]);
+                'Fato_Kardex'[movement_datetime] = _firstDT
+            )
+        VAR _cost =
+            CALCULATE(
+                MAX('Fato_Kardex'[unit_cost]);
+                'Fato_Kardex'[movement_datetime] = _firstDT
+            )
+        RETURN COALESCE(_qty; 0) * COALESCE(_cost; 0)
+    );
+    0
+)
+
+Stock Closing Value =
+COALESCE(
+    SUMX(
+        VALUES('Fato_Kardex'[stock_item_id]);
+        VAR _lastDT = CALCULATE(MAX('Fato_Kardex'[movement_datetime]))
+        VAR _qty =
+            CALCULATE(
+                MAX('Fato_Kardex'[new_stock]);
+                'Fato_Kardex'[movement_datetime] = _lastDT
+            )
+        VAR _cost =
+            CALCULATE(
+                MAX('Fato_Kardex'[unit_cost]);
+                'Fato_Kardex'[movement_datetime] = _lastDT
+            )
+        RETURN COALESCE(_qty; 0) * COALESCE(_cost; 0)
+    );
+    0
+)
+
+Average Stock Value =
+DIVIDE([Stock Opening Value] + [Stock Closing Value]; 2; 0)
+
+Stock Turnover =
+DIVIDE([Stock Consumption]; [Average Stock Value]; 0)
+
+Stock Closing Qty by Item =
+    VAR _lastDT = CALCULATE(MAX('Fato_Kardex'[movement_datetime]))
+RETURN
+COALESCE(
+    CALCULATE(
+        MAX('Fato_Kardex'[new_stock]);
+        'Fato_Kardex'[movement_datetime] = _lastDT
+    );
+    0
+)
+
+Critical Items =
+COALESCE(
+    COUNTROWS(
+        FILTER(
+            VALUES('Fato_Kardex'[stock_item_id]);
+            [Stock Closing Qty by Item] <= 0
+        )
+    );
+    0
+)
+
+Losses and Adjustments =
+[Losses and Adjustments Base]
+
+// =========================================================
+// 6) MEDIDAS FINANCEIRAS
+// =========================================================
+
+Accounts Receivable = [Accounts Receivable Open Base]
+Accounts Payable = [Accounts Payable Open Base]
+
+Financial Balance =
+[Accounts Receivable] - [Accounts Payable]
+
+Default Amount =
+CALCULATE(
+    COALESCE(SUM('Fato_Financeiro'[amount]); 0);
+    FILTER(
+        'Fato_Financeiro';
+        'Fato_Financeiro'[natureza] = "RECEITA" &&
+        'Fato_Financeiro'[due_date] < TODAY() &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "paid" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "received" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "settled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "canceled" &&
+        LOWER(COALESCE('Fato_Financeiro'[financial_status]; "")) <> "cancelado"
+    )
+)
+
+Default % =
+DIVIDE([Default Amount]; [Accounts Receivable]; 0)
+
+Receipts Period = [Receipts Base]
+Payments Period = [Payments Base]
+
+Receipts Period (Due Date) =
+CALCULATE(
+    [Receipts Period];
+    USERELATIONSHIP('Dim_Calendario'[date_day]; 'Fato_Financeiro'[due_date])
+)
+
+Payments Period (Due Date) =
+CALCULATE(
+    [Payments Period];
+    USERELATIONSHIP('Dim_Calendario'[date_day]; 'Fato_Financeiro'[due_date])
+)
+
+// =========================================================
+// 7) MEDIDAS TEMPORAIS
+// =========================================================
+
+Net Revenue MTD =
+CALCULATE([Net Revenue]; DATESMTD('Dim_Calendario'[date_day]))
+
+Net Revenue QTD =
+CALCULATE([Net Revenue]; DATESQTD('Dim_Calendario'[date_day]))
+
+Net Revenue YTD =
+CALCULATE([Net Revenue]; DATESYTD('Dim_Calendario'[date_day]))
+
+Operating Result YTD =
+CALCULATE([Operating Result]; DATESYTD('Dim_Calendario'[date_day]))
+
+Net Revenue Previous Month =
+CALCULATE([Net Revenue]; DATEADD('Dim_Calendario'[date_day]; -1; MONTH))
+
+Net Revenue MoM =
+[Net Revenue] - [Net Revenue Previous Month]
+
+Net Revenue MoM % =
+DIVIDE([Net Revenue MoM]; [Net Revenue Previous Month]; 0)
+
+Net Revenue Previous Year =
+CALCULATE([Net Revenue]; SAMEPERIODLASTYEAR('Dim_Calendario'[date_day]))
+
+Net Revenue YoY =
+[Net Revenue] - [Net Revenue Previous Year]
+
+Net Revenue YoY % =
+DIVIDE([Net Revenue YoY]; [Net Revenue Previous Year]; 0)
+
+Accumulated Net Revenue =
+    VAR _maxDate = MAX('Dim_Calendario'[date_day])
+RETURN
+CALCULATE(
+    [Net Revenue];
+    FILTER(
+        ALLSELECTED('Dim_Calendario'[date_day]);
+        'Dim_Calendario'[date_day] <= _maxDate
+    )
+)
+
+// =========================================================
+// 8) MEDIDAS OPERACIONAIS
+// =========================================================
+
+Orders per Hour =
+DIVIDE([Orders Created]; [Order Hour Buckets]; 0)
+
+Orders by Channel = [Orders Created]
+Orders by Type = [Orders Created]
+
+Average Prep Time (min) =
+    VAR _base =
+    FILTER(
+        'Fato_Pedidos';
+        'Fato_Pedidos'[order_finalized] = TRUE() &&
+        NOT(ISBLANK('Fato_Pedidos'[ready_at])) &&
+        (
+            NOT(ISBLANK('Fato_Pedidos'[preparation_started_at])) ||
+            NOT(ISBLANK('Fato_Pedidos'[confirmed_at]))
+        )
+    )
+RETURN
+DIVIDE(
+    SUMX(
+        _base;
+        DATEDIFF(
+            IF(
+                ISBLANK('Fato_Pedidos'[preparation_started_at]);
+                'Fato_Pedidos'[confirmed_at];
+                'Fato_Pedidos'[preparation_started_at]
+            );
+            'Fato_Pedidos'[ready_at];
+            MINUTE
+        )
+    );
+    COUNTROWS(_base);
+    0
+)
+
+Average Delivery Time (min) =
+    VAR _base =
+    FILTER(
+        'Fato_Pedidos';
+        NOT(ISBLANK('Fato_Pedidos'[dispatched_at])) &&
+        NOT(ISBLANK('Fato_Pedidos'[delivered_at]))
+    )
+RETURN
+DIVIDE(
+    SUMX(
+        _base;
+        DATEDIFF('Fato_Pedidos'[dispatched_at]; 'Fato_Pedidos'[delivered_at]; MINUTE)
+    );
+    COUNTROWS(_base);
+    0
+)
+
+Average Time to Delivery (min) =
+    VAR _base =
+    FILTER(
+        'Fato_Pedidos';
+        NOT(ISBLANK('Fato_Pedidos'[confirmed_at])) &&
+        NOT(ISBLANK('Fato_Pedidos'[delivered_at]))
+    )
+RETURN
+DIVIDE(
+    SUMX(
+        _base;
+        DATEDIFF('Fato_Pedidos'[confirmed_at]; 'Fato_Pedidos'[delivered_at]; MINUTE)
+    );
+    COUNTROWS(_base);
+    0
+)
+
+Cancellation Rate % =
+DIVIDE([Orders Canceled]; [Orders Created]; 0)
+
+Finalization Rate % =
+DIVIDE([Orders Finalized]; [Orders Confirmed]; 0)
+
+Operational Productivity =
+DIVIDE([Orders Finalized]; [Order Hour Buckets]; 0)
+
+Performance by Branch =
+[Operating Result %]
+
+// =========================================================
+// 9) OBSERVACOES DE USO (RESUMO)
+// - Evite usar colunas numericas diretas nos visuais; use as medidas.
+// - Use Dim_Filial, Dim_Produto, Dim_Cliente e Dim_Calendario para segmentacao.
+// - Medidas temporais dependem de Dim_Calendario marcada como Date Table.
+// - Relacao Dim_Calendario -> Fato_Financeiro[due_date] deve ficar inativa.
+// =========================================================

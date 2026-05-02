@@ -1,0 +1,35 @@
+{
+  "name": "sistema-delivery-futuro",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run start:dev --workspace @delivery-futuro/backend",
+    "dev:frontend": "npm run dev --workspace @delivery-futuro/frontend",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "prisma:generate": "npm run prisma:generate --workspace @delivery-futuro/api-v2",
+    "prisma:migrate:deploy": "npm run prisma:migrate:deploy --workspace @delivery-futuro/api-v2",
+    "db:push": "npm run prisma:db:push --workspace @delivery-futuro/api-v2",
+    "seed": "npm run seed --workspace @delivery-futuro/backend",
+    "bi:sync": "npm run bi:sync --workspace @delivery-futuro/backend",
+    "bi:check": "npm run bi:check --workspace @delivery-futuro/backend",
+    "bi:seed-demo": "npm run bi:seed-demo --workspace @delivery-futuro/backend",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  },
+  "dependencies": {
+    "@turf/boolean-point-in-polygon": "^7.3.4",
+    "@turf/helpers": "^7.3.4",
+    "ioredis": "^5.10.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^5.0.0"
+  }
+}
