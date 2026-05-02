@@ -442,6 +442,7 @@ model User {
   orderStatusLogs               OrderStatusLog[]
   orderTimelineEvents           OrderTimelineEvent[]
   branchAccesses                UserBranchAccess[]
+  companyUserRoles              CompanyUserRole[]
   realtimeSocketSessions        RealtimeSocketSession[]
   realtimeOutboxEvents          RealtimeOutboxEvent[]
   authSecurityEvents            AuthSecurityEvent[]
@@ -591,6 +592,7 @@ model Company {
   loyaltyAccounts   LoyaltyAccount[]
   loyaltyTransactions LoyaltyTransaction[]
   orders            Order[]
+  customRoles       CompanyRole[]
   fiscalConfigurations FiscalConfiguration[] @relation("CompanyFiscalConfigurations")
   fiscalDocuments   FiscalDocument[] @relation("CompanyFiscalDocuments")
   settings          CompanySetting[]
@@ -668,6 +670,69 @@ model CompanySetting {
 
   @@unique([companyId, branchId, key])
   @@map("company_settings")
+}
+
+model CompanyRole {
+  id          String   @id @default(uuid()) @map("id")
+  companyId   String   @map("company_id")
+  key         String   @map("key")
+  name        String   @map("name")
+  description String?  @map("description")
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  permissions     CompanyRolePermission[]
+  userAssignments CompanyUserRole[]
+
+  @@unique([companyId, key])
+  @@unique([companyId, id])
+  @@index([companyId])
+  @@map("company_roles")
+}
+
+model CompanyPermission {
+  id          String   @id @default(uuid()) @map("id")
+  key         String   @unique @map("key")
+  description String?  @map("description")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  roles CompanyRolePermission[]
+
+  @@map("company_permissions")
+}
+
+model CompanyRolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       CompanyRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission CompanyPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("company_role_permissions")
+}
+
+model CompanyUserRole {
+  companyId String   @map("company_id")
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role CompanyRole @relation(fields: [companyId, roleId], references: [companyId, id], onDelete: Cascade)
+
+  @@id([companyId, userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([companyId])
+  @@map("company_user_roles")
 }
 
 model FiscalConfiguration {
