@@ -87,6 +87,62 @@ describe('PaymentsService webhook', () => {
     await expect(service.handleWebhook('mock', null)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('cartao mercadopago exige cardToken', async () => {
+    const { service } = build({
+      provider: {
+        providerName: 'mercadopago',
+        createPixPayment: jest.fn(),
+        createOnlineCardPayment: jest.fn(),
+        getPaymentStatus: jest.fn(),
+        handleWebhook: jest.fn(),
+      },
+    });
+
+    await expect(
+      Promise.resolve().then(() =>
+        service.createOnlineCardPayment(
+          { id: 'ord_1', orderNumber: 'V2-1', total: 49.9 },
+          { companyId: 'c1', userRole: 'user', requestId: 'r1' },
+          undefined,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cartao mock funciona sem token real em HML/local', async () => {
+    const provider = {
+      providerName: 'mock',
+      createPixPayment: jest.fn(),
+      createOnlineCardPayment: jest.fn().mockResolvedValue({
+        id: 'card_1',
+        provider: 'mock',
+        providerPaymentId: 'mock_card_1',
+        method: 'CREDIT_CARD',
+        status: 'APPROVED',
+      }),
+      getPaymentStatus: jest.fn(),
+      handleWebhook: jest.fn(),
+    };
+    const { service } = build({ provider });
+
+    const result = await service.createOnlineCardPayment(
+      { id: 'ord_1', orderNumber: 'V2-1', total: 49.9 },
+      { companyId: 'c1', userRole: 'user', requestId: 'r1' },
+      undefined,
+    );
+
+    expect(provider.createOnlineCardPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'ord_1' }),
+      expect.objectContaining({ companyId: 'c1' }),
+      expect.objectContaining({
+        cardToken: expect.stringContaining('mock_card_token_'),
+        paymentMethodId: 'mock_visa',
+        installments: 1,
+      }),
+    );
+    expect(result.status).toBe('APPROVED');
+  });
+
   it('webhook duplicado e ignorado', async () => {
     const { service, provider } = build({
       provider: {
@@ -118,6 +174,42 @@ describe('PaymentsService webhook', () => {
     expect(second.processed).toBe(false);
     expect(second.reason).toBe('DUPLICATE_EVENT');
     expect(provider.handleWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it('repassa assinatura e request id para o provider no webhook', async () => {
+    const { service, provider } = build({
+      provider: {
+        providerName: 'mock',
+        createPixPayment: jest.fn(),
+        getPaymentStatus: jest.fn(),
+        handleWebhook: jest.fn().mockResolvedValue({
+          provider: 'mock',
+          providerPaymentId: 'pay_signed',
+          eventId: 'evt_signed',
+          status: 'PENDING',
+          processed: true,
+        }),
+      },
+    });
+
+    await service.handleWebhook(
+      'mock',
+      { id: 'evt_signed', eventId: 'evt_signed', data: { id: 'pay_signed' } },
+      {
+        signature: 'ts=1,v1=abc',
+        requestId: 'req_webhook',
+        dataId: 'pay_signed',
+      },
+    );
+
+    expect(provider.handleWebhook).toHaveBeenCalledWith(
+      { id: 'evt_signed', eventId: 'evt_signed', data: { id: 'pay_signed' } },
+      expect.objectContaining({
+        signature: 'ts=1,v1=abc',
+        requestId: 'req_webhook',
+        dataId: 'pay_signed',
+      }),
+    );
   });
 
   it('webhook APPROVED atualiza pedido e emite evento', async () => {

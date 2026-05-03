@@ -1,4 +1,5 @@
-﻿import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import type { DeliveryCheckoutInput, PdvCheckoutInput } from '@delivery-futuro/shared-types';
 import { orderCore, type CheckoutResult, type MenuPort, type PaymentPort } from '@delivery-futuro/order-core';
 import { MENU_PORT_TOKEN } from '../ports/menu.tokens';
@@ -131,6 +132,7 @@ export class CheckoutService {
       ctx,
     );
 
+    const trackingToken = this.generateTrackingToken();
     const checkoutResult = await orderCore.checkout(
       {
         ...input,
@@ -143,7 +145,9 @@ export class CheckoutService {
       },
     );
 
-    const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, preview.deliveryQuote);
+    const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, preview.deliveryQuote, {
+      publicTrackingToken: trackingToken,
+    });
     try {
       await this.ordersEvents.emitOrderCreated(
         {
@@ -173,6 +177,8 @@ export class CheckoutService {
         order: {
           ...checkoutResult.order,
           id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          trackingToken,
         },
         payment: {
           ...checkoutResult.payment,
@@ -188,15 +194,49 @@ export class CheckoutService {
       };
     }
 
+    if (input.paymentMethod.toUpperCase() === 'CREDIT_CARD') {
+      const card = await this.paymentsService.createOnlineCardPayment(
+        {
+          id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          total: checkoutResult.order.totals.total,
+        },
+        ctx,
+        input.cardPayment,
+      );
+      await this.orderRepository.attachPaymentIntent(persisted.id, card, ctx);
+
+      return {
+        ...checkoutResult,
+        order: {
+          ...checkoutResult.order,
+          id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          trackingToken,
+        },
+        payment: {
+          ...checkoutResult.payment,
+          id: card.id,
+          provider: card.provider,
+          providerPaymentId: card.providerPaymentId,
+          method: 'CREDIT_CARD',
+          status: card.status,
+          transactionId: card.providerPaymentId,
+          reason: card.message,
+        },
+      };
+    }
+
     return {
       ...checkoutResult,
       order: {
         ...checkoutResult.order,
         id: persisted.id,
+        orderNumber: persisted.orderNumber,
+        trackingToken,
       },
     };
   }
-
   async runPdvCheckout(input: PdvCheckoutInput, ctx: RequestContext): Promise<CheckoutResult> {
     this.validatePdvInput(input);
 
@@ -256,6 +296,7 @@ export class CheckoutService {
       order: {
         ...checkoutResult.order,
         id: persisted.id,
+        orderNumber: persisted.orderNumber,
       },
     };
 
@@ -286,6 +327,10 @@ export class CheckoutService {
     }
 
     return response;
+  }
+
+  private generateTrackingToken(): string {
+    return randomBytes(24).toString('hex');
   }
 
   private validateQuoteInput(input: CheckoutQuoteInput): void {
@@ -359,3 +404,5 @@ export class CheckoutService {
     return 'CASH';
   }
 }
+
+

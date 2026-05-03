@@ -1,42 +1,68 @@
-.page {
-  min-height: calc(100vh - 64px);
+﻿.page {
+  min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 24px;
+  align-content: start;
+  gap: 18px;
+  padding: 28px 0 44px;
 }
 
 .card {
-  width: min(480px, 100%);
-  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  width: min(520px, 100%);
+  justify-self: center;
+  padding: 26px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  border-radius: 28px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  background: linear-gradient(90deg, var(--primary), var(--accent), var(--warning));
 }
 
 .title {
   margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
 }
 
 .sub {
   margin: 0;
-  color: #64748b;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .form {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .input {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 10px 12px;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  padding: 12px 14px;
 }
 
 .error {
   color: #9f1239;
   background: #fff1f2;
   border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 16px;
+  padding: 10px;
+  font-weight: 800;
+}
+
+.backLink {
+  color: var(--primary-strong);
+  font-weight: 700;
+  text-decoration: none;
 }

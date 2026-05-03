@@ -1,5 +1,15 @@
-﻿export type PaymentMethod = 'PIX' | 'CREDIT_CARD' | 'CASH';
+export type PaymentMethod = 'PIX' | 'CREDIT_CARD' | 'CASH';
 export type PaymentStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'REFUNDED';
+
+export interface OnlineCardPaymentInput {
+  cardToken: string;
+  paymentMethodId: string;
+  installments: number;
+  issuerId?: string;
+  payerEmail: string;
+  identificationType?: string;
+  identificationNumber?: string;
+}
 
 export interface PaymentRequest {
   orderId: string;
@@ -18,6 +28,8 @@ export interface PaymentResult {
   qrCode?: string;
   qrCodeText?: string;
   expiresAt?: string;
+  cardBrand?: string;
+  maskedCard?: string;
 }
 
 export interface WebhookResult {

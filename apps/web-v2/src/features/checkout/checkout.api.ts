@@ -1,14 +1,25 @@
-import type { CartItem } from '@/features/cart/use-cart';
+﻿import type { CartItem } from '@/features/cart/use-cart';
 
 export interface CheckoutHeaders {
   companyId: string;
   branchId?: string;
 }
 
+export interface OnlineCardPaymentInput {
+  cardToken: string;
+  paymentMethodId: string;
+  installments: number;
+  issuerId?: string;
+  payerEmail: string;
+  identificationType?: string;
+  identificationNumber?: string;
+}
+
 export interface DeliveryCheckoutResponse {
   order: {
     id: string;
     orderNumber?: string;
+    trackingToken?: string;
     status: string;
     totals: {
       subtotal: number;
@@ -51,6 +62,7 @@ export async function submitDeliveryCheckout(input: {
   items: CartItem[];
   couponCode?: string;
   paymentMethod: string;
+  cardPayment?: OnlineCardPaymentInput;
 }): Promise<DeliveryCheckoutResponse> {
   const res = await fetch(`${API_BASE}/v2/channels/delivery/checkout`, {
     method: 'POST',
@@ -58,7 +70,6 @@ export async function submitDeliveryCheckout(input: {
       'Content-Type': 'application/json',
       'x-company-id': input.headers.companyId,
       ...(input.headers.branchId ? { 'x-branch-id': input.headers.branchId } : {}),
-      'x-user-role': 'user',
       'x-channel': 'delivery',
     },
     body: JSON.stringify({
@@ -77,6 +88,7 @@ export async function submitDeliveryCheckout(input: {
       })),
       couponCode: input.couponCode?.trim() ? input.couponCode.trim() : undefined,
       paymentMethod: input.paymentMethod,
+      cardPayment: input.cardPayment,
     }),
   });
 
@@ -98,3 +110,5 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
+
+

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import {
   listCurrentCompanyModules,
   listModules,
@@ -38,9 +39,7 @@ export default function AdminModulesPage() {
 
   const headers = useMemo(
     () => ({
-      companyId: process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'default-company',
       branchId: process.env.NEXT_PUBLIC_MOCK_BRANCH_ID,
-      userRole: 'developer' as const,
     }),
     [],
   );
@@ -132,25 +131,25 @@ export default function AdminModulesPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.topbar}>
-        <div>
-          <h1 className={styles.title}>Gestao de Modulos</h1>
-          <p className={styles.sub}>Controle de habilitacao por empresa com base em override/plano/default.</p>
-          <p className={styles.sub}>Area tecnica restrita ao desenvolvedor da plataforma.</p>
-        </div>
-        <div className={styles.actions}>
-          <Button onClick={() => void load()}>Atualizar</Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              clearDeveloperSession();
-              router.push('/developer-login');
-            }}
-          >
-            Sair
-          </Button>
-        </div>
-      </section>
+      <PageHeader
+        title="Gestao de Modulos"
+        subtitle="Controle tecnico de habilitacao por empresa com base em override, plano e default."
+        right={
+          <div className={styles.actions}>
+            <Badge tone="warning">Area Tecnica</Badge>
+            <Button onClick={() => void load()}>Atualizar</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                clearDeveloperSession();
+                router.push('/developer-login');
+              }}
+            >
+              Sair
+            </Button>
+          </div>
+        }
+      />
 
       {loading ? <LoadingState label="Carregando modulos..." /> : null}
       {error ? <div className={styles.error}>{error}</div> : null}

@@ -28,6 +28,7 @@ export interface DeliveryCheckoutRequestBody {
   }>;
   couponCode?: string;
   paymentMethod: string;
+  cardPayment?: DeliveryCheckoutInput['cardPayment'];
 }
 
 export function mapDeliveryRequestToCheckoutInput(
@@ -44,5 +45,6 @@ export function mapDeliveryRequestToCheckoutInput(
     items: body.items,
     couponCode: body.couponCode,
     paymentMethod: body.paymentMethod,
+    cardPayment: body.cardPayment,
   };
 }

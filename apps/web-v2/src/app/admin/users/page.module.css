@@ -1,0 +1,370 @@
+.page {
+  min-height: 100vh;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.1), transparent 24%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.heroGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.kpiCard {
+  padding: 18px;
+  border-radius: 22px;
+}
+
+.kpiCard span {
+  display: block;
+  color: #64748b;
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
+.kpiCard strong {
+  font-size: 2rem;
+  color: #0f172a;
+}
+
+.noticeCard {
+  margin-top: 20px;
+  padding: 20px 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.noticeCard p {
+  margin: 8px 0 0;
+  color: #475569;
+}
+
+.noticeLink {
+  color: #2563eb;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.05fr 1.25fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.panel {
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.userList {
+  display: grid;
+  gap: 12px;
+}
+
+.userRow {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.userRow:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.userRowActive {
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 16px 40px rgba(37, 99, 235, 0.12);
+}
+
+.userTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.userRow p,
+.userRow small,
+.detailHeader p,
+.permissionRow span,
+.catalogCard p,
+.catalogCard small,
+.choiceCard p,
+.permissionChip span {
+  margin: 6px 0 0;
+  color: #64748b;
+}
+
+.detailHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.detailHeader h2 {
+  margin: 0;
+}
+
+.detailActions,
+.footerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.metaGrid div,
+.permissionRow,
+.branchRow,
+.catalogCard,
+.choiceCard,
+.permissionChip {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.metaGrid span {
+  display: block;
+  font-size: 0.84rem;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.metaGrid strong {
+  color: #0f172a;
+}
+
+.sectionBlock {
+  margin-top: 22px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.badgeWrap,
+.permissionCatalog {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.permissionList,
+.branchList,
+.roleCatalog {
+  display: grid;
+  gap: 12px;
+}
+
+.branchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.branchRow span {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.catalogCard small {
+  display: block;
+}
+
+.placeholderText {
+  color: #64748b;
+}
+
+.success,
+.error {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-weight: 600;
+}
+
+.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #166534;
+}
+
+.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 28px;
+  padding: 24px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.modalHeader h2 {
+  margin: 0;
+}
+
+.modalHeader p {
+  margin: 8px 0 0;
+  color: #64748b;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.switchInline {
+  margin-top: 18px;
+}
+
+.switchInline label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.pickSection {
+  margin-top: 20px;
+}
+
+.choiceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.choiceCard {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.choiceCard input {
+  margin-top: 4px;
+}
+
+.permissionChip strong,
+.permissionRow strong {
+  display: block;
+  color: #0f172a;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+@media (max-width: 1180px) {
+  .heroGrid,
+  .metaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 18px;
+  }
+
+  .heroGrid,
+  .toolbar,
+  .formGrid,
+  .choiceGrid,
+  .metaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .noticeCard,
+  .detailHeader,
+  .modalHeader,
+  .branchRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

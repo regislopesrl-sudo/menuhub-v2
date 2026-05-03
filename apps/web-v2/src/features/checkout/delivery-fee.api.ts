@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
+﻿const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 
 export async function getDeliveryFee(input: {
   companyId: string;
@@ -12,7 +12,6 @@ export async function getDeliveryFee(input: {
       'Content-Type': 'application/json',
       'x-company-id': input.companyId,
       ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
-      'x-user-role': 'user',
       'x-channel': 'delivery',
     },
     cache: 'no-store',
@@ -25,4 +24,5 @@ export async function getDeliveryFee(input: {
   const payload = (await res.json()) as { deliveryFee: number };
   return Number(payload.deliveryFee);
 }
+
 

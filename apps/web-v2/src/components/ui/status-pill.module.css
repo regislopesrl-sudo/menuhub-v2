@@ -1,0 +1,37 @@
+﻿.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.pill::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.pulse::before {
+  animation: pulse 1.3s ease-in-out infinite;
+}
+
+.neutral { color: #475569; background: #f8fafc; border-color: #dbe4ef; }
+.success { color: #166534; background: #dcfce7; border-color: #86efac; }
+.warning { color: #92400e; background: #fef3c7; border-color: #fcd34d; }
+.danger { color: #991b1b; background: #fee2e2; border-color: #fca5a5; }
+.info { color: #1d4ed8; background: #dbeafe; border-color: #93c5fd; }
+.violet { color: #6d28d9; background: #ede9fe; border-color: #c4b5fd; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.45); }
+}

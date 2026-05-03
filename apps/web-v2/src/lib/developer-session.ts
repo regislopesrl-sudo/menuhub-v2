@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-const SESSION_KEY = 'developer_session_v2';
+import { clearAuthSession, getAuthSession, hasRole, saveAuthSession } from './auth-session';
 
 export type DeveloperSession = {
   role: 'developer';
@@ -8,33 +8,26 @@ export type DeveloperSession = {
 };
 
 export function getDeveloperSession(): DeveloperSession | null {
-  if (typeof window === 'undefined') return null;
-  const raw = window.sessionStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as DeveloperSession;
-    if (parsed.role !== 'developer') return null;
-    if (!parsed.expiresAt || Number.isNaN(Date.parse(parsed.expiresAt))) return null;
-    if (Date.parse(parsed.expiresAt) <= Date.now()) {
-      clearDeveloperSession();
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
+  const session = getAuthSession();
+  if (!session || session.role !== 'developer') return null;
+  return { role: 'developer', expiresAt: session.expiresAt };
 }
 
 export function saveDeveloperSession(session: DeveloperSession) {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  const expiresInSec = Math.max(1, Math.floor((Date.parse(session.expiresAt) - Date.now()) / 1000));
+  const current = getAuthSession();
+  saveAuthSession({
+    accessToken: current?.accessToken ?? '',
+    refreshToken: current?.refreshToken ?? '',
+    expiresInSec,
+    role: 'developer',
+  });
 }
 
 export function clearDeveloperSession() {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.removeItem(SESSION_KEY);
+  clearAuthSession();
 }
 
 export function hasDeveloperSession(): boolean {
-  return getDeveloperSession() !== null;
+  return hasRole('developer');
 }

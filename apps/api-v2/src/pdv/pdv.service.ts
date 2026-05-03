@@ -21,21 +21,35 @@ export interface PdvSessionSummary {
   status: 'OPEN' | 'CLOSED';
   openedAt: string;
   closedAt?: string;
+  openingBalance: number;
   totalSales: number;
   totalOrders: number;
+  ordersCount: number;
   avgTicket: number;
+  averageTicket: number;
   totalsByMethod: {
     cash: number;
     pix: number;
     card: number;
   };
+  totalByPaymentMethod: {
+    CASH: number;
+    PIX: number;
+    CARD: number;
+  };
+  cashSales: number;
   movementTotals: {
     supply: number;
     withdrawal: number;
     sale: number;
     adjustment: number;
   };
+  supplies: number;
+  withdrawals: number;
+  adjustments: number;
   expectedCashAmount: number;
+  declaredCashAmount?: number;
+  cashDifference?: number;
   movementsCount: number;
 }
 
@@ -189,21 +203,41 @@ export class PdvService {
       status: session.status === 'OPEN' ? 'OPEN' : 'CLOSED',
       openedAt: session.openedAt.toISOString(),
       closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
+      openingBalance: Number(session.openingBalance),
       totalSales: Number(totalSales.toFixed(2)),
       totalOrders,
+      ordersCount: totalOrders,
       avgTicket,
+      averageTicket: avgTicket,
       totalsByMethod: {
         cash: Number(totalsByMethod.cash.toFixed(2)),
         pix: Number(totalsByMethod.pix.toFixed(2)),
         card: Number(totalsByMethod.card.toFixed(2)),
       },
+      totalByPaymentMethod: {
+        CASH: Number(totalsByMethod.cash.toFixed(2)),
+        PIX: Number(totalsByMethod.pix.toFixed(2)),
+        CARD: Number(totalsByMethod.card.toFixed(2)),
+      },
+      cashSales: Number(totalsByMethod.cash.toFixed(2)),
       movementTotals: {
         supply: Number(movementTotals.supply.toFixed(2)),
         withdrawal: Number(movementTotals.withdrawal.toFixed(2)),
         sale: Number(movementTotals.sale.toFixed(2)),
         adjustment: Number(movementTotals.adjustment.toFixed(2)),
       },
+      supplies: Number(movementTotals.supply.toFixed(2)),
+      withdrawals: Number(movementTotals.withdrawal.toFixed(2)),
+      adjustments: Number(movementTotals.adjustment.toFixed(2)),
       expectedCashAmount,
+      declaredCashAmount:
+        session.declaredClosingBalance !== null && session.declaredClosingBalance !== undefined
+          ? Number(session.declaredClosingBalance)
+          : undefined,
+      cashDifference:
+        session.differenceAmount !== null && session.differenceAmount !== undefined
+          ? Number(session.differenceAmount)
+          : undefined,
       movementsCount: movements.length,
     };
   }
@@ -285,6 +319,22 @@ export class PdvService {
     });
   }
 
+  async getCurrentSessionSummary(ctx: RequestContext): Promise<PdvSessionSummary | null> {
+    const open = await this.getOpenSession(ctx);
+    if (!open) {
+      return null;
+    }
+    return this.getSessionSummary(open.id, ctx);
+  }
+
+  async listCurrentMovements(ctx: RequestContext): Promise<PdvSessionMovement[]> {
+    const open = await this.getOpenSession(ctx);
+    if (!open) {
+      return [];
+    }
+    return this.listMovements(open.id, ctx);
+  }
+
   async getOpenSessionOrThrow(ctx: RequestContext): Promise<{ id: string; branchId: string }> {
     const open = await this.getOpenSession(ctx);
     if (!open) {
@@ -307,6 +357,8 @@ export class PdvService {
         openedAt: true,
         closedAt: true,
         openingBalance: true,
+        declaredClosingBalance: true,
+        differenceAmount: true,
       },
     });
     if (!session) {

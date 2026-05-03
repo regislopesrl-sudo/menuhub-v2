@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { useEffect } from 'react';
 import {
   closePdvSession,
@@ -14,7 +15,9 @@ import {
   createPdvOrder,
   fetchPdvMenu,
   getCurrentOpenPdvSession,
+  getCurrentPdvSessionSummary,
   getPdvSessionSummary,
+  listCurrentPdvMovements,
   listPdvMovements,
   openPdvSession,
   type PdvMovementType,
@@ -48,6 +51,7 @@ export default function AdminPdvPage() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
   const storeId = 'pdv-store';
+  const operatorName = 'Operador local';
   const access = useModuleAccess({ companyId, branchId, userRole: 'admin' }, 'pdv');
 
   const [menu, setMenu] = useState<MenuProduct[]>([]);
@@ -85,6 +89,7 @@ export default function AdminPdvPage() {
   const [movementType, setMovementType] = useState<PdvMovementType>('SUPPLY');
   const [movementAmount, setMovementAmount] = useState('');
   const [movementReason, setMovementReason] = useState('');
+  const finalizeRef = useRef<() => void>(() => undefined);
 
   const subtotal = useMemo(
     () =>
@@ -149,16 +154,14 @@ export default function AdminPdvPage() {
         const current = await getCurrentOpenPdvSession({ companyId, branchId });
         if (current) {
           setOpenSession(current);
-          const summary = await getPdvSessionSummary({
+          const summary = await getCurrentPdvSessionSummary({
             companyId,
             branchId,
-            sessionId: current.id,
           });
           setSessionSummary(summary);
-          const movementList = await listPdvMovements({
+          const movementList = await listCurrentPdvMovements({
             companyId,
             branchId,
-            sessionId: current.id,
           });
           setMovements(movementList);
         } else {
@@ -198,11 +201,55 @@ export default function AdminPdvPage() {
     return () => clearInterval(id);
   }, [access.allowed, access.loading, branchId, companyId, openSession?.id]);
 
+
+  useEffect(() => {
+    if (access.loading || !access.allowed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+
+      if (event.key === 'F2') {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>('[data-pdv-product-search="true"]')?.focus();
+        return;
+      }
+      if (isTyping) return;
+      if (event.key === 'F4') {
+        event.preventDefault();
+        if (cart.length > 0 && openSession?.id && !finishing) {
+          void finalizeRef.current();
+        }
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (customizingProduct) {
+          setCustomizingProduct(null);
+          setSelectedAddons([]);
+          return;
+        }
+        setSearch('');
+        setCategory('all');
+        setCheckoutError(null);
+        setLastOrder(null);
+        return;
+      }
+      if (event.key === 'Enter' && customizingProduct) {
+        event.preventDefault();
+        confirmCustomize();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [access.allowed, access.loading, cart.length, customizingProduct, finishing, openSession?.id]);
+
   if (access.loading) {
-    return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
+    return <main className={styles.page}><LoadingState label="Validando acesso ao mÃ³dulo..." /></main>;
   }
   if (!access.allowed) {
-    return <ModuleDisabled moduleName="PDV" reason={access.error ?? 'Módulo PDV desativado.'} />;
+    return <ModuleDisabled moduleName="PDV" reason={access.error ?? 'MÃ³dulo PDV desativado.'} />;
   }
 
   const addItem = (
@@ -377,6 +424,8 @@ export default function AdminPdvPage() {
     }
   };
 
+  finalizeRef.current = finalize;
+
   const toggleAddon = (groupId: string, optionId: string) => {
     const key = `${groupId}:${optionId}`;
     setSelectedAddons((prev) => (prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]));
@@ -401,13 +450,17 @@ export default function AdminPdvPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.topbar}>
-        <div>
-          <h1 className={styles.title}>PDV Balcao</h1>
-          <p className={styles.sub}>Fluxo rapido de pedido para atendimento presencial</p>
-        </div>
-        <Badge tone="warning">Canal PDV</Badge>
-      </section>
+      <PageHeader
+        title="PDV / Balcao"
+        subtitle="Caixa, venda rapida, KDS e revisao de turno para atendimento presencial"
+        right={
+          <div className={styles.headerBadges}>
+            <Badge tone={openSession ? 'success' : 'danger'}>{openSession ? 'Caixa aberto' : 'Caixa fechado'}</Badge>
+            <Badge tone="default">{operatorName}</Badge>
+            <Badge tone="warning">{branchId ?? 'Filial local'}</Badge>
+          </div>
+        }
+      />
 
       <Card className={styles.cashBox}>
         <div className={styles.cashTop}>
@@ -449,12 +502,15 @@ export default function AdminPdvPage() {
         {sessionSummary ? (
           <div className={styles.summaryGrid}>
             <div><small>Total vendido</small><strong>{currency(sessionSummary.totalSales)}</strong></div>
-            <div><small>Pedidos</small><strong>{sessionSummary.totalOrders}</strong></div>
-            <div><small>Ticket medio</small><strong>{currency(sessionSummary.avgTicket)}</strong></div>
+            <div><small>Pedidos</small><strong>{sessionSummary.ordersCount}</strong></div>
+            <div><small>Ticket medio</small><strong>{currency(sessionSummary.averageTicket)}</strong></div>
             <div><small>Dinheiro</small><strong>{currency(sessionSummary.totalsByMethod.cash)}</strong></div>
             <div><small>PIX</small><strong>{currency(sessionSummary.totalsByMethod.pix)}</strong></div>
             <div><small>Cartao</small><strong>{currency(sessionSummary.totalsByMethod.card)}</strong></div>
             <div><small>Caixa esperado</small><strong>{currency(sessionSummary.expectedCashAmount)}</strong></div>
+            {sessionSummary.cashDifference !== undefined ? (
+              <div><small>Diferenca</small><strong>{currency(sessionSummary.cashDifference)}</strong></div>
+            ) : null}
             <div><small>Suprimentos</small><strong>{currency(sessionSummary.movementTotals.supply)}</strong></div>
             <div><small>Sangrias</small><strong>{currency(sessionSummary.movementTotals.withdrawal)}</strong></div>
             <div><small>Ajustes</small><strong>{currency(sessionSummary.movementTotals.adjustment)}</strong></div>
@@ -512,6 +568,7 @@ export default function AdminPdvPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar produto..."
+                data-pdv-product-search="true"
               />
               <Select value={category} onChange={(e) => setCategory(e.target.value)}>
                 {categories.map((item) => (
@@ -601,7 +658,7 @@ export default function AdminPdvPage() {
             <Button variant="primary" onClick={() => void finalize()} disabled={finishing || cart.length === 0}>
               {finishing ? 'Finalizando...' : 'Finalizar pedido'}
             </Button>
-            <small className={styles.shortcutHint}>Atalhos (futuro): F2 busca, F4 finalizar, F8 abrir/fechar caixa.</small>
+            <small className={styles.shortcutHint}>Atalhos: F2 busca, F4 finalizar venda, Esc limpar/fechar modal, Enter confirma modal.</small>
           </Card>
         </section>
       ) : null}
@@ -646,3 +703,5 @@ export default function AdminPdvPage() {
 function itemKey(item: CartItem): string {
   return `${item.productId}-${item.addons.map((a) => `${a.groupId}:${a.optionId}`).sort().join('|')}`;
 }
+
+

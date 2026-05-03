@@ -104,6 +104,88 @@ describe('MenuPrismaPort', () => {
     ).rejects.toThrow('Item indisponivel para delivery');
   });
 
+  it('PDV usa availableCounter', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        availableCounter: false,
+        availableKiosk: true,
+        deletedAt: null,
+        addonLinks: [],
+      },
+    ]);
+
+    await expect(
+      port.validateItems({
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'pdv',
+        items: [{ productId: 'p1', quantity: 1 }],
+      }),
+    ).rejects.toThrow('Item indisponivel para pdv');
+  });
+
+  it('Kiosk usa availableKiosk quando o canal for totem', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        availableCounter: true,
+        availableKiosk: false,
+        deletedAt: null,
+        addonLinks: [],
+      },
+    ]);
+
+    await expect(
+      port.validateItems({
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'kiosk',
+        items: [{ productId: 'p1', quantity: 1 }],
+      } as any),
+    ).rejects.toThrow('Item indisponivel para kiosk');
+  });
+
+  it('waiter_app usa availableTable para bloquear produto de mesa', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        availableCounter: true,
+        availableKiosk: true,
+        availableTable: false,
+        deletedAt: null,
+        addonLinks: [],
+      },
+    ]);
+
+    await expect(
+      port.validateItems({
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'waiter_app',
+        items: [{ productId: 'p1', quantity: 1 }],
+      }),
+    ).rejects.toThrow('Item indisponivel para waiter_app');
+  });
+
   it('produtos de outra empresa nao retornam', async () => {
     const { port, prismaMock } = makePortWithProducts([]);
 

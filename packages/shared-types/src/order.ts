@@ -1,4 +1,6 @@
-export type OrderChannel = 'delivery' | 'pdv' | 'whatsapp' | 'kiosk' | 'waiter';
+import type { OnlineCardPaymentInput } from './payment';
+
+export type OrderChannel = 'delivery' | 'pdv' | 'whatsapp' | 'kiosk' | 'waiter_app';
 
 export type OrderStatus =
   | 'CREATED'
@@ -32,6 +34,8 @@ export interface OrderTotals {
 
 export interface Order {
   id: string;
+  orderNumber?: string;
+  trackingToken?: string;
   channel: OrderChannel;
   customerId?: string;
   customer?: {
@@ -101,6 +105,7 @@ export interface DeliveryCheckoutInput {
   }>;
   couponCode?: string;
   paymentMethod: string;
+  cardPayment?: OnlineCardPaymentInput;
 }
 
 export interface PdvCheckoutInput {
@@ -126,3 +131,7 @@ export interface PdvCheckoutInput {
   paymentMethod: string;
   startInPreparation?: boolean;
 }
+
+
+
+

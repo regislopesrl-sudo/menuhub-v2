@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type { OnlineCardPaymentInput } from '@delivery-futuro/shared-types';
 import type { RequestContext } from '../common/request-context';
 import { OrderPrismaRepository } from '../orders/order.prisma';
 import { OrdersEventsService } from '../orders/orders-events.service';
@@ -17,6 +18,38 @@ export class PaymentsService {
 
   createPixPayment(order: { id: string; orderNumber?: string; total: number }, ctx: RequestContext) {
     return this.provider.createPixPayment(order, ctx);
+  }
+
+  createOnlineCardPayment(
+    order: { id: string; orderNumber?: string; total: number },
+    ctx: RequestContext,
+    input?: OnlineCardPaymentInput,
+  ) {
+    if (!this.provider.createOnlineCardPayment) {
+      throw new BadRequestException('Provider atual nao suporta cartao online. Use mock em HML/local ou conecte adquirente real.');
+    }
+    if (resolvePaymentCardModeFromEnv(this.provider.providerName) === 'mercadopago') {
+      if (!input?.cardToken?.trim()) {
+        throw new BadRequestException('Cartao online tokenizado exige cardToken no modo Mercado Pago.');
+      }
+      if (!input.paymentMethodId?.trim()) {
+        throw new BadRequestException('Cartao online tokenizado exige paymentMethodId no modo Mercado Pago.');
+      }
+      if (!input.payerEmail?.trim()) {
+        throw new BadRequestException('Cartao online tokenizado exige payerEmail no modo Mercado Pago.');
+      }
+      return this.provider.createOnlineCardPayment(order, ctx, input);
+    }
+
+    return this.provider.createOnlineCardPayment(order, ctx, {
+      cardToken: input?.cardToken?.trim() || `mock_card_token_${order.id}`,
+      paymentMethodId: input?.paymentMethodId?.trim() || 'mock_visa',
+      installments: input?.installments && input.installments > 0 ? input.installments : 1,
+      payerEmail: input?.payerEmail?.trim() || `checkout+${order.id}@deliveryfuturo.local`,
+      issuerId: input?.issuerId?.trim() || undefined,
+      identificationType: input?.identificationType?.trim() || undefined,
+      identificationNumber: input?.identificationNumber?.trim() || undefined,
+    });
   }
 
   getPaymentStatus(paymentId: string, ctx: RequestContext) {
@@ -45,7 +78,15 @@ export class PaymentsService {
     };
   }
 
-  async handleWebhook(provider: string, payload: unknown) {
+  async handleWebhook(
+    provider: string,
+    payload: unknown,
+    options?: {
+      signature?: string;
+      requestId?: string;
+      dataId?: string;
+    },
+  ) {
     if (provider !== this.provider.providerName) {
       throw new BadRequestException(`Provider de webhook invalido: ${provider}`);
     }
@@ -66,7 +107,7 @@ export class PaymentsService {
       };
     }
 
-    const result = await this.provider.handleWebhook(payload);
+    const result = await this.provider.handleWebhook(payload, options);
     const normalizedStatus = this.normalizeStatus(result.status);
     if (normalizedStatus !== 'PENDING') {
       const order = await this.orderRepository.findByProviderPaymentId(result.providerPaymentId);
@@ -112,11 +153,21 @@ export class PaymentsService {
     return result;
   }
 
-  private normalizeStatus(status: string): 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'PENDING' {
+  private normalizeStatus(status: string): 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'PENDING' | 'REFUNDED' {
     const upper = String(status ?? '').toUpperCase();
     if (upper === 'APPROVED') return 'APPROVED';
     if (upper === 'DECLINED') return 'DECLINED';
     if (upper === 'EXPIRED') return 'EXPIRED';
+    if (upper === 'REFUNDED') return 'REFUNDED';
     return 'PENDING';
   }
 }
+
+export function resolvePaymentCardModeFromEnv(providerName?: string): 'mock' | 'mercadopago' {
+  const explicit = (process.env.PAYMENT_CARD_MODE ?? '').trim().toLowerCase();
+  if (explicit === 'mercadopago') return 'mercadopago';
+  if (explicit === 'mock') return 'mock';
+  return providerName === 'mercadopago' ? 'mercadopago' : 'mock';
+}
+
+

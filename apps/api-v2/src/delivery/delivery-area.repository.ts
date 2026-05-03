@@ -50,7 +50,7 @@ export class DeliveryAreaRepository {
       },
     });
 
-    return rows.map((row) => {
+    return rows.map((row: any) => {
       const polygonInputs: unknown[] = [];
       if (row.polygonGeoJson != null) {
         polygonInputs.push(row.polygonGeoJson);
@@ -78,7 +78,7 @@ export class DeliveryAreaRepository {
         pricePerKm: row.pricePerKm == null ? null : toNumber(row.pricePerKm, 0),
         minimumOrder: null,
         polygons,
-        feeRules: row.feeRules.map((rule) => ({
+        feeRules: row.feeRules.map((rule: any) => ({
           minDistanceKm: toNumber(rule.minDistanceKm, 0),
           maxDistanceKm: toNumber(rule.maxDistanceKm, Number.POSITIVE_INFINITY),
           fee: toNumber(rule.fee, 0),

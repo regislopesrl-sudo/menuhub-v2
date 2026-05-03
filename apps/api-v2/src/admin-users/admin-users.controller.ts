@@ -1,7 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { AdminUsersService } from './admin-users.service';
+import { RequireAdminGuard } from '../common/require-admin.guard';
 import type {
   AssignAdminUserBranchesDto,
   AssignAdminUserRolesDto,
@@ -13,6 +14,7 @@ import type {
 } from './dto/admin-users.dto';
 
 @Controller('v2/admin')
+@UseGuards(RequireAdminGuard)
 export class AdminUsersController {
   constructor(private readonly adminUsersService: AdminUsersService) {}
 
@@ -28,6 +30,11 @@ export class AdminUsersController {
 
   @Post('users')
   createUser(@CurrentContext() ctx: RequestContext, @Body() body: CreateAdminUserDto) {
+    return this.adminUsersService.createUser(ctx, body);
+  }
+
+  @Post('users/invite')
+  inviteUser(@CurrentContext() ctx: RequestContext, @Body() body: CreateAdminUserDto) {
     return this.adminUsersService.createUser(ctx, body);
   }
 
@@ -47,6 +54,16 @@ export class AdminUsersController {
     @Body() body: UpdateAdminUserStatusDto,
   ) {
     return this.adminUsersService.updateUserStatus(id, ctx, body.isActive);
+  }
+
+  @Patch('users/:id/role')
+  updateUserPrimaryRole(
+    @Param('id') id: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { roleId?: string; roleIds?: string[] },
+  ) {
+    const roleIds = body.roleIds?.length ? body.roleIds : body.roleId ? [body.roleId] : [];
+    return this.adminUsersService.assignRoles(id, ctx, { roleIds });
   }
 
   @Put('users/:id/roles')

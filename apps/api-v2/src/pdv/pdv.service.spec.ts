@@ -43,6 +43,8 @@ describe('PdvService', () => {
         openedAt: new Date('2026-04-30T10:00:00.000Z'),
         closedAt: null,
         openingBalance: 0,
+        declaredClosingBalance: null,
+        differenceAmount: null,
       });
     prismaMock.cashRegister.create.mockResolvedValue({
       id: 'session_1',
@@ -71,8 +73,11 @@ describe('PdvService', () => {
 
     expect(opened.id).toBe('session_1');
     expect(summary.totalOrders).toBe(2);
+    expect(summary.ordersCount).toBe(2);
     expect(summary.totalSales).toBe(60);
+    expect(summary.averageTicket).toBe(30);
     expect(summary.totalsByMethod.cash).toBe(40);
+    expect(summary.totalByPaymentMethod.CASH).toBe(40);
     expect(summary.totalsByMethod.pix).toBe(20);
     expect(summary.expectedCashAmount).toBe(40);
   });
@@ -85,6 +90,8 @@ describe('PdvService', () => {
       openedAt: new Date('2026-04-30T10:00:00.000Z'),
       closedAt: null,
       openingBalance: 10,
+      declaredClosingBalance: null,
+      differenceAmount: null,
     });
     orderRepoMock.findPdvOrdersForSession.mockResolvedValue([
       {
@@ -112,6 +119,8 @@ describe('PdvService', () => {
       openedAt: new Date('2026-04-30T10:00:00.000Z'),
       closedAt: null,
       openingBalance: 100,
+      declaredClosingBalance: null,
+      differenceAmount: null,
     });
     orderRepoMock.findPdvOrdersForSession.mockResolvedValue([]);
     prismaMock.cashMovement.create
@@ -144,7 +153,95 @@ describe('PdvService', () => {
 
     expect(summary.expectedCashAmount).toBe(105);
     expect(summary.movementTotals.supply).toBe(20);
+    expect(summary.supplies).toBe(20);
     expect(summary.movementTotals.withdrawal).toBe(15);
+    expect(summary.withdrawals).toBe(15);
+  });
+
+  it('returns current summary and movements for open session', async () => {
+    prismaMock.cashRegister.findFirst
+      .mockResolvedValueOnce({
+        id: 'session_current',
+        branchId: 'branch_1',
+        status: 'OPEN',
+        openedAt: new Date('2026-04-30T10:00:00.000Z'),
+        openingBalance: 50,
+      })
+      .mockResolvedValueOnce({
+        id: 'session_current',
+        branchId: 'branch_1',
+        status: 'OPEN',
+        openedAt: new Date('2026-04-30T10:00:00.000Z'),
+        closedAt: null,
+        openingBalance: 50,
+        declaredClosingBalance: null,
+        differenceAmount: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'session_current',
+        branchId: 'branch_1',
+        status: 'OPEN',
+        openedAt: new Date('2026-04-30T10:00:00.000Z'),
+        openingBalance: 50,
+      })
+      .mockResolvedValueOnce({
+        id: 'session_current',
+        branchId: 'branch_1',
+        status: 'OPEN',
+        openedAt: new Date('2026-04-30T10:00:00.000Z'),
+        closedAt: null,
+        openingBalance: 50,
+        declaredClosingBalance: null,
+        differenceAmount: null,
+      });
+    orderRepoMock.findPdvOrdersForSession.mockResolvedValue([
+      { id: 'o1', totalAmount: 30, internalNotes: JSON.stringify({ payment: { method: 'CASH' } }) },
+    ]);
+    prismaMock.cashMovement.findMany
+      .mockResolvedValueOnce([{ movementType: 'DEPOSIT', amount: 10 }])
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          cashRegisterId: 'session_current',
+          branchId: 'branch_1',
+          movementType: 'DEPOSIT',
+          amount: 10,
+          notes: 'Troco',
+          createdAt: new Date('2026-04-30T10:05:00.000Z'),
+        },
+      ]);
+
+    const summary = await service.getCurrentSessionSummary(ctx);
+    const movements = await service.listCurrentMovements(ctx);
+
+    expect(summary?.sessionId).toBe('session_current');
+    expect(summary?.expectedCashAmount).toBe(90);
+    expect(movements).toHaveLength(1);
+    expect(movements[0].type).toBe('SUPPLY');
+  });
+
+  it('current summary retorna null e movements vazio sem caixa aberto', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue(null);
+
+    await expect(service.getCurrentSessionSummary(ctx)).resolves.toBeNull();
+    await expect(service.listCurrentMovements(ctx)).resolves.toEqual([]);
+  });
+
+  it('blocks movements for closed session', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_closed',
+      branchId: 'branch_1',
+      status: 'CLOSED',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: new Date('2026-04-30T12:00:00.000Z'),
+      openingBalance: 0,
+      declaredClosingBalance: 0,
+      differenceAmount: 0,
+    });
+
+    await expect(
+      service.createMovement('session_closed', ctx, { type: 'WITHDRAWAL', amount: 10 }),
+    ).rejects.toThrow('Nao e permitido lancar movimentacao em caixa fechado.');
   });
 
   it('lists movements for session', async () => {

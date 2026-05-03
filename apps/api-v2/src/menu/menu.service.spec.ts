@@ -12,6 +12,12 @@ describe('MenuService', () => {
       product: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     } as any;
 
     const service = new MenuService(prismaMock);
@@ -49,6 +55,52 @@ describe('MenuService', () => {
     });
   });
 
+  it('menu kiosk usa availableKiosk', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    } as any;
+
+    const service = new MenuService(prismaMock);
+    await service.list({ ...ctx, channel: 'kiosk' });
+
+    expect(prismaMock.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        availableKiosk: true,
+      }),
+    }));
+  });
+
+  it('menu pdv usa availableCounter', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    } as any;
+
+    const service = new MenuService(prismaMock);
+    await service.list({ ...ctx, channel: 'pdv' });
+
+    expect(prismaMock.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        availableCounter: true,
+      }),
+    }));
+  });
+
   it('menu retorna produto sem opcionais', async () => {
     const prismaMock = {
       product: {
@@ -63,11 +115,18 @@ describe('MenuService', () => {
             deliveryPickupPrice: 45,
             isActive: true,
             availableDelivery: true,
+            availableKiosk: true,
             deletedAt: null,
             category: { name: 'Pizzas' },
             addonLinks: [],
           },
         ]),
+      },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     } as any;
 
@@ -83,6 +142,9 @@ describe('MenuService', () => {
         price: 45,
         categoryName: 'Pizzas',
         available: true,
+        featured: false,
+        featuredSortOrder: 0,
+        recommendations: undefined,
         addonGroups: [],
       },
     ]);
@@ -102,6 +164,7 @@ describe('MenuService', () => {
             deliveryPickupPrice: 0,
             isActive: true,
             availableDelivery: true,
+            availableKiosk: true,
             deletedAt: null,
             category: { name: 'Lanches' },
             addonLinks: [
@@ -123,6 +186,12 @@ describe('MenuService', () => {
           },
         ]),
       },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     } as any;
 
     const service = new MenuService(prismaMock);
@@ -137,6 +206,9 @@ describe('MenuService', () => {
         price: 30,
         categoryName: 'Lanches',
         available: true,
+        featured: false,
+        featuredSortOrder: 0,
+        recommendations: undefined,
         addonGroups: [
           {
             id: 'grp_1',

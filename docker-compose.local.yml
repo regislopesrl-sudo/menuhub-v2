@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: menuhub_v2_local_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: menuhub_v2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - menuhub_v2_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d menuhub_v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  menuhub_v2_postgres_data:

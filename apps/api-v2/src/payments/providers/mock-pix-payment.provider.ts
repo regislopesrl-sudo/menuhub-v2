@@ -1,14 +1,14 @@
-﻿import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { RequestContext } from '../../common/request-context';
-import type { PaymentProvider, PixPaymentIntent } from './payment-provider.interface';
-import type { PaymentStatus, WebhookResult } from '@delivery-futuro/shared-types';
+import type { OnlineCardPaymentInput, PaymentStatus, WebhookResult } from '@delivery-futuro/shared-types';
+import type { OnlineCardPaymentIntent, PaymentProvider, PixPaymentIntent } from './payment-provider.interface';
 
 @Injectable()
 export class MockPixPaymentProvider implements PaymentProvider {
   readonly providerName = 'mock';
 
-  private readonly payments = new Map<string, { status: PaymentStatus; expiresAt: string }>();
+  private readonly payments = new Map<string, { status: PaymentStatus; expiresAt?: string }>();
 
   async createPixPayment(
     order: { id: string; orderNumber?: string; total: number },
@@ -34,6 +34,29 @@ export class MockPixPaymentProvider implements PaymentProvider {
     };
   }
 
+  async createOnlineCardPayment(
+    order: { id: string; orderNumber?: string; total: number },
+    _ctx: RequestContext,
+    input: OnlineCardPaymentInput,
+  ): Promise<OnlineCardPaymentIntent> {
+    const paymentId = `card_${randomUUID()}`;
+    const providerPaymentId = `mock_card_${randomUUID()}`;
+    const status: Extract<PaymentStatus, 'PENDING' | 'APPROVED' | 'DECLINED'> = 'APPROVED';
+    this.payments.set(paymentId, { status });
+
+    return {
+      id: paymentId,
+      provider: this.providerName,
+      providerPaymentId,
+      method: 'CREDIT_CARD',
+      status,
+      cardBrand: input.paymentMethodId?.toUpperCase() || 'MOCK',
+      maskedCard: '**** **** **** 4242',
+      message: order.orderNumber
+        ? `Cartao online mock aprovado para pedido ${order.orderNumber}`
+        : 'Cartao online mock aprovado',
+    };
+  }
   async getPaymentStatus(paymentId: string): Promise<{ id: string; status: PaymentStatus }> {
     const payment = this.payments.get(paymentId);
     if (!payment) {
@@ -72,3 +95,4 @@ export class MockPixPaymentProvider implements PaymentProvider {
     };
   }
 }
+

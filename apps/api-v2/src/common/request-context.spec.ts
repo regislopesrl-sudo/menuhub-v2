@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+﻿import { BadRequestException } from '@nestjs/common';
 import { buildRequestContextFromHeaders } from './request-context';
 
 describe('buildRequestContextFromHeaders', () => {
@@ -7,7 +7,7 @@ describe('buildRequestContextFromHeaders', () => {
       buildRequestContextFromHeaders({
         'x-user-role': 'admin',
       }),
-    ).toThrow(new BadRequestException('Header x-company-id é obrigatório na V2.'));
+    ).toThrow(new BadRequestException('Header x-company-id e obrigatorio na V2 (fallback local).'));
   });
 
   it('userRole invalido vira user', () => {
@@ -44,5 +44,6 @@ describe('buildRequestContextFromHeaders', () => {
       'x-user-role': 'developer',
     });
     expect(ctx.userRole).toBe('developer');
+    expect(ctx.permissions).toEqual([]);
   });
 });

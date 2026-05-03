@@ -1,7 +1,5 @@
 generator client {
-  provider          = "prisma-client-js"
-  engineType        = "library"
-  shadowDatabaseUrl = ""
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -92,6 +90,7 @@ enum Channel {
   WHATSAPP
   KIOSK
   QR
+  WAITER_APP
   ERP
   MARKETPLACE
   CUSTOMER_APP
@@ -442,6 +441,7 @@ model User {
   orderStatusLogs               OrderStatusLog[]
   orderTimelineEvents           OrderTimelineEvent[]
   branchAccesses                UserBranchAccess[]
+  memberships                   UserCompanyMembership[]
   companyUserRoles              CompanyUserRole[]
   realtimeSocketSessions        RealtimeSocketSession[]
   realtimeOutboxEvents          RealtimeOutboxEvent[]
@@ -460,6 +460,25 @@ model User {
   closedTableSessions           TableSession[] @relation("TableSessionClosedBy")
 
   @@map("users")
+}
+
+model UserCompanyMembership {
+  id         String   @id @default(uuid()) @map("id")
+  userId     String   @map("user_id")
+  companyId  String   @map("company_id")
+  roleKey    String   @map("role_key")
+  isActive   Boolean  @default(true) @map("is_active")
+  invitedAt  DateTime @default(now()) @map("invited_at")
+  acceptedAt DateTime? @map("accepted_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId, isActive])
+  @@map("user_company_memberships")
 }
 
 model WaiterPinCredential {
@@ -592,13 +611,95 @@ model Company {
   loyaltyAccounts   LoyaltyAccount[]
   loyaltyTransactions LoyaltyTransaction[]
   orders            Order[]
+  configuration     CompanyConfiguration?
   customRoles       CompanyRole[]
   fiscalConfigurations FiscalConfiguration[] @relation("CompanyFiscalConfigurations")
   fiscalDocuments   FiscalDocument[] @relation("CompanyFiscalDocuments")
   settings          CompanySetting[]
   reviews           Review[]
+  subscriptions     CompanySubscription[]
+  moduleOverrides   CompanyModuleOverride[]
+  memberships       UserCompanyMembership[]
 
   @@map("companies")
+}
+
+model Plan {
+  id          String   @id @default(uuid()) @map("id")
+  key         String   @unique @map("key")
+  name        String   @map("name")
+  description String?  @map("description")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  modules       PlanModule[]
+  limits        PlanLimit[]
+  subscriptions CompanySubscription[]
+
+  @@map("plans")
+}
+
+model PlanModule {
+  id        String   @id @default(uuid()) @map("id")
+  planId    String   @map("plan_id")
+  moduleKey String   @map("module_key")
+  enabled   Boolean  @default(true) @map("enabled")
+  adminOnly Boolean  @default(false) @map("admin_only")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, moduleKey])
+  @@index([moduleKey])
+  @@map("plan_modules")
+}
+
+model PlanLimit {
+  id         String   @id @default(uuid()) @map("id")
+  planId     String   @map("plan_id")
+  limitKey   String   @map("limit_key")
+  limitValue Int      @map("limit_value")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, limitKey])
+  @@map("plan_limits")
+}
+
+model CompanySubscription {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  planId    String   @map("plan_id")
+  status    String   @default("ACTIVE") @map("status")
+  startedAt DateTime @default(now()) @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status])
+  @@map("company_subscriptions")
+}
+
+model CompanyModuleOverride {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  moduleKey String   @map("module_key")
+  enabled   Boolean  @map("enabled")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, moduleKey])
+  @@index([moduleKey])
+  @@map("company_module_overrides")
 }
 
 model Branch {
@@ -670,6 +771,25 @@ model CompanySetting {
 
   @@unique([companyId, branchId, key])
   @@map("company_settings")
+}
+
+model CompanyConfiguration {
+  id                String   @id @default(uuid()) @map("id")
+  companyId         String   @unique @map("company_id")
+  brandColor        String?  @map("brand_color")
+  timezone          String?  @map("timezone")
+  currency          String   @default("BRL") @map("currency")
+  isActive          Boolean  @default(true) @map("is_active")
+  publicTitle       String?  @map("public_title")
+  publicDescription String?  @map("public_description")
+  bannerUrl         String?  @map("banner_url")
+  closedMessage     String?  @map("closed_message")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_configurations")
 }
 
 model CompanyRole {
@@ -1032,6 +1152,7 @@ model Product {
   allowNotes          Boolean         @default(true) @map("allow_notes")
   availableDelivery   Boolean         @default(true) @map("available_delivery")
   availableCounter    Boolean         @default(true) @map("available_counter")
+  availableKiosk      Boolean         @default(true) @map("available_kiosk")
   availableTable      Boolean         @default(true) @map("available_table")
   sortOrder           Int             @default(0) @map("sort_order")
   createdAt           DateTime        @default(now()) @map("created_at")
@@ -1399,6 +1520,7 @@ model Order {
 
   notes              String? @map("notes")
   internalNotes      String? @map("internal_notes")
+  publicTrackingToken String? @unique @map("public_tracking_token")
   cancellationReason String? @map("cancellation_reason")
 
   confirmedAt          DateTime? @map("confirmed_at")

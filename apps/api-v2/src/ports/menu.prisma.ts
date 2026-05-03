@@ -8,7 +8,7 @@ export class MenuPrismaPort implements MenuPort {
 
   async validateItems(input: Parameters<MenuPort['validateItems']>[0]) {
     const productIds = [...new Set(input.items.map((item) => item.productId))];
-    const products = await this.prisma.product.findMany({
+    const products: any[] = await this.prisma.product.findMany({
       where: {
         id: { in: productIds },
         companyId: input.companyId,
@@ -33,17 +33,16 @@ export class MenuPrismaPort implements MenuPort {
       },
     });
 
-    const productMap = new Map(products.map((product) => [product.id, product]));
+    const productMap = new Map(products.map((product: any) => [product.id, product]));
 
     const validatedItems = input.items.map((item) => {
       const product = productMap.get(item.productId);
       if (!product) {
         throw new Error(`Item inexistente ou sem acesso para a empresa atual: ${item.productId}`);
       }
-      const isDeliveryChannel = input.channel === 'delivery';
-      const deliveryUnavailable = isDeliveryChannel && !product.availableDelivery;
-      if (!product.isActive || deliveryUnavailable || product.deletedAt) {
-        const reason = isDeliveryChannel ? 'delivery' : input.channel;
+      const unavailableForChannel = !this.isProductAvailableForChannel(product, input.channel);
+      if (!product.isActive || unavailableForChannel || product.deletedAt) {
+        const reason = input.channel;
         throw new Error(`Item indisponivel para ${reason}: ${item.productId}`);
       }
 
@@ -52,18 +51,18 @@ export class MenuPrismaPort implements MenuPort {
         promotionalPrice: product.promotionalPrice,
         salePrice: product.salePrice,
       });
-      const allowedGroupMap = new Map(
-        product.addonLinks.map((link) => [link.addonGroup.id, link.addonGroup]),
+      const allowedGroupMap: Map<string, any> = new Map(
+        product.addonLinks.map((link: any) => [link.addonGroup.id, link.addonGroup]),
       );
       const selectedOptions = (item.selectedOptions ?? []).map((selectedOption) => {
-        const group = allowedGroupMap.get(selectedOption.groupId);
+        const group: any = allowedGroupMap.get(selectedOption.groupId);
         if (!group) {
           throw new Error(
             `Opcional invalido para item ${item.productId}: grupo ${selectedOption.groupId} nao pertence ao produto`,
           );
         }
 
-        const option = group.items.find((groupItem) => groupItem.id === selectedOption.optionId);
+        const option = group.items.find((groupItem: any) => groupItem.id === selectedOption.optionId);
         if (!option) {
           throw new Error(
             `Opcional invalido para item ${item.productId}: opcao ${selectedOption.optionId} nao encontrada`,
@@ -110,6 +109,13 @@ export class MenuPrismaPort implements MenuPort {
     }
 
     return Number(input.salePrice);
+  }
+
+  private isProductAvailableForChannel(product: any, channel: string): boolean {
+    if (channel === 'pdv') return Boolean(product.availableCounter);
+    if (channel === 'kiosk') return Boolean(product.availableKiosk);
+    if (channel === 'waiter_app') return Boolean(product.availableTable);
+    return Boolean(product.availableDelivery);
   }
 
   private validateGroupRules(

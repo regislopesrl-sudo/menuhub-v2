@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { PdvService, type PdvMovementType } from './pdv.service';
+import { RequireAdminGuard } from '../common/require-admin.guard';
 
 @Controller('v2/pdv/sessions')
+@UseGuards(RequireAdminGuard)
 export class PdvController {
   constructor(private readonly pdvService: PdvService) {}
 
@@ -32,6 +34,16 @@ export class PdvController {
   @Get('current/open')
   async currentOpen(@CurrentContext() ctx: RequestContext) {
     return this.pdvService.getOpenSession(ctx);
+  }
+
+  @Get('current/summary')
+  async currentSummary(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getCurrentSessionSummary(ctx);
+  }
+
+  @Get('current/movements')
+  async currentMovements(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.listCurrentMovements(ctx);
   }
 
   @Post(':id/movements')

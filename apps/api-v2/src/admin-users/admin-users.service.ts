@@ -29,12 +29,20 @@ export class AdminUsersService {
     const users = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
-        branchAccesses: {
+        memberships: {
           some: {
-            branch: {
-              companyId: ctx.companyId,
+            companyId: ctx.companyId,
+            isActive: true,
+          },
+        },
+        roles: {
+          none: {
+            role: {
+              name: {
+                equals: 'developer',
+                mode: 'insensitive',
+              },
             },
-            ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
           },
         },
       },
@@ -82,6 +90,7 @@ export class AdminUsersService {
       input.defaultBranchId ?? ctx.branchId ?? null,
     );
     const roleAssignment = await this.companyRbacService.resolveRoleAssignment(ctx, input.roleIds ?? []);
+    const membershipRoleKey = await this.resolveMembershipRoleKey(ctx.companyId, input.roleIds ?? []);
     const passwordHash = this.hashPassword(password);
 
     const created = await this.prisma.user.create({
@@ -109,6 +118,14 @@ export class AdminUsersService {
               },
             }
           : undefined,
+        memberships: {
+          create: {
+            companyId: ctx.companyId,
+            roleKey: membershipRoleKey,
+            isActive: input.isActive !== undefined ? Boolean(input.isActive) : true,
+            acceptedAt: new Date(),
+          },
+        },
         branchAccesses: {
           createMany: {
             data: branches.map((branch) => ({
@@ -166,10 +183,16 @@ export class AdminUsersService {
   async updateUserStatus(userId: string, ctx: RequestContext, isActive: boolean) {
     this.assertAdminRole(ctx);
     await this.findCompanyUserOrThrow(userId, ctx);
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { isActive: Boolean(isActive) },
-      include: this.userInclude(),
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.userCompanyMembership.updateMany({
+        where: { userId, companyId: ctx.companyId },
+        data: { isActive: Boolean(isActive) },
+      });
+      return tx.user.update({
+        where: { id: userId },
+        data: { isActive: Boolean(isActive) },
+        include: this.userInclude(),
+      });
     });
     return this.mapUser(updated);
   }
@@ -178,7 +201,12 @@ export class AdminUsersService {
     this.assertAdminRole(ctx);
     await this.findCompanyUserOrThrow(userId, ctx);
     const roleAssignment = await this.companyRbacService.resolveRoleAssignment(ctx, input.roleIds ?? []);
+    const membershipRoleKey = await this.resolveMembershipRoleKey(ctx.companyId, input.roleIds ?? []);
     await this.companyRbacService.replaceUserRoles(ctx, userId, roleAssignment);
+    await this.prisma.userCompanyMembership.updateMany({
+      where: { userId, companyId: ctx.companyId },
+      data: { roleKey: membershipRoleKey },
+    });
 
     return this.getUser(userId, ctx);
   }
@@ -220,6 +248,10 @@ export class AdminUsersService {
         phone: null,
         lastLoginAt: null,
       },
+    });
+    await this.prisma.userCompanyMembership.updateMany({
+      where: { userId, companyId: ctx.companyId },
+      data: { isActive: false },
     });
 
     return {
@@ -320,11 +352,10 @@ export class AdminUsersService {
       where: {
         id: userId,
         deletedAt: null,
-        branchAccesses: {
+        memberships: {
           some: {
-            branch: {
-              companyId: ctx.companyId,
-            },
+            companyId: ctx.companyId,
+            isActive: true,
           },
         },
       },
@@ -376,6 +407,7 @@ export class AdminUsersService {
           { createdAt: 'asc' as const },
         ],
       },
+      memberships: true,
     };
   }
 
@@ -544,9 +576,43 @@ export class AdminUsersService {
     );
   }
 
+  private async resolveMembershipRoleKey(companyId: string, roleIds: string[]): Promise<string> {
+    const normalizedRoleIds = this.normalizeIdList(roleIds);
+    if (normalizedRoleIds.length === 0) {
+      return 'manager';
+    }
+
+    const companyRole = await this.prisma.companyRole.findFirst({
+      where: {
+        companyId,
+        id: { in: normalizedRoleIds },
+      },
+      select: { key: true },
+    });
+    if (companyRole?.key) {
+      return companyRole.key;
+    }
+
+    const globalRole = await this.prisma.role.findFirst({
+      where: { id: { in: normalizedRoleIds } },
+      select: { name: true },
+    });
+    if (globalRole?.name) {
+      return globalRole.name.toLowerCase();
+    }
+
+    return 'manager';
+  }
+
   private assertAdminRole(ctx: RequestContext) {
-    if (ctx.userRole !== 'admin' && ctx.userRole !== 'master' && ctx.userRole !== 'developer') {
-      throw new ForbiddenException('Gestao de usuarios exige perfil admin/master/developer.');
+    if (
+      ctx.userRole !== 'admin' &&
+      ctx.userRole !== 'master' &&
+      ctx.userRole !== 'developer' &&
+      ctx.userRole !== 'owner' &&
+      ctx.userRole !== 'manager'
+    ) {
+      throw new ForbiddenException('Gestao de usuarios exige perfil admin/master/owner/manager/developer.');
     }
   }
 

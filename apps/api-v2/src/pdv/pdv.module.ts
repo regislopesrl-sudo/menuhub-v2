@@ -3,10 +3,11 @@ import { PrismaService } from '../database/prisma.service';
 import { OrderPrismaRepository } from '../orders/order.prisma';
 import { PdvController } from './pdv.controller';
 import { PdvService } from './pdv.service';
+import { RequireAdminGuard } from '../common/require-admin.guard';
 
 @Module({
   controllers: [PdvController],
-  providers: [PdvService, PrismaService, OrderPrismaRepository],
+  providers: [PdvService, PrismaService, OrderPrismaRepository, RequireAdminGuard],
   exports: [PdvService],
 })
 export class PdvModule {}

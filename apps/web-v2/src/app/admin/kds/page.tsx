@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { connectOrdersSocket, type OrdersEventPayload } from '@/features/orders/orders.socket';
 import { getOrderById, type OrdersHeaders } from '@/features/orders/orders.api';
 import { bumpKdsOrder, listKdsOrders, readyKdsOrder, startKdsOrder, type KdsOrderCard } from '@/features/kds/kds.api';
@@ -230,12 +231,11 @@ export default function KdsPage() {
 
   return (
     <main className={`${styles.page} ${isFullscreen ? styles.fullscreen : ''}`}>
-      <section className={styles.topbar}>
-        <div>
-          <h1 className={styles.title}>KDS Cozinha</h1>
-          <p className={styles.sub}>Painel operacional em tempo real para preparo de pedidos</p>
-        </div>
-        <div className={styles.actions}>
+      <PageHeader
+        title="KDS Cozinha"
+        subtitle="Painel operacional em tempo real para preparo de pedidos"
+        right={
+          <div className={styles.actions}>
           <Badge tone={socketStatus === 'connected' ? 'success' : socketStatus === 'connecting' ? 'warning' : 'danger'}>
             {socketStatus === 'connected' ? 'Conectado' : socketStatus === 'connecting' ? 'Conectando' : 'Desconectado'}
           </Badge>
@@ -248,8 +248,9 @@ export default function KdsPage() {
           <Button variant="primary" onClick={() => void toggleFullscreen()}>
             {isFullscreen ? 'Sair de tela cheia' : 'Tela cheia'}
           </Button>
-        </div>
-      </section>
+          </div>
+        }
+      />
 
       {loading ? <LoadingState label="Carregando pedidos da cozinha..." /> : null}
       {error ? (

@@ -1,6 +1,5 @@
 import type { OrdersHeaders } from '@/features/orders/orders.api';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
+import { apiFetch } from '@/lib/api-fetch';
 
 export interface KdsOrderCard {
   id: string;
@@ -55,20 +54,14 @@ function buildHeaders(input: OrdersHeaders): Record<string, string> {
     'Content-Type': 'application/json',
     'x-company-id': input.companyId,
     ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
-    'x-user-role': input.userRole ?? 'admin',
   };
 }
 
 export async function listKdsOrders(headers: OrdersHeaders): Promise<KdsBoardResponse> {
-  const res = await fetch(`${API_BASE}/v2/kds/orders`, {
+  return apiFetch<KdsBoardResponse>('/v2/kds/orders', {
     method: 'GET',
     headers: buildHeaders(headers),
-    cache: 'no-store',
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao carregar pedidos da cozinha.');
-  }
-  return (await res.json()) as KdsBoardResponse;
 }
 
 export async function startKdsOrder(id: string, headers: OrdersHeaders): Promise<KdsOrderCard> {
@@ -84,23 +77,8 @@ export async function bumpKdsOrder(id: string, headers: OrdersHeaders): Promise<
 }
 
 async function patchKdsOrder(path: string, headers: OrdersHeaders): Promise<KdsOrderCard> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return apiFetch<KdsOrderCard>(path, {
     method: 'PATCH',
     headers: buildHeaders(headers),
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao atualizar pedido da cozinha.');
-  }
-  return (await res.json()) as KdsOrderCard;
-}
-
-async function safeReadError(res: Response): Promise<string | null> {
-  try {
-    const body = (await res.json()) as { message?: string | string[] };
-    if (Array.isArray(body.message)) return body.message.join(', ');
-    if (typeof body.message === 'string') return body.message;
-    return null;
-  } catch {
-    return null;
-  }
 }

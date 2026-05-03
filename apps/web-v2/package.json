@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start --port 3111",
     "test": "jest --config jest.config.js --runInBand",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:encoding": "node scripts/check-mojibake.mjs"
   },
   "dependencies": {
-    "@mercadopago/sdk-react": "^1.2.1",
+    "@mercadopago/sdk-react": "^1.0.6",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

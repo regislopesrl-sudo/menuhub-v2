@@ -8,6 +8,7 @@ import type { DeliveryFeeRule } from './delivery-fee-config.service';
 import { CepGeocodingService } from './cep-geocoding.service';
 import { DeliveryQuoteService } from './delivery-quote.service';
 import { DeliveryQuoteHttpResponse, DeliveryQuoteQueryDto } from './dto/delivery-quote.dto';
+import { Public } from '../common/public.decorator';
 
 @Controller('v2/delivery')
 export class DeliveryController {
@@ -18,6 +19,7 @@ export class DeliveryController {
   ) {}
 
   @Get('quote')
+  @Public()
   @UseGuards(ModuleGuard)
   @ModuleAccess('delivery')
   async quote(
@@ -41,6 +43,7 @@ export class DeliveryController {
   }
 
   @Get('fee')
+  @Public()
   getFee(@Query('neighborhood') neighborhood: string, @CurrentContext() ctx: RequestContext) {
     const normalized = (neighborhood ?? '').trim();
     const deliveryFee = this.deliveryService.calculateFee({

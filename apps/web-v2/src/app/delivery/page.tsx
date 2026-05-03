@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
 import { useCart } from '@/features/cart/use-cart';
-import { submitDeliveryCheckout } from '@/features/checkout/checkout.api';
+import {
+  submitDeliveryCheckout,
+  type OnlineCardPaymentInput,
+} from '@/features/checkout/checkout.api';
 import { postCheckoutQuote, type CheckoutQuoteResponse } from '@/features/checkout/checkout-quote.api';
+import { fetchPublicOrderTracking, type OrderTrackingResponse } from '@/features/checkout/order-tracking.api';
 import { fetchPixPaymentStatus } from '@/features/checkout/payment-status.api';
 import { fetchDeliveryMenu, getMenuFallback } from '@/features/menu/menu.api';
 import type { MenuProduct } from '@/features/menu/menu.mock';
@@ -14,8 +18,10 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
+import { MercadoPagoCardBrick } from '@/features/checkout/components/mercado-pago-card-brick';
 
 function brl(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -71,6 +77,7 @@ export default function DeliveryPage() {
   const [success, setSuccess] = useState<{
     orderId: string;
     orderNumber?: string;
+    trackingToken?: string;
     orderStatus: string;
     total: number;
     paymentStatus: string;
@@ -81,6 +88,8 @@ export default function DeliveryPage() {
     expiresAt?: string;
   } | null>(null);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState<string | null>(null);
+  const [tracking, setTracking] = useState<OrderTrackingResponse | null>(null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -96,6 +105,11 @@ export default function DeliveryPage() {
 
   const [customizingProduct, setCustomizingProduct] = useState<MenuProduct | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [cardPayerEmail, setCardPayerEmail] = useState('');
+  const [cardInstallments, setCardInstallments] = useState('1');
+  const [cardPaymentMethodId, setCardPaymentMethodId] = useState('visa');
 
   const headers = useMemo(
     () => ({
@@ -108,14 +122,57 @@ export default function DeliveryPage() {
     { companyId: headers.companyId, branchId: headers.branchId, userRole: 'user' },
     'delivery',
   );
+  const cardMode = (process.env.NEXT_PUBLIC_PAYMENT_CARD_MODE ?? 'mock').trim().toLowerCase() === 'mercadopago'
+    ? 'mercadopago'
+    : 'mock';
+  const mercadoPagoPublicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY ?? '';
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const deliveryFee = quote?.deliveryFee ?? 0;
   const estimatedTotal = quote?.total ?? Math.max(0, subtotal + deliveryFee);
+  const etaMinutes = quote?.deliveryQuote.durationSeconds ? Math.ceil(quote.deliveryQuote.durationSeconds / 60) : null;
 
   const hasAddress = cep.replace(/\D/g, '').length === 8 && !!number.trim();
   const hasCustomer = !!customerName.trim() && !!customerPhone.trim();
   const checkoutStep = !items.length ? 1 : !hasAddress ? 2 : paymentMethod ? 3 : 3;
+  const featuredProducts = useMemo(
+    () => products.filter((product) => product.featured).sort((a, b) => (a.featuredSortOrder ?? 0) - (b.featuredSortOrder ?? 0)),
+    [products],
+  );
+  const categories = useMemo(
+    () => ['all', ...Array.from(new Set(products.map((product) => product.categoryName).filter(Boolean)))],
+    [products],
+  );
+  const visibleProducts = useMemo(() => {
+    const q = menuSearch.trim().toLowerCase();
+    return products.filter((product) => {
+      const matchesCategory = activeCategory === 'all' || product.categoryName === activeCategory;
+      const matchesSearch =
+        !q ||
+        product.name.toLowerCase().includes(q) ||
+        product.description.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [activeCategory, menuSearch, products]);
+  const recommendedProducts = useMemo(() => {
+    const productMap = new Map(products.map((product) => [product.id, product]));
+    const cartIds = new Set(items.map((item) => item.productId));
+    const configuredIds = items.flatMap((item) => {
+      const product = productMap.get(item.productId);
+      return product?.recommendations?.active ? product.recommendations.productIds : [];
+    });
+    const configured = configuredIds
+      .map((id) => productMap.get(id))
+      .filter((product): product is MenuProduct => Boolean(product && !cartIds.has(product.id)));
+    if (configured.length > 0) return configured.slice(0, 4);
+
+    const cartCategories = new Set(
+      items.map((item) => productMap.get(item.productId)?.categoryName).filter(Boolean),
+    );
+    return products
+      .filter((product) => !cartIds.has(product.id) && cartCategories.has(product.categoryName))
+      .slice(0, 4);
+  }, [items, products]);
 
   useEffect(() => {
     let active = true;
@@ -228,6 +285,43 @@ export default function DeliveryPage() {
     };
   }, [access.allowed, access.loading, headers, success?.providerPaymentId, success?.paymentStatus]);
 
+  useEffect(() => {
+    if (access.loading || !access.allowed || !success?.trackingToken) return;
+
+    const trackingToken = success.trackingToken;
+    let stopped = false;
+    const loadTracking = async () => {
+      try {
+        const nextTracking = await fetchPublicOrderTracking(trackingToken);
+        if (stopped) return;
+        setTracking(nextTracking);
+        setTrackingError(null);
+        setSuccess((prev) =>
+          prev
+            ? {
+                ...prev,
+                orderNumber: nextTracking.orderNumber,
+                orderStatus: nextTracking.status,
+                paymentStatus: nextTracking.paymentStatus,
+                total: nextTracking.total,
+              }
+            : prev,
+        );
+      } catch (err) {
+        if (!stopped) {
+          setTrackingError(err instanceof Error ? err.message : 'Nao foi possivel atualizar tracking.');
+        }
+      }
+    };
+
+    void loadTracking();
+    const interval = setInterval(() => void loadTracking(), 7000);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [access.allowed, access.loading, success?.trackingToken]);
+
   if (access.loading) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
   }
@@ -235,7 +329,7 @@ export default function DeliveryPage() {
     return <ModuleDisabled moduleName="Delivery" reason={access.error ?? 'Módulo delivery desativado.'} />;
   }
 
-  const validateCheckoutForm = (): string | null => {
+  const validateCheckoutForm = (cardPaymentOverride?: OnlineCardPaymentInput): string | null => {
     if (!customerName.trim()) return 'Informe seu nome para continuar.';
     if (!customerPhone.trim()) return 'Informe seu telefone para contato.';
     if (!hasAddress) return 'Preencha um CEP valido e numero.';
@@ -243,20 +337,53 @@ export default function DeliveryPage() {
     if (!neighborhood.trim()) return 'Informe o bairro.';
     if (!items.length) return 'Seu carrinho esta vazio.';
     if (!quote) return 'Nao foi possivel calcular o pre-checkout.';
+    if (paymentMethod === 'CREDIT_CARD') {
+      const effectiveCardPayment = cardPaymentOverride ?? {
+        cardToken: '',
+        paymentMethodId: cardPaymentMethodId,
+        installments: Math.max(1, Number(cardInstallments || '1') || 1),
+        payerEmail: cardPayerEmail,
+      };
+
+      if (!effectiveCardPayment.payerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(effectiveCardPayment.payerEmail.trim())) {
+        return 'Informe um email valido para o pagamento com cartao.';
+      }
+      if (cardMode === 'mercadopago' && !effectiveCardPayment.cardToken.trim()) {
+        return 'Use o formulario seguro do Mercado Pago para tokenizar o cartao antes de finalizar.';
+      }
+    }
     return null;
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (
+    cardPaymentOverride?: OnlineCardPaymentInput,
+    options?: { rethrow?: boolean },
+  ) => {
     setError(null);
     setSuccess(null);
-    const formError = validateCheckoutForm();
+    setTracking(null);
+    setTrackingError(null);
+    const formError = validateCheckoutForm(cardPaymentOverride);
     if (formError) {
       setError(formError);
+      if (options?.rethrow) {
+        throw new Error(formError);
+      }
       return;
     }
 
     setLoading(true);
     try {
+      const cardPayment: OnlineCardPaymentInput | undefined =
+        paymentMethod === 'CREDIT_CARD'
+          ? (cardPaymentOverride ?? {
+              cardToken: '',
+              paymentMethodId: cardPaymentMethodId.trim() || 'visa',
+              installments: Math.max(1, Number(cardInstallments || '1') || 1),
+              payerEmail: cardPayerEmail.trim(),
+            })
+          : undefined;
+
       const response = await submitDeliveryCheckout({
         headers,
         storeId: 'store-demo',
@@ -272,11 +399,13 @@ export default function DeliveryPage() {
         items,
         couponCode,
         paymentMethod,
+        cardPayment,
       });
 
       setSuccess({
         orderId: response.order.id,
         orderNumber: response.order.orderNumber,
+        trackingToken: response.order.trackingToken,
         orderStatus: response.order.status,
         total: response.order.totals.total,
         paymentStatus: response.payment.status,
@@ -290,10 +419,18 @@ export default function DeliveryPage() {
       clearCart();
       setCouponCode('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao finalizar pedido.');
+      const message = err instanceof Error ? err.message : 'Erro ao finalizar pedido.';
+      setError(message);
+      if (options?.rethrow) {
+        throw new Error(message);
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleMercadoPagoSubmit = async (cardPayment: OnlineCardPaymentInput) => {
+    await handleCheckout(cardPayment, { rethrow: true });
   };
 
   const openCustomize = (product: MenuProduct) => {
@@ -323,42 +460,96 @@ export default function DeliveryPage() {
   };
 
   return (
-    <>
-      <header className={styles.topbar}>
-        <div className={styles.topbarInner}>
-          <div>
-            <h1 className={styles.title}>MenuHub Delivery</h1>
-            <small className={styles.muted}>Checkout inteligente com quote e pagamento PIX</small>
-          </div>
-          <div className={styles.steps}>
-            <Badge tone={checkoutStep >= 1 ? 'success' : 'default'}>1. Itens</Badge>
-            <Badge tone={checkoutStep >= 2 ? 'success' : 'default'}>2. Endereço</Badge>
-            <Badge tone={checkoutStep >= 3 ? 'success' : 'default'}>3. Pagamento</Badge>
-            <Badge tone={success ? 'success' : 'default'}>4. Confirmação</Badge>
-          </div>
-        </div>
-      </header>
-
       <main className={styles.page}>
+        <PageHeader
+          title="MenuHub Delivery"
+          subtitle="Cardapio premium, quote em tempo real, PIX e tracking do pedido"
+          right={
+            <div className={styles.steps}>
+              <Badge tone={checkoutStep >= 1 ? 'success' : 'default'}>1. Itens</Badge>
+              <Badge tone={checkoutStep >= 2 ? 'success' : 'default'}>2. Endereco</Badge>
+              <Badge tone={checkoutStep >= 3 ? 'success' : 'default'}>3. Pagamento</Badge>
+              <Badge tone={success ? 'success' : 'default'}>4. Confirmacao</Badge>
+            </div>
+          }
+        />
+        <Card className={styles.hero}>
+          <div>
+            <Badge tone="success">Loja aberta</Badge>
+            <h1>Peça seu fast-food favorito sem fila</h1>
+            <p>
+              Destaques, adicionais, recomendacoes e entrega calculada pelo backend para manter preco e frete confiaveis.
+            </p>
+          </div>
+          <div className={styles.heroMetrics}>
+            <span>{products.length} produtos</span>
+            <span>{featuredProducts.length} destaques</span>
+            <span>{etaMinutes ? `${etaMinutes} min` : 'ETA sob cotacao'}</span>
+          </div>
+        </Card>
         <div className={styles.layout}>
           <section className={styles.leftCol}>
+            {featuredProducts.length > 0 ? (
+              <Card className={styles.section}>
+                <div className={styles.row}>
+                  <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Destaques</h2>
+                  <Badge tone="warning">{featuredProducts.length}</Badge>
+                </div>
+                <div className={styles.productsGrid}>
+                  {featuredProducts.map((product) => (
+                    <article key={product.id} className={styles.productCard}>
+                      <div className={styles.productMedia} aria-hidden />
+                      <div className={styles.row}>
+                        <strong>{product.name}</strong>
+                        <strong>{brl(product.price)}</strong>
+                      </div>
+                      <div className={styles.muted}>{product.description}</div>
+                      <Button variant="primary" onClick={() => openCustomize(product)}>Adicionar destaque</Button>
+                    </article>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
             <Card className={styles.section}>
-              <h2 className={styles.sectionTitle}>Cardápio</h2>
+              <div className={styles.row}>
+                <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Cardápio</h2>
+                <Badge tone="default">{visibleProducts.length} itens</Badge>
+              </div>
+              <div className={styles.menuTools}>
+                <Input
+                  value={menuSearch}
+                  onChange={(event) => setMenuSearch(event.target.value)}
+                  placeholder="Buscar burger, combo, bebida..."
+                />
+                <Select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === 'all' ? 'Todas categorias' : category}
+                    </option>
+                  ))}
+                </Select>
+              </div>
               {menuLoading ? <LoadingState label="Carregando cardápio..." /> : null}
               {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
               {!menuLoading && products.length === 0 ? (
                 <EmptyState title="Nenhum produto disponível" description="Verifique o menu no admin para liberar itens." />
               ) : null}
               <div className={styles.productsGrid}>
-                {products.map((product) => (
+                {visibleProducts.map((product) => (
                   <article key={product.id} className={styles.productCard}>
                     <div className={styles.productMedia} aria-hidden />
+                    <div className={styles.badgeRow}>
+                      {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
+                      {product.promotionalPrice ? <Badge tone="success">Promo</Badge> : null}
+                      {product.available === false ? <Badge tone="danger">Indisponivel</Badge> : null}
+                    </div>
                     <div className={styles.row}>
                       <strong>{product.name}</strong>
                       <strong>{brl(product.price)}</strong>
                     </div>
                     <div className={styles.muted}>{product.description}</div>
-                    <Button variant="primary" onClick={() => openCustomize(product)}>
+                    <Button variant="primary" disabled={product.available === false} onClick={() => openCustomize(product)}>
                       {product.addonGroups && product.addonGroups.length > 0 ? 'Personalizar' : 'Adicionar ao carrinho'}
                     </Button>
                   </article>
@@ -453,6 +644,19 @@ export default function DeliveryPage() {
                 );
               })}
 
+              {recommendedProducts.length > 0 ? (
+                <div className={styles.recommendations}>
+                  <strong>Peca tambem</strong>
+                  {recommendedProducts.map((product) => (
+                    <div key={product.id} className={styles.recommendationItem}>
+                      <span>{product.name}</span>
+                      <strong>{brl(product.price)}</strong>
+                      <Button onClick={() => addItem(product, [])}>Adicionar</Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <label className="ui-label">Cupom</label>
               <Input
                 placeholder="Ex: BEMVINDO10"
@@ -463,9 +667,54 @@ export default function DeliveryPage() {
               <label className="ui-label">Pagamento</label>
               <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
                 <option value="PIX">PIX</option>
-                <option value="CREDIT_CARD">Cartão de crédito</option>
-                <option value="CASH">Dinheiro</option>
+                <option value="CREDIT_CARD">
+                  Cartao de credito online {cardMode === 'mercadopago' ? '(tokenizado)' : '(simulado)'}
+                </option>
+                <option value="CASH">Dinheiro na entrega</option>
               </Select>
+              {paymentMethod === 'CREDIT_CARD' ? (
+                <div className={styles.cardPaymentBox}>
+                  <Badge tone={cardMode === 'mercadopago' ? 'success' : 'warning'}>
+                    {cardMode === 'mercadopago' ? 'Tokenizado no navegador' : 'Cartao online em modo simulado'}
+                  </Badge>
+                  <p className={styles.muted}>
+                    {cardMode === 'mercadopago'
+                      ? 'O backend recebe apenas cardToken, metodo, parcelas e dados do pagador. Numero, validade e CVV ficam dentro do Brick oficial do Mercado Pago.'
+                      : 'Modo local/HML: o backend nao recebe dados crus do cartao e usa intent simulada para validar o fluxo.'}
+                  </p>
+                  {cardMode === 'mock' ? (
+                    <>
+                      <Input
+                        value={cardPayerEmail}
+                        onChange={(e) => setCardPayerEmail(e.target.value)}
+                        placeholder="Email do pagador"
+                        inputMode="email"
+                      />
+                      <div className={styles.inline}>
+                        <Select value={cardPaymentMethodId} onChange={(e) => setCardPaymentMethodId(e.target.value)}>
+                          <option value="visa">Visa</option>
+                          <option value="master">Mastercard</option>
+                          <option value="elo">Elo</option>
+                        </Select>
+                        <Input
+                          value={cardInstallments}
+                          onChange={(e) => setCardInstallments(e.target.value.replace(/\D/g, '').slice(0, 2) || '1')}
+                          placeholder="Parcelas"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <MercadoPagoCardBrick
+                      publicKey={mercadoPagoPublicKey}
+                      amount={estimatedTotal}
+                      disabled={loading || quoteLoading || !quote?.deliveryQuote.available}
+                      onSubmit={handleMercadoPagoSubmit}
+                    />
+                  )}
+                </div>
+              ) : null}
+              {paymentMethod === 'CASH' ? <div className={styles.muted}>Pagamento em dinheiro sera cobrado na entrega.</div> : null}
 
               <div className={styles.row}><span>Subtotal</span><strong>{brl(subtotal)}</strong></div>
               <div className={styles.row}><span>Frete {quoteLoading ? '(cotando...)' : ''}</span><strong>{brl(deliveryFee)}</strong></div>
@@ -494,18 +743,33 @@ export default function DeliveryPage() {
                       <div className={styles.muted}>Expira em: {success.expiresAt ? new Date(success.expiresAt).toLocaleString('pt-BR') : '-'}</div>
                       {success.qrCode ? <img src={success.qrCode} alt="QR Code PIX" className={styles.qrImage} /> : null}
                       <div style={{ wordBreak: 'break-all', marginTop: 8 }}>{success.qrCodeText}</div>
-                      <Button type="button" onClick={() => void navigator.clipboard.writeText(success.qrCodeText ?? '')}>Copiar código PIX</Button>
+                      <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.qrCodeText ?? '')}>Copiar codigo PIX</Button>
                     </div>
                   ) : null}
+
+                  <div className={styles.trackingBox}>
+                    <strong>Status do pedido</strong>
+                    {trackingError ? <div className={styles.feedbackError}>{trackingError}</div> : null}
+                    {(tracking?.timeline ?? []).map((event) => (
+                      <div key={`${event.status}-${event.createdAt}`} className={styles.trackingStep}>
+                        <span />
+                        <div>
+                          <strong>{event.message}</strong>
+                          <small>{new Date(event.createdAt).toLocaleString('pt-BR')}</small>
+                        </div>
+                      </div>
+                    ))}
+                    {tracking?.estimatedMinutes ? <div>ETA: {tracking.estimatedMinutes} min</div> : null}
+                  </div>
                 </div>
               ) : null}
 
               <Button
                 variant="primary"
-                disabled={loading || quoteLoading || !quote?.deliveryQuote.available}
+                disabled={loading || quoteLoading || !quote?.deliveryQuote.available || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
                 onClick={() => void handleCheckout()}
               >
-                {loading ? 'Finalizando...' : 'Finalizar pedido'}
+                {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
               </Button>
             </Card>
           </aside>
@@ -574,6 +838,8 @@ export default function DeliveryPage() {
           </div>
         ) : null}
       </main>
-    </>
   );
 }
+
+
+

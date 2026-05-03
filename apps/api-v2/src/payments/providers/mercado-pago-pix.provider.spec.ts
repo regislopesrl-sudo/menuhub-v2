@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { createHmac } from 'crypto';
 import { MercadoPagoPixProvider } from './mercado-pago-pix.provider';
 
 describe('MercadoPagoPixProvider', () => {
@@ -65,6 +66,47 @@ describe('MercadoPagoPixProvider', () => {
     expect(status.status).toBe('APPROVED');
   });
 
+  it('createOnlineCardPayment envia token, payment_method_id, installments e payer.email', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 321,
+        status: 'approved',
+        payment_method_id: 'visa',
+        card: {
+          last_four_digits: '1234',
+        },
+      }),
+    });
+
+    const provider = new MercadoPagoPixProvider();
+    const result = await provider.createOnlineCardPayment(
+      { id: 'ord_2', orderNumber: 'V2-2', total: 59.9 },
+      { companyId: 'c1', branchId: 'b1', userRole: 'user', requestId: 'r2' },
+      {
+        cardToken: 'tok_123',
+        paymentMethodId: 'visa',
+        installments: 2,
+        payerEmail: 'maria@example.com',
+        identificationType: 'CPF',
+        identificationNumber: '12345678900',
+      },
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/payments'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"token":"tok_123"'),
+      }),
+    );
+    expect(fetchMock.mock.calls[0][1].body).toContain('"payment_method_id":"visa"');
+    expect(fetchMock.mock.calls[0][1].body).toContain('"installments":2');
+    expect(fetchMock.mock.calls[0][1].body).toContain('"email":"maria@example.com"');
+    expect(result.status).toBe('APPROVED');
+    expect(result.maskedCard).toBe('**** **** **** 1234');
+  });
+
   it('status rejected vira DECLINED', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -116,6 +158,36 @@ describe('MercadoPagoPixProvider', () => {
     );
     expect(result.status).toBe('APPROVED');
     expect(result.providerPaymentId).toBe('555');
+  });
+
+  it('webhook valida assinatura quando secret esta configurado', async () => {
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'secret_test';
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 777, status: 'approved' }),
+    });
+
+    const ts = '1742505638683';
+    const requestId = 'req_webhook_1';
+    const dataId = '777';
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    const signature = createHmac('sha256', 'secret_test').update(manifest).digest('hex');
+
+    const provider = new MercadoPagoPixProvider();
+    const result = await provider.handleWebhook(
+      {
+        id: 'evt_777',
+        type: 'payment',
+        data: { id: dataId },
+      },
+      {
+        signature: `ts=${ts},v1=${signature}`,
+        requestId,
+        dataId,
+      },
+    );
+
+    expect(result.status).toBe('APPROVED');
   });
 
   it('env ausente gera erro claro', async () => {

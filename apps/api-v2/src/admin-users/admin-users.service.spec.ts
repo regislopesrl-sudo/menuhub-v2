@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AdminUsersService } from './admin-users.service';
 
 describe('AdminUsersService', () => {
@@ -7,6 +7,7 @@ describe('AdminUsersService', () => {
     branchId: 'branch_a',
     userRole: 'admin' as const,
     requestId: 'req_1',
+    permissions: [],
   };
 
   function prismaMock() {
@@ -19,6 +20,7 @@ describe('AdminUsersService', () => {
       },
       role: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ name: 'manager' }),
       },
       permission: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -26,6 +28,12 @@ describe('AdminUsersService', () => {
       branch: {
         findFirst: jest.fn().mockResolvedValue({ id: 'branch_a' }),
         findMany: jest.fn().mockResolvedValue([{ id: 'branch_a' }]),
+      },
+      companyRole: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      userCompanyMembership: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       userRole: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -35,7 +43,15 @@ describe('AdminUsersService', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      $transaction: jest.fn(async (actions: Promise<unknown>[]) => Promise.all(actions)),
+      $transaction: jest.fn(async (actionsOrCallback: any) => {
+        if (typeof actionsOrCallback === 'function') {
+          return actionsOrCallback({
+            userCompanyMembership: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            user: { update: jest.fn().mockResolvedValue({}) },
+          });
+        }
+        return Promise.all(actionsOrCallback);
+      }),
     } as any;
   }
 
@@ -64,9 +80,9 @@ describe('AdminUsersService', () => {
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          branchAccesses: {
+          memberships: {
             some: expect.objectContaining({
-              branch: { companyId: 'company_a' },
+              companyId: 'company_a',
             }),
           },
         }),
@@ -114,6 +130,8 @@ describe('AdminUsersService', () => {
           },
         },
       ],
+      companyUserRoles: [],
+      memberships: [{ companyId: 'company_a', roleKey: 'manager', isActive: true }],
       branchAccesses: [
         {
           branchId: 'branch_a',
@@ -179,6 +197,8 @@ describe('AdminUsersService', () => {
       createdAt: new Date('2026-05-02T10:00:00.000Z'),
       updatedAt: new Date('2026-05-02T10:00:00.000Z'),
       roles: [],
+      companyUserRoles: [],
+      memberships: [{ companyId: 'company_a', roleKey: 'manager', isActive: true }],
       branchAccesses: [
         {
           branchId: 'branch_a',
@@ -213,6 +233,8 @@ describe('AdminUsersService', () => {
       createdAt: new Date('2026-05-02T10:00:00.000Z'),
       updatedAt: new Date('2026-05-02T10:00:00.000Z'),
       roles: [],
+      companyUserRoles: [],
+      memberships: [{ companyId: 'company_a', roleKey: 'manager', isActive: true }],
       branchAccesses: [
         {
           branchId: 'branch_a',
