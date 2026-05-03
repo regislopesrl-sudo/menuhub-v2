@@ -7,6 +7,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:db:push": "prisma db push --schema prisma/schema.prisma",
     "seed:local": "node prisma/seed-local.mjs",
+    "prebuild": "npm run build --workspace @delivery-futuro/shared-types && npm run build --workspace @delivery-futuro/order-core",
     "build": "tsc -p tsconfig.json",
     "test": "jest --config jest.config.js",
     "start": "node dist/main.js"
