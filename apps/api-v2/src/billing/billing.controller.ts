@@ -59,4 +59,13 @@ export class BillingController {
     requireDeveloperOrAdmin(ctx);
     return this.billingService.payMockInvoice(invoiceId, ctx.companyId);
   }
+
+  @Post('invoices/:invoiceId/payment-link')
+  async createPaymentLink(
+    @Param('invoiceId') invoiceId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    requireDeveloperOrAdmin(ctx);
+    return this.billingService.createPaymentLink(invoiceId, ctx.companyId);
+  }
 }

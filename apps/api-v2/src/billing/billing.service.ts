@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus, Prisma, SubscriptionStatus } from '@prisma/client';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { InvoiceStatus, PaymentAttemptStatus, Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { BILLING_PROVIDER_TOKEN } from './providers/billing-provider.tokens';
+import type { BillingProvider } from './providers/billing-provider.interface';
 
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(BILLING_PROVIDER_TOKEN) private readonly provider: BillingProvider,
+  ) {}
 
   async getCompanyBilling(companyId: string) {
     const [company, account, subscription] = await Promise.all([
@@ -144,5 +149,109 @@ export class BillingService {
     }
 
     return paid;
+  }
+
+  async createPaymentLink(invoiceId: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice || invoice.companyId !== companyId) {
+      throw new NotFoundException('Fatura nao encontrada para a empresa atual.');
+    }
+    if (invoice.status === InvoiceStatus.PAID) {
+      throw new BadRequestException('Fatura ja paga.');
+    }
+
+    const payment = await this.provider.createPaymentForInvoice(invoice);
+    await this.prisma.paymentAttempt.create({
+      data: {
+        invoiceId: invoice.id,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        status: PaymentAttemptStatus.PENDING,
+      },
+    });
+
+    return {
+      provider: payment.provider,
+      providerPaymentId: payment.providerPaymentId,
+      paymentUrl: payment.paymentUrl,
+      status: payment.status,
+    };
+  }
+
+  async handleWebhook(provider: string, payload: unknown, headers?: Record<string, string | string[] | undefined>) {
+    if (provider !== this.provider.providerName) {
+      throw new BadRequestException(`Provider de webhook invalido: ${provider}`);
+    }
+
+    const body = (payload ?? {}) as Record<string, unknown>;
+    const payloadJson = (typeof payload === 'object' && payload !== null
+      ? (payload as Prisma.InputJsonValue)
+      : ({ raw: payload } as Prisma.InputJsonValue));
+    const eventId = String(body.eventId ?? '');
+    if (!eventId) {
+      throw new BadRequestException('Payload de webhook invalido: eventId obrigatorio.');
+    }
+
+    const existing = await this.prisma.billingWebhookEvent.findUnique({
+      where: {
+        provider_eventId: {
+          provider,
+          eventId,
+        },
+      },
+    });
+    if (existing) {
+      return {
+        provider,
+        eventId,
+        processed: false,
+        reason: 'DUPLICATE_EVENT',
+      };
+    }
+
+    const result = await this.provider.handleWebhook(payload, headers);
+    await this.prisma.billingWebhookEvent.create({
+      data: {
+        provider,
+        eventId,
+        eventType: String(body.eventType ?? 'unknown'),
+        payloadJson,
+        processedAt: new Date(),
+      },
+    });
+
+    if (result.providerPaymentId) {
+      const attempt = await this.prisma.paymentAttempt.findFirst({
+        where: { provider, providerPaymentId: result.providerPaymentId },
+        orderBy: { createdAt: 'desc' },
+        include: { invoice: true },
+      });
+
+      if (attempt) {
+        if (result.status === 'PAID') {
+          await this.prisma.paymentAttempt.update({
+            where: { id: attempt.id },
+            data: { status: PaymentAttemptStatus.SUCCEEDED },
+          });
+          await this.prisma.invoice.update({
+            where: { id: attempt.invoiceId },
+            data: { status: InvoiceStatus.PAID, paidAt: new Date() },
+          });
+          if (attempt.invoice.subscriptionId) {
+            await this.prisma.companySubscription.update({
+              where: { id: attempt.invoice.subscriptionId },
+              data: { status: SubscriptionStatus.ACTIVE },
+            });
+          }
+        } else if (result.status === 'FAILED') {
+          await this.prisma.paymentAttempt.update({
+            where: { id: attempt.id },
+            data: { status: PaymentAttemptStatus.FAILED },
+          });
+        }
+      }
+    }
+
+    return result;
   }
 }
