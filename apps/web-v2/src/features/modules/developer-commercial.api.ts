@@ -64,6 +64,13 @@ export type Invoice = {
   }>;
 };
 
+export type BillingPaymentLink = {
+  provider: string;
+  providerPaymentId: string;
+  paymentUrl: string;
+  status: 'PENDING' | 'PAID' | 'FAILED';
+};
+
 function buildDevHeaders(companyId: string): HeadersInit {
   return {
     'Content-Type': 'application/json',
@@ -180,6 +187,14 @@ export async function payDeveloperMockInvoice(companyId: string, invoiceId: stri
     headers: buildDevHeaders(companyId),
   });
   return readJson(res, 'Falha ao pagar fatura mock.');
+}
+
+export async function createDeveloperInvoicePaymentLink(companyId: string, invoiceId: string): Promise<BillingPaymentLink> {
+  const res = await fetch(`${API_BASE}/v2/developer/invoices/${invoiceId}/payment-link`, {
+    method: 'POST',
+    headers: buildDevHeaders(companyId),
+  });
+  return readJson(res, 'Falha ao gerar link de pagamento.');
 }
 
 export async function createDeveloperCompanySubscription(

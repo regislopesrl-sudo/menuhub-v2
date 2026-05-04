@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import {
+  createDeveloperInvoicePaymentLink,
   createDeveloperMockInvoice,
+  type BillingPaymentLink,
   getDeveloperCompanyBilling,
   listDeveloperCompanyInvoices,
   payDeveloperMockInvoice,
@@ -26,6 +28,9 @@ export default function BillingPage() {
   const [legalName, setLegalName] = useState('');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('SEM_ASSINATURA');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [paymentLinks, setPaymentLinks] = useState<Record<string, BillingPaymentLink>>({});
+  const appEnv = (process.env.NEXT_PUBLIC_APP_ENV ?? '').toLowerCase();
+  const allowMockPayButton = appEnv === 'local' || appEnv === 'hml' || appEnv === 'development';
 
   async function load() {
     setLoading(true);
@@ -85,6 +90,17 @@ export default function BillingPage() {
     }
   }
 
+  async function createPaymentLink(invoiceId: string) {
+    setError(null);
+    try {
+      const link = await createDeveloperInvoicePaymentLink(companyId, invoiceId);
+      setPaymentLinks((prev) => ({ ...prev, [invoiceId]: link }));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao gerar link de pagamento.');
+    }
+  }
+
   return (
     <main className={styles.page}>
       <h1>Billing da Empresa</h1>
@@ -113,13 +129,22 @@ export default function BillingPage() {
               <div>
                 <strong>{invoice.id.slice(0, 8)}</strong>
                 <p>R$ {(invoice.amountCents / 100).toFixed(2)} • {invoice.status}</p>
+                {paymentLinks[invoice.id] ? (
+                  <p className={styles.meta}>
+                    {paymentLinks[invoice.id].provider} • {paymentLinks[invoice.id].status} • {paymentLinks[invoice.id].providerPaymentId}
+                  </p>
+                ) : null}
               </div>
-              <Button
-                onClick={() => void payInvoice(invoice.id)}
-                disabled={invoice.status === 'PAID'}
-              >
-                {invoice.status === 'PAID' ? 'Pago' : 'Marcar como paga'}
-              </Button>
+              <div className={styles.actions}>
+                <Button onClick={() => void createPaymentLink(invoice.id)} disabled={invoice.status === 'PAID'}>
+                  Gerar link de pagamento
+                </Button>
+                {paymentLinks[invoice.id]?.provider === 'mock' && allowMockPayButton ? (
+                  <Button onClick={() => void payInvoice(invoice.id)} disabled={invoice.status === 'PAID'}>
+                    {invoice.status === 'PAID' ? 'Pago' : 'Simular pagamento'}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           ))}
           {invoices.length === 0 ? <p>Sem faturas.</p> : null}

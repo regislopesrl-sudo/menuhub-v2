@@ -35,6 +35,14 @@
   gap: 10px;
   align-items: center;
 }
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.meta {
+  color: #475569;
+  font-size: 12px;
+}
 
 .error {
   color: #9f1239;
@@ -48,5 +56,10 @@
   .invoiceRow {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .actions {
+    flex-direction: column;
+    width: 100%;
   }
 }
