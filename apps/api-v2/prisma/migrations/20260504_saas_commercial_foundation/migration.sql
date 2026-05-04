@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS "company_subscriptions" (
   "company_id" TEXT NOT NULL,
   "plan_id" TEXT NOT NULL,
   "status" "SubscriptionStatus" NOT NULL,
-  "starts_at" TIMESTAMP(3) NOT NULL,
+  "started_at" TIMESTAMP(3) NOT NULL,
   "ends_at" TIMESTAMP(3),
   "trial_ends_at" TIMESTAMP(3),
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
