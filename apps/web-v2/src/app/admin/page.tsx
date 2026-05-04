@@ -8,10 +8,18 @@ import { Card } from '@/components/ui/Card';
 import { ActionTile } from '@/components/ui/ActionTile';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { StatusPill } from '@/components/ui/StatusPill';
+import {
+  getDeveloperCompanyBilling,
+  listDeveloperCompanyInvoices,
+  type CompanySubscription,
+  type Invoice,
+} from '@/features/modules/developer-commercial.api';
+import { getCompanyModulesCommercialView } from '@/features/modules/modules.api';
 import { useModules } from '@/features/modules/use-modules';
 import { connectOrdersSocket, type SocketConnectionStatus } from '@/features/orders/orders.socket';
 import { apiFetch, getApiBase } from '@/lib/api-fetch';
 import type { OrderListItem, OrdersHeaders, OrdersListResponse } from '@/features/orders/orders.api';
+import { hasDeveloperSession } from '@/lib/developer-session';
 
 const MODULE_CARDS: Array<{
   key: 'orders' | 'kds' | 'pdv' | 'delivery' | 'menu';
@@ -68,6 +76,16 @@ type OpenSessionResponse = {
   openingBalance: number;
 } | null;
 
+type SaaSSnapshot = {
+  companyName: string;
+  companyStatus: string;
+  subscription: CompanySubscription | null;
+  modulesActive: number;
+  modulesBlocked: number;
+  latestInvoice: Invoice | null;
+  billingMessage: string;
+};
+
 const ZERO_KPIS: DashboardKpis = {
   ordersToday: 0,
   activeOrders: 0,
@@ -101,6 +119,9 @@ export default function AdminDashboardPage() {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdateAt, setLastUpdateAt] = useState<string>('');
+  const [saasLoading, setSaasLoading] = useState(true);
+  const [saasError, setSaasError] = useState<string | null>(null);
+  const [saasData, setSaasData] = useState<SaaSSnapshot | null>(null);
 
   const headers = useMemo<OrdersHeaders>(
     () => ({
@@ -145,9 +166,68 @@ export default function AdminDashboardPage() {
     }
   }, [headers]);
 
+  const refreshSaasSnapshot = useCallback(async () => {
+    setSaasLoading(true);
+    setSaasError(null);
+    try {
+      if (!hasDeveloperSession()) {
+        setSaasData({
+          companyName: companyId,
+          companyStatus: 'UNKNOWN',
+          subscription: null,
+          modulesActive: 0,
+          modulesBlocked: 0,
+          latestInvoice: null,
+          billingMessage: 'Faça login tecnico em /developer-login para carregar dados comerciais.',
+        });
+        return;
+      }
+
+      const commercialView = await getCompanyModulesCommercialView({
+        headers: {
+          companyId,
+          branchId,
+          userRole: 'developer',
+        },
+        targetCompanyId: companyId,
+      });
+
+      const [billing, invoices] = await Promise.all([
+        getDeveloperCompanyBilling(companyId),
+        listDeveloperCompanyInvoices(companyId),
+      ]);
+
+      const modulesActive = commercialView.modules.filter((item) => item.effectiveEnabled).length;
+      const modulesBlocked = commercialView.modules.length - modulesActive;
+      const latestInvoice = [...invoices].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )[0] ?? null;
+
+      setSaasData({
+        companyName: commercialView.company.name,
+        companyStatus: commercialView.company.status,
+        subscription: billing.subscription,
+        modulesActive,
+        modulesBlocked,
+        latestInvoice,
+        billingMessage: billing.billingAccount
+          ? `Cobranca em ${billing.billingAccount.billingEmail}`
+          : 'Sem billing account cadastrada.',
+      });
+    } catch (err) {
+      setSaasError(err instanceof Error ? err.message : 'Falha ao carregar dados comerciais.');
+    } finally {
+      setSaasLoading(false);
+    }
+  }, [branchId, companyId]);
+
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    void refreshSaasSnapshot();
+  }, [refreshSaasSnapshot]);
 
   useEffect(() => {
     const socket = connectOrdersSocket({
@@ -238,6 +318,71 @@ export default function AdminDashboardPage() {
         <Card className={styles.kpiCard}>
           <p className={styles.kpiLabel}>Ticket medio</p>
           <strong className={styles.kpiValue}>R$ {formatCurrency(kpis.averageTicket)}</strong>
+        </Card>
+      </section>
+
+      <section className={styles.saasGrid}>
+        <Card className={styles.saasCard}>
+          <p className={styles.saasLabel}>Status da empresa</p>
+          {saasLoading ? <LoadingState label="Carregando status comercial..." /> : null}
+          {!saasLoading ? (
+            <>
+              <h3 className={styles.saasTitle}>{saasData?.companyName ?? companyId}</h3>
+              <div className={styles.metaRow}>
+                <Badge>{`Status: ${saasData?.companyStatus ?? 'N/D'}`}</Badge>
+                <Badge>{`Seu plano: ${saasData?.subscription?.plan?.name ?? 'Sem plano'}`}</Badge>
+                <Badge tone={saasData?.subscription?.status === 'ACTIVE' || saasData?.subscription?.status === 'TRIAL' ? 'success' : 'warning'}>
+                  {`Sua assinatura: ${saasData?.subscription?.status ?? 'SEM_ASSINATURA'}`}
+                </Badge>
+              </div>
+            </>
+          ) : null}
+        </Card>
+
+        <Card className={styles.saasCard}>
+          <p className={styles.saasLabel}>Billing</p>
+          {saasLoading ? <LoadingState label="Carregando cobranca..." /> : null}
+          {!saasLoading ? (
+            <>
+              <p className={styles.saasText}>{saasData?.billingMessage ?? 'Dados de cobranca indisponiveis.'}</p>
+              <p className={styles.saasText}>
+                {`Ultima invoice: ${saasData?.latestInvoice ? saasData.latestInvoice.status : 'Nenhuma'}`}
+              </p>
+              <Link href={`/developer/companies/${companyId}/billing`} className={styles.saasLink}>
+                Ver cobranca
+              </Link>
+            </>
+          ) : null}
+        </Card>
+
+        <Card className={styles.saasCard}>
+          <p className={styles.saasLabel}>Seus modulos</p>
+          {saasLoading ? <LoadingState label="Carregando modulos comerciais..." /> : null}
+          {!saasLoading ? (
+            <div className={styles.metaRow}>
+              <Badge tone="success">{`Ativos: ${saasData?.modulesActive ?? 0}`}</Badge>
+              <Badge tone="danger">{`Bloqueados: ${saasData?.modulesBlocked ?? 0}`}</Badge>
+              <Link href="/admin/modules" className={styles.saasLink}>Gerenciar modulos</Link>
+            </div>
+          ) : null}
+        </Card>
+
+        <Card className={styles.saasCard}>
+          <p className={styles.saasLabel}>Alertas</p>
+          {saasError ? <p className={styles.warningText}>{saasError}</p> : null}
+          {!saasError && !saasLoading ? (
+            <ul className={styles.alertList}>
+              {!saasData?.subscription ? <li>Empresa sem assinatura ativa.</li> : null}
+              {saasData?.subscription && saasData.subscription.status !== 'ACTIVE' && saasData.subscription.status !== 'TRIAL' ? (
+                <li>Sua assinatura requer atencao imediata.</li>
+              ) : null}
+              {saasData?.latestInvoice?.status === 'PAST_DUE' ? <li>Pagamento pendente na ultima invoice.</li> : null}
+              {(saasData?.modulesBlocked ?? 0) > 0 ? <li>Existem modulos bloqueados por plano ou override.</li> : null}
+              {!saasData?.subscription && !saasData?.latestInvoice && (saasData?.modulesBlocked ?? 0) === 0 ? (
+                <li>Nenhum alerta comercial no momento.</li>
+              ) : null}
+            </ul>
+          ) : null}
         </Card>
       </section>
 

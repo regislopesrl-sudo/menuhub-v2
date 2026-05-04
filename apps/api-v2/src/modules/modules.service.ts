@@ -212,7 +212,7 @@ export class ModulesService {
       : [];
 
     const planSet = new Set(planModuleRows.map((item) => item.moduleKey as ModuleKey));
-    const planKey = (subscription?.plan.key as PlanKey | undefined) ?? undefined;
+    const planKey = subscription ? (subscription.planId as PlanKey) : undefined;
 
     return modules.map((moduleDef) => {
       const fromPlan = planSet.has(moduleDef.key);
@@ -368,8 +368,29 @@ export class ModulesService {
         companyId,
         status: 'ACTIVE',
       },
-      orderBy: [{ startedAt: 'desc' }],
+      orderBy: [{ startsAt: 'desc' }],
       include: { plan: true },
     });
+  }
+
+  async getCompanyModulesView(companyId: string) {
+    const subscription = await this.resolveActiveSubscription(companyId);
+    const modules = await this.listCurrentCompanyModules(companyId);
+    return {
+      companyId,
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            status: subscription.status,
+            planId: subscription.planId,
+          }
+        : null,
+      modules: modules.map((item) => ({
+        moduleKey: item.moduleKey,
+        enabledByDefault: item.enabledByDefault,
+        includedInPlan: item.source === 'plan' || item.source === 'company_override',
+        overrideEnabled: item.source === 'company_override' ? item.enabled : null,
+      })),
+    };
   }
 }

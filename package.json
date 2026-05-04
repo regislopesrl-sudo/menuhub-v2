@@ -9,6 +9,7 @@
     "dev": "npm run dev --workspaces --if-present",
     "dev:api-v2": "npm run start --workspace @delivery-futuro/api-v2",
     "dev:web-v2": "npm run dev --workspace @delivery-futuro/web-v2",
+    "dev:premium": "npm run dev:premium --workspace @delivery-futuro/web-v2",
     "dev:backend": "npm run start:dev --workspace @delivery-futuro/backend",
     "dev:frontend": "npm run dev --workspace @delivery-futuro/frontend",
     "build": "npm run build --workspaces --if-present",

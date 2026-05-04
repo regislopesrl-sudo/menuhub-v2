@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3112",
+    "dev:premium": "next dev --port 3112",
     "build": "next build",
     "start": "next start --port 3111",
     "test": "jest --config jest.config.js --runInBand",

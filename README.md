@@ -68,6 +68,11 @@ npm run dev:frontend
 - Backend health: `http://127.0.0.1:3100/api/health`
 - Frontend: `http://127.0.0.1:3101`
 
+## Premium local (MenuHub V2)
+
+- Comando: `npm run dev:premium`
+- URL: `http://localhost:3112/admin`
+
 ## Usuarios seed
 
 - `admin@exemplo.com` / `123456`
