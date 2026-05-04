@@ -1,0 +1,2 @@
+ALTER TABLE IF EXISTS "plan_modules"
+  ADD COLUMN IF NOT EXISTS "admin_only" BOOLEAN NOT NULL DEFAULT false;
