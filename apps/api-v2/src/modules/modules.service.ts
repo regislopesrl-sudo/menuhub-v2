@@ -301,7 +301,10 @@ export class ModulesService {
 }
 
 function toPlanKey(value?: string): PlanKey | undefined {
-  if (value === 'basic' || value === 'starter' || value === 'pro' || value === 'enterprise') {
+  if (value === 'starter') {
+    return 'basic';
+  }
+  if (value === 'basic' || value === 'pro' || value === 'enterprise') {
     return value;
   }
   return undefined;
