@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { ModulesService } from './modules.service';
 import { RuntimeFacadeService } from './runtime-facade.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
-import { requireDeveloper } from '../common/developer-role';
 import { assertSameCompany } from '../common/assert-same-company';
+import { requireDeveloperAreaAccess } from '../common/developer-access';
 
 @Controller('v2')
 export class ModulesController {
@@ -34,8 +34,9 @@ export class ModulesController {
     @Param('moduleKey') moduleKey: ModuleKey,
     @Body() body: { enabled: boolean | null; reason?: string },
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloper(ctx);
+    requireDeveloperAreaAccess(headers);
     return this.modulesService.updateCurrentCompanyModule({
       companyId: ctx.companyId,
       moduleKey,
@@ -48,8 +49,9 @@ export class ModulesController {
   async listCompanyModules(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloper(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.modulesService.getCompanyModulesView(companyId);
   }

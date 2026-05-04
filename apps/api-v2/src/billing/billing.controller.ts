@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Put } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
-import { requireDeveloperOrAdmin } from '../common/developer-role';
 import { assertSameCompany } from '../common/assert-same-company';
 import { BillingService } from './billing.service';
+import { requireDeveloperAreaAccess } from '../common/developer-access';
 
 @Controller('v2/developer')
 export class BillingController {
@@ -14,8 +14,9 @@ export class BillingController {
   async getBilling(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.billingService.getCompanyBilling(companyId);
   }
@@ -25,8 +26,9 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.billingService.upsertBillingAccount(companyId, body);
   }
@@ -35,8 +37,9 @@ export class BillingController {
   async listInvoices(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.billingService.listInvoices(companyId);
   }
@@ -45,8 +48,9 @@ export class BillingController {
   async createMockInvoice(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.billingService.createMockInvoice(companyId);
   }
@@ -55,8 +59,9 @@ export class BillingController {
   async payMockInvoice(
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     return this.billingService.payMockInvoice(invoiceId, ctx.companyId);
   }
 
@@ -64,8 +69,9 @@ export class BillingController {
   async createPaymentLink(
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     return this.billingService.createPaymentLink(invoiceId, ctx.companyId);
   }
 
@@ -74,8 +80,9 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @Body() body: { referenceDate?: string },
     @CurrentContext() ctx: RequestContext,
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    requireDeveloperAreaAccess(headers);
     assertSameCompany(ctx.companyId, companyId);
     return this.billingService.runBillingCycle(companyId, body?.referenceDate);
   }

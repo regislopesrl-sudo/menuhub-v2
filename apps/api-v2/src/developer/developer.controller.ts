@@ -1,6 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { SubscriptionStatus } from '@prisma/client';
+import { signTechnicalToken } from '../common/technical-auth';
+import { requireDeveloperAreaAccess } from '../common/developer-access';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -16,14 +18,22 @@ export class DeveloperController {
     }
 
     const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const sessionToken = signTechnicalToken({
+      sub: 'developer-code',
+      email: 'developer@local',
+      role: 'DEVELOPER_SESSION',
+      exp: Math.floor(Date.parse(expiresAt) / 1000),
+    });
     return {
       role: 'developer' as const,
       expiresAt,
+      sessionToken,
     };
   }
 
   @Get('companies')
-  async listCompanies() {
+  async listCompanies(@Headers() headers: Record<string, string | string[] | undefined>) {
+    requireDeveloperAreaAccess(headers);
     return this.prisma.company.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -51,7 +61,9 @@ export class DeveloperController {
       phone?: string;
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
+    requireDeveloperAreaAccess(headers);
     return this.prisma.company.create({
       data: {
         name: body.name,
@@ -89,7 +101,9 @@ export class DeveloperController {
       phone?: string;
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
+    requireDeveloperAreaAccess(headers);
     return this.prisma.company.update({
       where: { id },
       data: {
@@ -115,7 +129,11 @@ export class DeveloperController {
   }
 
   @Get('companies/:id/subscription')
-  async getCompanySubscription(@Param('id') id: string) {
+  async getCompanySubscription(
+    @Param('id') id: string,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ) {
+    requireDeveloperAreaAccess(headers);
     const subscription = await this.prisma.companySubscription.findFirst({
       where: { companyId: id },
       orderBy: { startsAt: 'desc' },
@@ -144,7 +162,9 @@ export class DeveloperController {
       endsAt?: string;
       trialEndsAt?: string;
     },
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
+    requireDeveloperAreaAccess(headers);
     const plan = await this.prisma.plan.findFirst({
       where: {
         OR: [{ id: body.planId }, { key: body.planId }],
@@ -199,7 +219,9 @@ export class DeveloperController {
       endsAt?: string | null;
       trialEndsAt?: string | null;
     },
+    @Headers() headers: Record<string, string | string[] | undefined>,
   ) {
+    requireDeveloperAreaAccess(headers);
     const current = await this.prisma.companySubscription.findFirst({
       where: { id: subscriptionId, companyId: id },
       select: { id: true },

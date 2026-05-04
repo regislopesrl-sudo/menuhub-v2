@@ -10,9 +10,10 @@ import { PdvModule } from './pdv/pdv.module';
 import { DeveloperModule } from './developer/developer.module';
 import { HealthController } from './health.controller';
 import { BillingModule } from './billing/billing.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule, BillingModule],
+  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule, BillingModule, AuthModule],
   controllers: [HealthController],
 })
 export class AppModule {}

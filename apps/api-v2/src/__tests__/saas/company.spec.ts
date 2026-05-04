@@ -1,7 +1,12 @@
 import { ConflictException } from '@nestjs/common';
 import { DeveloperController } from '../../developer/developer.controller';
+import { signTechnicalToken } from '../../common/technical-auth';
 
 describe('SaaS Company Flow', () => {
+  const headers = {
+    'x-developer-session': signTechnicalToken({ sub: 'developer-code', email: 'developer@local', role: 'DEVELOPER_SESSION' }),
+  };
+
   it('criar empresa', async () => {
     const prisma = {
       company: {
@@ -10,11 +15,14 @@ describe('SaaS Company Flow', () => {
     };
     const controller = new DeveloperController(prisma as never);
 
-    const created = await controller.createCompany({
-      name: 'Empresa A',
-      legalName: 'Empresa A LTDA',
-      slug: 'empresa-a',
-    });
+    const created = await controller.createCompany(
+      {
+        name: 'Empresa A',
+        legalName: 'Empresa A LTDA',
+        slug: 'empresa-a',
+      },
+      headers,
+    );
 
     expect(created.id).toBe('c1');
     expect(prisma.company.create).toHaveBeenCalled();
@@ -33,7 +41,7 @@ describe('SaaS Company Flow', () => {
         name: 'Empresa A',
         legalName: 'Empresa A LTDA',
         slug: 'empresa-a',
-      }),
+      }, headers),
     ).rejects.toThrow();
   });
 });

@@ -1,8 +1,13 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { DeveloperController } from '../../developer/developer.controller';
 import { canUseModules } from '../../subscriptions/domain/can-use-modules';
+import { signTechnicalToken } from '../../common/technical-auth';
 
 describe('SaaS Subscription Flow', () => {
+  const headers = {
+    'x-developer-session': signTechnicalToken({ sub: 'developer-code', email: 'developer@local', role: 'DEVELOPER_SESSION' }),
+  };
+
   it('criar ACTIVE', async () => {
     const prisma = {
       plan: {
@@ -15,11 +20,15 @@ describe('SaaS Subscription Flow', () => {
     };
     const controller = new DeveloperController(prisma as never);
 
-    const result = await controller.createCompanySubscription('c1', {
-      planId: 'p1',
-      status: 'ACTIVE',
-      startsAt: '2026-01-01T00:00:00.000Z',
-    });
+    const result = await controller.createCompanySubscription(
+      'c1',
+      {
+        planId: 'p1',
+        status: 'ACTIVE',
+        startsAt: '2026-01-01T00:00:00.000Z',
+      },
+      headers,
+    );
 
     expect(result.id).toBe('s1');
   });
@@ -41,7 +50,7 @@ describe('SaaS Subscription Flow', () => {
         planId: 'p1',
         status: 'ACTIVE',
         startsAt: '2026-01-01T00:00:00.000Z',
-      }),
+      }, headers),
     ).rejects.toThrow(UnauthorizedException);
   });
 

@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { DeveloperController } from './developer.controller';
+import { verifyTechnicalToken } from '../common/technical-auth';
 
 describe('DeveloperController', () => {
   const OLD_ENV = process.env.DEVELOPER_ACCESS_CODE;
@@ -17,6 +18,8 @@ describe('DeveloperController', () => {
     const result = controller.login({ accessCode: 'my-dev-code' });
     expect(result.role).toBe('developer');
     expect(typeof result.expiresAt).toBe('string');
+    expect(typeof result.sessionToken).toBe('string');
+    expect(verifyTechnicalToken(result.sessionToken)?.role).toBe('DEVELOPER_SESSION');
   });
 
   it('login invalido bloqueia', () => {
