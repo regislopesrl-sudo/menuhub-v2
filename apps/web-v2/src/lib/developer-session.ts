@@ -3,7 +3,7 @@
 const SESSION_KEY = 'developer_session_v2';
 
 export type DeveloperSession = {
-  role: 'developer';
+  role: 'developer' | 'technical_admin';
   expiresAt: string;
   sessionToken?: string;
   accessToken?: string;
@@ -15,7 +15,7 @@ export function getDeveloperSession(): DeveloperSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as DeveloperSession;
-    if (parsed.role !== 'developer') return null;
+    if (parsed.role !== 'developer' && parsed.role !== 'technical_admin') return null;
     if (!parsed.expiresAt || Number.isNaN(Date.parse(parsed.expiresAt))) return null;
     if (Date.parse(parsed.expiresAt) <= Date.now()) {
       clearDeveloperSession();
