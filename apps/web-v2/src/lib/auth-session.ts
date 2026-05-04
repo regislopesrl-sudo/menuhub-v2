@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 const SESSION_KEY = 'auth_session_v2';
 
@@ -6,7 +6,7 @@ export type AuthSession = {
   accessToken: string;
   refreshToken: string;
   expiresAt: string;
-  role?: 'admin' | 'master' | 'user' | 'developer' | 'owner' | 'manager' | 'cashier' | 'kitchen' | 'waiter' | 'delivery_operator';
+  role?: 'admin' | 'technical_admin' | 'master' | 'user' | 'developer' | 'owner' | 'manager' | 'cashier' | 'kitchen' | 'waiter' | 'delivery_operator';
 };
 
 export function getAuthSession(): AuthSession | null {
@@ -48,3 +48,4 @@ export function hasRole(role: NonNullable<AuthSession['role']>): boolean {
   const session = getAuthSession();
   return session?.role === role;
 }
+

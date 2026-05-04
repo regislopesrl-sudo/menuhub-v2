@@ -16,6 +16,10 @@ describe('RequireDeveloperGuard', () => {
     expect(guard.canActivate(ctx('developer'))).toBe(true);
   });
 
+  it('technical_admin tambem acessa area developer', () => {
+    expect(guard.canActivate(ctx('technical_admin'))).toBe(true);
+  });
+
   it('bloqueia admin na area developer', () => {
     expect(() => guard.canActivate(ctx('admin'))).toThrow(ForbiddenException);
   });
