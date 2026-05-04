@@ -35,7 +35,7 @@ const MODULE_ORDER = [
 
 export default function AdminModulesPage() {
   const router = useRouter();
-  const [isDeveloper, setIsDeveloper] = useState(false);
+  const [isDeveloper, setIsDeveloper] = useState<boolean | null>(null);
 
   const headers = useMemo(
     () => ({
@@ -119,11 +119,8 @@ export default function AdminModulesPage() {
     }
   };
 
-  if (access.loading) {
+  if (access.loading || isDeveloper === null) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
-  }
-  if (!access.allowed) {
-    return <ModuleDisabled moduleName="Admin Panel" reason={access.error ?? 'Modulo admin_panel desativado.'} />;
   }
   if (!isDeveloper) {
     return <ModuleDisabled moduleName="Admin Modules" reason="Area tecnica restrita" />;
