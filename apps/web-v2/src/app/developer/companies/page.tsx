@@ -89,9 +89,17 @@ export default function DeveloperCompaniesPage() {
             <p>{item.email ?? '-'}</p>
             <div className={styles.row}>
               <Button onClick={() => void toggleStatus(item)}>{item.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}</Button>
-              <Link href={`/companies/${item.id}/subscription`}>
-                <Button variant="primary">Assinatura</Button>
-              </Link>
+              <div className={styles.quickLinks}>
+                <Link href={`/companies/${item.id}/subscription`}>
+                  <Button variant="primary">Assinatura</Button>
+                </Link>
+                <Link href="/admin/modules">
+                  <Button>Módulos</Button>
+                </Link>
+                <Link href={`/developer/companies/${item.id}/billing`}>
+                  <Button>Billing</Button>
+                </Link>
+              </div>
             </div>
           </Card>
         ))}

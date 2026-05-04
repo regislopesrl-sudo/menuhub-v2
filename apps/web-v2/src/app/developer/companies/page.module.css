@@ -29,6 +29,12 @@
   gap: 8px;
 }
 
+.quickLinks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .error {
   color: #9f1239;
 }

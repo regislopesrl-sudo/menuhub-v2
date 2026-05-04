@@ -28,6 +28,50 @@ export type CompanySubscription = {
   plan: PlanSummary;
 };
 
+export type BillingAccount = {
+  id: string;
+  companyId: string;
+  billingEmail: string;
+  document: string | null;
+  legalName: string | null;
+  addressJson: Record<string, unknown> | null;
+};
+
+export type Invoice = {
+  id: string;
+  companyId: string;
+  subscriptionId: string | null;
+  status: 'OPEN' | 'PAID' | 'VOID';
+  amountCents: number;
+  dueDate: string;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: Array<{
+    id: string;
+    description: string;
+    quantity: number;
+    unitAmountCents: number;
+    totalAmountCents: number;
+  }>;
+  attempts: Array<{
+    id: string;
+    provider: string;
+    providerPaymentId: string | null;
+    status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+    errorMessage: string | null;
+    createdAt: string;
+  }>;
+};
+
+function buildDevHeaders(companyId: string): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'x-company-id': companyId,
+    'x-user-role': 'developer',
+  };
+}
+
 async function readJson<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
     const message = await safeReadError(res);
@@ -83,6 +127,59 @@ export async function getDeveloperCompanySubscription(companyId: string): Promis
     cache: 'no-store',
   });
   return readJson<CompanySubscription | null>(res, 'Falha ao carregar assinatura.');
+}
+
+export async function getDeveloperCompanyBilling(companyId: string): Promise<{
+  company: { id: string; name: string; legalName: string };
+  billingAccount: BillingAccount | null;
+  subscription: CompanySubscription | null;
+}> {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing`, {
+    cache: 'no-store',
+    headers: buildDevHeaders(companyId),
+  });
+  return readJson(res, 'Falha ao carregar billing.');
+}
+
+export async function upsertDeveloperCompanyBillingAccount(
+  companyId: string,
+  input: {
+    billingEmail: string;
+    document?: string;
+    legalName?: string;
+    addressJson?: Record<string, unknown>;
+  },
+): Promise<BillingAccount> {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing-account`, {
+    method: 'PUT',
+    headers: buildDevHeaders(companyId),
+    body: JSON.stringify(input),
+  });
+  return readJson(res, 'Falha ao salvar billing account.');
+}
+
+export async function listDeveloperCompanyInvoices(companyId: string): Promise<Invoice[]> {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/invoices`, {
+    cache: 'no-store',
+    headers: buildDevHeaders(companyId),
+  });
+  return readJson(res, 'Falha ao listar faturas.');
+}
+
+export async function createDeveloperMockInvoice(companyId: string): Promise<Invoice> {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/invoices/mock`, {
+    method: 'POST',
+    headers: buildDevHeaders(companyId),
+  });
+  return readJson(res, 'Falha ao gerar fatura mock.');
+}
+
+export async function payDeveloperMockInvoice(companyId: string, invoiceId: string): Promise<Invoice> {
+  const res = await fetch(`${API_BASE}/v2/developer/invoices/${invoiceId}/pay/mock`, {
+    method: 'POST',
+    headers: buildDevHeaders(companyId),
+  });
+  return readJson(res, 'Falha ao pagar fatura mock.');
 }
 
 export async function createDeveloperCompanySubscription(
