@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import {
   createDeveloperInvoicePaymentLink,
   createDeveloperMockInvoice,
+  runDeveloperBillingCycle,
   type BillingPaymentLink,
   getDeveloperCompanyBilling,
   listDeveloperCompanyInvoices,
@@ -101,6 +102,23 @@ export default function BillingPage() {
     }
   }
 
+  async function runCycle() {
+    setError(null);
+    try {
+      await runDeveloperBillingCycle(companyId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao executar ciclo de billing.');
+    }
+  }
+
+  function getOverdueDays(invoice: Invoice): number {
+    if (invoice.status !== 'PAST_DUE') return 0;
+    const due = new Date(invoice.dueDate).getTime();
+    const now = Date.now();
+    return Math.max(0, Math.floor((now - due) / (1000 * 60 * 60 * 24)));
+  }
+
   return (
     <main className={styles.page}>
       <h1>Billing da Empresa</h1>
@@ -122,13 +140,19 @@ export default function BillingPage() {
 
       <Card className={styles.card}>
         <h2>Faturas</h2>
-        <Button variant="primary" onClick={() => void createInvoice()}>Gerar fatura mock</Button>
+        <div className={styles.actions}>
+          <Button variant="primary" onClick={() => void createInvoice()}>Gerar fatura mock</Button>
+          <Button onClick={() => void runCycle()}>Rodar ciclo mensal</Button>
+        </div>
         <div className={styles.list}>
           {invoices.map((invoice) => (
             <div key={invoice.id} className={styles.invoiceRow}>
               <div>
                 <strong>{invoice.id.slice(0, 8)}</strong>
                 <p>R$ {(invoice.amountCents / 100).toFixed(2)} • {invoice.status}</p>
+                {invoice.status === 'PAST_DUE' ? (
+                  <p className={styles.pastDue}>Em atraso ha {getOverdueDays(invoice)} dia(s). Regularize o pagamento.</p>
+                ) : null}
                 {paymentLinks[invoice.id] ? (
                   <p className={styles.meta}>
                     {paymentLinks[invoice.id].provider} • {paymentLinks[invoice.id].status} • {paymentLinks[invoice.id].providerPaymentId}

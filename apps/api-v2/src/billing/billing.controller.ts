@@ -68,4 +68,15 @@ export class BillingController {
     requireDeveloperOrAdmin(ctx);
     return this.billingService.createPaymentLink(invoiceId, ctx.companyId);
   }
+
+  @Post('companies/:companyId/billing/run-cycle')
+  async runBillingCycle(
+    @Param('companyId') companyId: string,
+    @Body() body: { referenceDate?: string },
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    requireDeveloperOrAdmin(ctx);
+    assertSameCompany(ctx.companyId, companyId);
+    return this.billingService.runBillingCycle(companyId, body?.referenceDate);
+  }
 }

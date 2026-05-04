@@ -41,7 +41,7 @@ export type Invoice = {
   id: string;
   companyId: string;
   subscriptionId: string | null;
-  status: 'OPEN' | 'PAID' | 'VOID';
+  status: 'OPEN' | 'PAID' | 'PAST_DUE' | 'VOID';
   amountCents: number;
   dueDate: string;
   paidAt: string | null;
@@ -195,6 +195,15 @@ export async function createDeveloperInvoicePaymentLink(companyId: string, invoi
     headers: buildDevHeaders(companyId),
   });
   return readJson(res, 'Falha ao gerar link de pagamento.');
+}
+
+export async function runDeveloperBillingCycle(companyId: string, referenceDate?: string): Promise<{ companyId: string; createdInvoiceId: string | null }> {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing/run-cycle`, {
+    method: 'POST',
+    headers: buildDevHeaders(companyId),
+    body: JSON.stringify({ referenceDate }),
+  });
+  return readJson(res, 'Falha ao executar ciclo de billing.');
 }
 
 export async function createDeveloperCompanySubscription(

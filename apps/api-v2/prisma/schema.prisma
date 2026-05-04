@@ -435,6 +435,7 @@ enum CompanyStatus {
 
 enum InvoiceStatus {
   OPEN
+  PAST_DUE
   PAID
   VOID
 }
@@ -679,10 +680,25 @@ model CompanySubscription {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
   invoices Invoice[]
+  statusEvents SubscriptionStatusEvent[]
 
   @@index([companyId, status, startsAt])
   @@index([planId])
   @@map("company_subscriptions")
+}
+
+model SubscriptionStatusEvent {
+  id              String              @id @default(uuid()) @map("id")
+  subscriptionId  String              @map("subscription_id")
+  fromStatus      SubscriptionStatus? @map("from_status")
+  toStatus        SubscriptionStatus  @map("to_status")
+  reason          String?             @map("reason")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  subscription CompanySubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+  @@map("subscription_status_events")
 }
 
 model CompanyModuleOverride {
@@ -747,10 +763,25 @@ model Invoice {
   subscription CompanySubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   items        InvoiceItem[]
   attempts     PaymentAttempt[]
+  statusEvents InvoiceStatusEvent[]
 
   @@index([companyId, status, dueDate])
   @@index([subscriptionId])
   @@map("invoices")
+}
+
+model InvoiceStatusEvent {
+  id          String        @id @default(uuid()) @map("id")
+  invoiceId   String        @map("invoice_id")
+  fromStatus  InvoiceStatus? @map("from_status")
+  toStatus    InvoiceStatus @map("to_status")
+  reason      String?       @map("reason")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
+  @@map("invoice_status_events")
 }
 
 model InvoiceItem {

@@ -35,10 +35,12 @@ describe('BillingService', () => {
           status: 'ACTIVE',
           plan: { id: 'p1', key: 'pro', name: 'Pro' },
         }),
+        findUnique: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
         update: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
       },
       invoice: {
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'i1', companyId: 'c1', status: 'OPEN', amountCents: 19900, items: [], attempts: [] }),
         findUnique: jest.fn().mockResolvedValue({ id: 'i1', companyId: 'c1', subscriptionId: 's1' }),
         update: jest.fn().mockResolvedValue({ id: 'i1', companyId: 'c1', status: 'PAID', attempts: [{ id: 'pa1', status: 'SUCCEEDED' }], items: [] }),
@@ -57,6 +59,12 @@ describe('BillingService', () => {
       billingWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'bw1' }),
+      },
+      invoiceStatusEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'ise1' }),
+      },
+      subscriptionStatusEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'sse1' }),
       },
     };
 
@@ -122,6 +130,37 @@ describe('BillingService', () => {
     const mercadoPago = new MercadoPagoBillingProvider();
     await expect(mercadoPago.createPaymentForInvoice({} as never)).rejects.toThrow(
       'Mercado Pago billing provider not configured',
+    );
+  });
+
+  it('runBillingCycle gera invoice mensal quando nao existe OPEN no mes', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    const result = await service.runBillingCycle('c1', '2026-05-04T00:00:00.000Z');
+    expect(result.companyId).toBe('c1');
+    expect(prisma.invoice.create).toHaveBeenCalled();
+  });
+
+  it('runBillingCycle marca assinatura como PAST_DUE quando ha fatura pendente', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      { id: 'i-open', status: 'OPEN' },
+    ]);
+    prisma.invoice.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'i-open', status: 'PAST_DUE' });
+    prisma.companySubscription.findFirst.mockResolvedValueOnce({
+      id: 's1',
+      companyId: 'c1',
+      status: 'ACTIVE',
+      plan: { id: 'p1', key: 'pro', name: 'Pro' },
+      startsAt: new Date(),
+    });
+    await service.runBillingCycle('c1', '2026-05-04T00:00:00.000Z');
+    expect(prisma.companySubscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'PAST_DUE' }),
+      }),
     );
   });
 });

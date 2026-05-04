@@ -9,6 +9,7 @@ describe('BillingController', () => {
     createMockInvoice: jest.fn(),
     payMockInvoice: jest.fn(),
     createPaymentLink: jest.fn(),
+    runBillingCycle: jest.fn(),
   };
   const controller = new BillingController(service as never);
 
@@ -28,5 +29,15 @@ describe('BillingController', () => {
     service.createPaymentLink.mockResolvedValueOnce({ provider: 'mock', status: 'PENDING' });
     await controller.createPaymentLink('i1', { companyId: 'c1', userRole: 'developer', requestId: 'r1' });
     expect(service.createPaymentLink).toHaveBeenCalledWith('i1', 'c1');
+  });
+
+  it('executa ciclo de billing para a empresa atual', async () => {
+    service.runBillingCycle.mockResolvedValueOnce({ companyId: 'c1' });
+    await controller.runBillingCycle(
+      'c1',
+      { referenceDate: '2026-05-04T00:00:00.000Z' },
+      { companyId: 'c1', userRole: 'developer', requestId: 'r1' },
+    );
+    expect(service.runBillingCycle).toHaveBeenCalledWith('c1', '2026-05-04T00:00:00.000Z');
   });
 });

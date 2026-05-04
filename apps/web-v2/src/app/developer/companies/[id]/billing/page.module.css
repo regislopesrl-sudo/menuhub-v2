@@ -43,6 +43,10 @@
   color: #475569;
   font-size: 12px;
 }
+.pastDue {
+  color: #b45309;
+  font-size: 12px;
+}
 
 .error {
   color: #9f1239;

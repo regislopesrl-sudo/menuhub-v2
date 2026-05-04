@@ -105,6 +105,70 @@ export class BillingService {
     });
   }
 
+  async runBillingCycle(companyId: string, referenceDateInput?: string) {
+    const referenceDate = referenceDateInput ? new Date(referenceDateInput) : new Date();
+    const subscription = await this.prisma.companySubscription.findFirst({
+      where: { companyId },
+      orderBy: { startsAt: 'desc' },
+      include: { plan: { select: { key: true, name: true } } },
+    });
+    if (!subscription) {
+      throw new BadRequestException('Empresa sem assinatura para ciclo de cobranca.');
+    }
+
+    await this.markPastDueInvoices(companyId, referenceDate);
+
+    const monthStart = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 1, 0, 0, 0));
+
+    const openForMonth = await this.prisma.invoice.findFirst({
+      where: {
+        companyId,
+        createdAt: { gte: monthStart, lt: monthEnd },
+        status: { in: [InvoiceStatus.OPEN] },
+      },
+    });
+
+    let createdInvoiceId: string | null = null;
+    if (!openForMonth && (subscription.status === SubscriptionStatus.ACTIVE || subscription.status === SubscriptionStatus.TRIAL)) {
+      const amountByPlanKey: Record<string, number> = { starter: 9900, basic: 9900, pro: 19900, enterprise: 49900 };
+      const amountCents = amountByPlanKey[subscription.plan.key] ?? 19900;
+      const dueDate = new Date(referenceDate);
+      dueDate.setUTCDate(dueDate.getUTCDate() + 7);
+
+      const invoice = await this.prisma.invoice.create({
+        data: {
+          companyId,
+          subscriptionId: subscription.id,
+          status: InvoiceStatus.OPEN,
+          amountCents,
+          dueDate,
+          items: {
+            create: {
+              description: `Assinatura mensal ${subscription.plan.name}`,
+              quantity: 1,
+              unitAmountCents: amountCents,
+              totalAmountCents: amountCents,
+            },
+          },
+        },
+      });
+      createdInvoiceId = invoice.id;
+      await this.prisma.invoiceStatusEvent.create({
+        data: {
+          invoiceId: invoice.id,
+          fromStatus: null,
+          toStatus: InvoiceStatus.OPEN,
+          reason: 'CYCLE_GENERATED',
+        },
+      });
+    }
+
+    await this.syncSubscriptionStatus(companyId);
+
+    return { companyId, createdInvoiceId };
+  }
+
   async payMockInvoice(invoiceId: string, companyId: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -140,11 +204,28 @@ export class BillingService {
         attempts: true,
       },
     });
+    await this.prisma.invoiceStatusEvent.create({
+      data: {
+        invoiceId: invoice.id,
+        fromStatus: invoice.status,
+        toStatus: InvoiceStatus.PAID,
+        reason: 'MOCK_PAYMENT',
+      },
+    });
 
     if (invoice.subscriptionId) {
+      const currentSubscription = await this.prisma.companySubscription.findUnique({ where: { id: invoice.subscriptionId } });
       await this.prisma.companySubscription.update({
         where: { id: invoice.subscriptionId },
         data: { status: SubscriptionStatus.ACTIVE },
+      });
+      await this.prisma.subscriptionStatusEvent.create({
+        data: {
+          subscriptionId: invoice.subscriptionId,
+          fromStatus: currentSubscription?.status ?? null,
+          toStatus: SubscriptionStatus.ACTIVE,
+          reason: 'INVOICE_PAID',
+        },
       });
     }
 
@@ -229,6 +310,7 @@ export class BillingService {
 
       if (attempt) {
         if (result.status === 'PAID') {
+          const prev = attempt.invoice.status;
           await this.prisma.paymentAttempt.update({
             where: { id: attempt.id },
             data: { status: PaymentAttemptStatus.SUCCEEDED },
@@ -237,10 +319,29 @@ export class BillingService {
             where: { id: attempt.invoiceId },
             data: { status: InvoiceStatus.PAID, paidAt: new Date() },
           });
+          await this.prisma.invoiceStatusEvent.create({
+            data: {
+              invoiceId: attempt.invoiceId,
+              fromStatus: prev,
+              toStatus: InvoiceStatus.PAID,
+              reason: 'WEBHOOK_PAID',
+            },
+          });
           if (attempt.invoice.subscriptionId) {
+            const currentSubscription = await this.prisma.companySubscription.findUnique({
+              where: { id: attempt.invoice.subscriptionId },
+            });
             await this.prisma.companySubscription.update({
               where: { id: attempt.invoice.subscriptionId },
               data: { status: SubscriptionStatus.ACTIVE },
+            });
+            await this.prisma.subscriptionStatusEvent.create({
+              data: {
+                subscriptionId: attempt.invoice.subscriptionId,
+                fromStatus: currentSubscription?.status ?? null,
+                toStatus: SubscriptionStatus.ACTIVE,
+                reason: 'WEBHOOK_PAID',
+              },
             });
           }
         } else if (result.status === 'FAILED') {
@@ -253,5 +354,63 @@ export class BillingService {
     }
 
     return result;
+  }
+
+  private async markPastDueInvoices(companyId: string, now: Date) {
+    const overdue = await this.prisma.invoice.findMany({
+      where: {
+        companyId,
+        status: InvoiceStatus.OPEN,
+        dueDate: { lt: now },
+      },
+      select: { id: true, status: true },
+    });
+
+    for (const invoice of overdue) {
+      await this.prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { status: InvoiceStatus.PAST_DUE },
+      });
+      await this.prisma.invoiceStatusEvent.create({
+        data: {
+          invoiceId: invoice.id,
+          fromStatus: invoice.status,
+          toStatus: InvoiceStatus.PAST_DUE,
+          reason: 'PAST_DUE',
+        },
+      });
+    }
+  }
+
+  private async syncSubscriptionStatus(companyId: string) {
+    const subscription = await this.prisma.companySubscription.findFirst({
+      where: { companyId },
+      orderBy: { startsAt: 'desc' },
+    });
+    if (!subscription) return;
+
+    const unpaid = await this.prisma.invoice.findFirst({
+      where: {
+        companyId,
+        subscriptionId: subscription.id,
+        status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAST_DUE] },
+      },
+    });
+
+    const target = unpaid ? SubscriptionStatus.PAST_DUE : SubscriptionStatus.ACTIVE;
+    if (subscription.status !== target) {
+      await this.prisma.companySubscription.update({
+        where: { id: subscription.id },
+        data: { status: target },
+      });
+      await this.prisma.subscriptionStatusEvent.create({
+        data: {
+          subscriptionId: subscription.id,
+          fromStatus: subscription.status,
+          toStatus: target,
+          reason: unpaid ? 'UNPAID_INVOICE' : 'ALL_INVOICES_PAID',
+        },
+      });
+    }
   }
 }
