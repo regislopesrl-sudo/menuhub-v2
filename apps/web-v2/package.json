@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev --port 3112",
     "build": "next build",
-    "start": "next start --port 3111"
+    "start": "next start --port 3111",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"No web tests configured\""
   },
   "dependencies": {
     "next": "^15.1.6",

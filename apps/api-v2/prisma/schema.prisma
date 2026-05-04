@@ -419,6 +419,20 @@ enum AuthSecurityEventOutcome {
   BLOCKED
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
 // ================= MODELS =================
 
 model User {
@@ -566,7 +580,11 @@ model AuthSecurityEvent {
 
 model Company {
   id        String   @id @default(uuid()) @map("id")
+  name      String?  @map("name")
   legalName String   @map("legal_name")
+  document  String?  @map("document")
+  slug      String?  @unique @map("slug")
+  status    CompanyStatus @default(ACTIVE) @map("status")
   tradeName String   @map("trade_name")
   cnpj      String?  @unique @map("cnpj")
   phone     String?  @map("phone")
@@ -595,8 +613,93 @@ model Company {
   fiscalDocuments   FiscalDocument[] @relation("CompanyFiscalDocuments")
   settings          CompanySetting[]
   reviews           Review[]
+  moduleOverrides   CompanyModuleOverride[]
+  moduleAuditLogs   CompanyModuleAuditLog[]
+  subscriptions     CompanySubscription[]
 
   @@map("companies")
+}
+
+model Plan {
+  id          String   @id @default(uuid()) @map("id")
+  key         String   @unique @map("key")
+  name        String   @map("name")
+  description String?  @map("description")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  modules       PlanModule[]
+  subscriptions CompanySubscription[]
+
+  @@map("plans")
+}
+
+model PlanModule {
+  id          String   @id @default(uuid()) @map("id")
+  planId      String   @map("plan_id")
+  moduleKey   String   @map("module_key")
+  enabled     Boolean  @default(true) @map("enabled")
+  limits      Json?    @map("limits")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, moduleKey])
+  @@index([moduleKey])
+  @@map("plan_modules")
+}
+
+model CompanySubscription {
+  id          String             @id @default(uuid()) @map("id")
+  companyId   String             @map("company_id")
+  planId      String             @map("plan_id")
+  status      SubscriptionStatus @map("status")
+  startsAt    DateTime           @map("starts_at")
+  endsAt      DateTime?          @map("ends_at")
+  trialEndsAt DateTime?          @map("trial_ends_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, startsAt])
+  @@index([planId])
+  @@map("company_subscriptions")
+}
+
+model CompanyModuleOverride {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  moduleKey String   @map("module_key")
+  enabled   Boolean? @map("enabled")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, moduleKey])
+  @@index([moduleKey])
+  @@map("company_module_overrides")
+}
+
+model CompanyModuleAuditLog {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  moduleKey String   @map("module_key")
+  action    String   @map("action")
+  source    String   @map("source")
+  userId    String?  @map("user_id")
+  reason    String?  @map("reason")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([moduleKey, createdAt])
+  @@map("company_module_audit_logs")
 }
 
 model Branch {
