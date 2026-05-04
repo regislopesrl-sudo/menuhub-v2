@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
 import { io, Socket } from 'socket.io-client';
 import type { OrdersHeaders } from './orders.api';
+import { getAuthSession } from '@/lib/auth-session';
 
 export type OrdersEventType = 'order.created' | 'order.status_updated';
 
@@ -28,6 +29,7 @@ export function connectOrdersSocket(input: {
 }): Socket {
   input.onConnectionStatus?.('connecting');
 
+  const token = getAuthSession()?.accessToken;
   const socket = io(`${WS_BASE}/v2/orders`, {
     transports: ['websocket', 'polling'],
     withCredentials: false,
@@ -38,12 +40,12 @@ export function connectOrdersSocket(input: {
     auth: {
       companyId: input.headers.companyId,
       ...(input.headers.branchId ? { branchId: input.headers.branchId } : {}),
-      ...(input.headers.userRole ? { userRole: input.headers.userRole } : {}),
+      ...(token ? { token } : {}),
     },
     extraHeaders: {
       'x-company-id': input.headers.companyId,
       ...(input.headers.branchId ? { 'x-branch-id': input.headers.branchId } : {}),
-      ...(input.headers.userRole ? { 'x-user-role': input.headers.userRole } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
 

@@ -1,10 +1,19 @@
+﻿import { apiFetch } from '@/lib/api-fetch';
+
 export interface OrderListItem {
   id: string;
   orderNumber: string;
+  channel?: string;
+  customerName?: string;
   status: string;
   total: number;
   paymentStatus: string;
   createdAt: string;
+  updatedAt?: string;
+  statusUpdatedAt?: string;
+  elapsedMinutes: number;
+  isDelayed: boolean;
+  delayLevel: 'none' | 'attention' | 'urgent';
 }
 
 export interface OrderDetailItem {
@@ -50,8 +59,44 @@ export interface OrderDetail {
     refundedAmount: number;
   };
   createdAt: string;
+  updatedAt?: string;
+  statusUpdatedAt?: string;
+  elapsedMinutes: number;
+  isDelayed: boolean;
+  delayLevel: 'none' | 'attention' | 'urgent';
   preparationStartedAt?: string;
   readyAt?: string;
+  timeline?: Array<{
+    type: string;
+    label: string;
+    status: string;
+    message: string;
+    createdAt: string;
+    at: string;
+    actor: {
+      role: string;
+      name: string;
+    };
+  }>;
+  timelineSource?: 'events' | 'fallback';
+}
+
+export interface OrderSummary {
+  totalOrders: number;
+  activeOrders: number;
+  delayedOrders: number;
+  preparingOrders: number;
+  readyOrders: number;
+  canceledOrders: number;
+  grossRevenue: number;
+  netRevenue: number;
+  canceledRevenue: number;
+  averageTicket: number;
+  ordersByChannel: Record<string, number>;
+  ordersByStatus: Record<string, number>;
+  paymentsByStatus: Record<string, number>;
+  dateFrom: string;
+  dateTo: string;
 }
 
 export interface OrdersListResponse {
@@ -73,60 +118,74 @@ export interface OrdersHeaders {
 export interface ListOrdersInput {
   headers: OrdersHeaders;
   status?: string;
+  channel?: string;
+  paymentStatus?: string;
+  activeOnly?: boolean;
+  delayedOnly?: boolean;
+  search?: string;
+  sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
+  sortDirection?: 'asc' | 'desc';
   page?: number;
   limit?: number;
   createdFrom?: string;
   createdTo?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
+export interface GetOrderSummaryInput {
+  headers: OrdersHeaders;
+  dateFrom?: string;
+  dateTo?: string;
+  channel?: string;
+}
 
 function buildHeaders(input: OrdersHeaders): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'x-company-id': input.companyId,
     ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
-    'x-user-role': input.userRole ?? 'admin',
   };
 }
 
 export async function listOrders(input: ListOrdersInput): Promise<OrdersListResponse> {
   const params = new URLSearchParams();
   if (input.status) params.set('status', input.status);
+  if (input.channel) params.set('channel', input.channel);
+  if (input.paymentStatus) params.set('paymentStatus', input.paymentStatus);
+  if (input.activeOnly !== undefined) params.set('activeOnly', String(input.activeOnly));
+  if (input.delayedOnly !== undefined) params.set('delayedOnly', String(input.delayedOnly));
+  if (input.search) params.set('search', input.search);
+  if (input.sortBy) params.set('sortBy', input.sortBy);
+  if (input.sortDirection) params.set('sortDirection', input.sortDirection);
   if (input.page) params.set('page', String(input.page));
   if (input.limit) params.set('limit', String(input.limit));
   if (input.createdFrom) params.set('createdFrom', input.createdFrom);
   if (input.createdTo) params.set('createdTo', input.createdTo);
 
-  const url = `${API_BASE}/v2/orders${params.toString() ? `?${params.toString()}` : ''}`;
-
-  const res = await fetch(url, {
+  const path = `/v2/orders${params.toString() ? `?${params.toString()}` : ''}`;
+  return apiFetch<OrdersListResponse>(path, {
     method: 'GET',
     headers: buildHeaders(input.headers),
-    cache: 'no-store',
   });
+}
 
-  if (!res.ok) {
-    const message = await safeReadError(res);
-    throw new Error(message || 'Falha ao listar pedidos.');
-  }
+export async function getOrderSummary(input: GetOrderSummaryInput): Promise<OrderSummary> {
+  const params = new URLSearchParams();
+  if (input.dateFrom) params.set('dateFrom', input.dateFrom);
+  if (input.dateTo) params.set('dateTo', input.dateTo);
+  if (input.channel) params.set('channel', input.channel);
 
-  return (await res.json()) as OrdersListResponse;
+  const path = `/v2/orders/summary${params.toString() ? `?${params.toString()}` : ''}`;
+  return apiFetch<OrderSummary>(path, {
+    method: 'GET',
+    headers: buildHeaders(input.headers),
+  });
 }
 
 export async function getOrderById(input: { id: string; headers: OrdersHeaders }): Promise<OrderDetail> {
-  const res = await fetch(`${API_BASE}/v2/orders/${input.id}`, {
+  return apiFetch<OrderDetail>(`/v2/orders/${input.id}`, {
     method: 'GET',
     headers: buildHeaders(input.headers),
-    cache: 'no-store',
   });
-
-  if (!res.ok) {
-    const message = await safeReadError(res);
-    throw new Error(message || 'Falha ao carregar detalhe do pedido.');
-  }
-
-  return (await res.json()) as OrderDetail;
 }
 
 export async function patchOrderStatus(input: {
@@ -134,28 +193,10 @@ export async function patchOrderStatus(input: {
   status: string;
   headers: OrdersHeaders;
 }): Promise<OrderDetail> {
-  const url = `${API_BASE}/v2/orders/${input.id}/status`;
-  const res = await fetch(url, {
+  return apiFetch<OrderDetail>(`/v2/orders/${input.id}/status`, {
     method: 'PATCH',
     headers: buildHeaders(input.headers),
     body: JSON.stringify({ status: input.status }),
   });
-
-  if (!res.ok) {
-    const message = await safeReadError(res);
-    throw new Error(message || 'Falha ao atualizar status do pedido.');
-  }
-
-  return (await res.json()) as OrderDetail;
 }
 
-async function safeReadError(res: Response): Promise<string | null> {
-  try {
-    const body = (await res.json()) as { message?: string | string[] };
-    if (Array.isArray(body.message)) return body.message.join(', ');
-    if (typeof body.message === 'string') return body.message;
-    return null;
-  } catch {
-    return null;
-  }
-}

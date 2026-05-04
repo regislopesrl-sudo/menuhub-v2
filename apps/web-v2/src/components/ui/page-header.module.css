@@ -1,0 +1,65 @@
+﻿.header {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(37, 87, 246, 0.12), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(124, 58, 237, 0.1), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9));
+  box-shadow: var(--shadow);
+  padding: clamp(18px, 2.4vw, 26px);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  right: -48px;
+  top: -64px;
+  width: 190px;
+  height: 190px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(37, 87, 246, 0.16), rgba(124, 58, 237, 0.11));
+  pointer-events: none;
+}
+
+.title {
+  position: relative;
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 0.96;
+  letter-spacing: -0.055em;
+  font-weight: 950;
+}
+
+.subtitle {
+  position: relative;
+  max-width: 680px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.right {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .right {
+    justify-content: flex-start;
+  }
+}

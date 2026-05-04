@@ -1,4 +1,4 @@
-import type { CheckoutHeaders } from './checkout.api';
+﻿import type { CheckoutHeaders } from './checkout.api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 
@@ -20,7 +20,6 @@ export async function fetchPixPaymentStatus(input: {
       'Content-Type': 'application/json',
       'x-company-id': input.headers.companyId,
       ...(input.headers.branchId ? { 'x-branch-id': input.headers.branchId } : {}),
-      'x-user-role': 'user',
       'x-channel': 'delivery',
     },
     cache: 'no-store',
@@ -44,3 +43,4 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
+

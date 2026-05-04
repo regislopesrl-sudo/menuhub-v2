@@ -6,20 +6,27 @@
     "dev": "next dev --port 3112",
     "build": "next build",
     "start": "next start --port 3111",
+    "test": "jest --config jest.config.js --runInBand",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"No web tests configured\""
+    "check:encoding": "node scripts/check-mojibake.mjs"
   },
   "dependencies": {
+    "@mercadopago/sdk-react": "^1.0.6",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.7.3"
   }
 }
-
