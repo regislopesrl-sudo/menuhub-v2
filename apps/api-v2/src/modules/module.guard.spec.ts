@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { ForbiddenException, type ExecutionContext } from '@nestjs/common';
 import { ModuleGuard } from './module.guard';
-import { ModulesService } from './modules.service';
 import { MODULE_ACCESS_KEY } from './module-access.decorator';
 
 function makeContext(input: {
@@ -37,8 +36,53 @@ function makeContext(input: {
 }
 
 describe('ModuleGuard', () => {
-  const modulesService = new ModulesService();
-  const guard = new ModuleGuard(modulesService);
+  const modulesService = {
+    checkAccess: jest.fn(async (input: { moduleKey: string; isAdmin: boolean; companyId: string }) => {
+      if (input.moduleKey === 'unknown_module') {
+        return {
+          companyId: input.companyId,
+          moduleKey: input.moduleKey,
+          allowed: false,
+          reason: 'MODULE_NOT_FOUND',
+          adminOnly: false,
+          enabledByDefault: false,
+          source: 'not_found',
+        };
+      }
+      if (input.moduleKey === 'whatsapp') {
+        return {
+          companyId: input.companyId,
+          moduleKey: input.moduleKey,
+          allowed: false,
+          reason: 'BLOCKED_NOT_ENABLED',
+          adminOnly: false,
+          enabledByDefault: false,
+          source: 'plan',
+        };
+      }
+      if (input.moduleKey === 'admin_panel' && !input.isAdmin) {
+        return {
+          companyId: input.companyId,
+          moduleKey: input.moduleKey,
+          allowed: false,
+          reason: 'BLOCKED_ADMIN_ONLY',
+          adminOnly: true,
+          enabledByDefault: true,
+          source: 'plan',
+        };
+      }
+      return {
+        companyId: input.companyId,
+        moduleKey: input.moduleKey,
+        allowed: true,
+        reason: 'ALLOWED_PLAN',
+        adminOnly: false,
+        enabledByDefault: true,
+        source: 'plan',
+      };
+    }),
+  };
+  const guard = new ModuleGuard(modulesService as never);
 
   it('delivery habilitado permite checkout', async () => {
     const context = makeContext({
@@ -61,7 +105,7 @@ describe('ModuleGuard', () => {
       moduleKey: 'unknown_module',
       companyId: 'default-company',
     });
-    await expect(guard.canActivate(context)).rejects.toThrow("nao cadastrado na V2");
+    await expect(guard.canActivate(context)).rejects.toThrow('nao cadastrado na V2');
   });
 
   it('adminOnly bloqueia usuario comum', async () => {
@@ -82,4 +126,3 @@ describe('ModuleGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 });
-

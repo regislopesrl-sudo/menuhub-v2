@@ -3,7 +3,7 @@ import { DeveloperController } from './developer.controller';
 
 describe('DeveloperController', () => {
   const OLD_ENV = process.env.DEVELOPER_ACCESS_CODE;
-  const controller = new DeveloperController();
+  const controller = new DeveloperController({} as never);
 
   beforeEach(() => {
     process.env.DEVELOPER_ACCESS_CODE = 'my-dev-code';

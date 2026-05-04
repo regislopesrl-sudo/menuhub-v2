@@ -7,8 +7,12 @@ describe('ModulesController', () => {
     listAvailableModules: jest.fn(),
     listCurrentCompanyModules: jest.fn(),
     updateCurrentCompanyModule: jest.fn(),
+    getCompanyModulesView: jest.fn(),
   };
-  const controller = new ModulesController(service as never);
+  const runtimeService = {
+    getRuntimeModules: jest.fn(),
+  };
+  const controller = new ModulesController(service as never, runtimeService as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -25,6 +29,7 @@ describe('ModulesController', () => {
       companyId: 'c1',
       moduleKey: 'delivery',
       enabled: true,
+      reason: undefined,
     });
   });
 

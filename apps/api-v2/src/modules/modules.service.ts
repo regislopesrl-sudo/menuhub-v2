@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
 import type {
   CompanyModuleAccess,
   ModuleAccessResult,
@@ -6,156 +7,164 @@ import type {
   ModuleKey,
   PlanKey,
 } from '@delivery-futuro/shared-types';
+import type { CompanySubscription, SubscriptionStatus } from '@prisma/client';
+import { computeEffectiveModule } from './domain/compute-effective-module';
+import { canUseModules } from '../subscriptions/domain/can-use-modules';
 
-interface CompanyProfile {
-  companyId: string;
-  planKey?: PlanKey;
-}
-
-interface CompanyModuleOverride {
-  companyId: string;
+interface ModuleStateRow {
   moduleKey: ModuleKey;
-  enabled: boolean;
+  includedInPlan: boolean;
+  overrideEnabled: boolean | null;
+  effectiveEnabled: boolean;
+  source: 'plan' | 'override';
+  adminOnly: boolean;
+  enabledByDefault: boolean;
 }
 
-interface ModuleAccessRepository {
-  listModules(): Promise<ModuleDefinition[]>;
-  getCompanyProfile(companyId: string): Promise<CompanyProfile>;
-  listCompanyModuleOverrides(companyId: string): Promise<CompanyModuleOverride[]>;
-  listPlanModules(planKey: PlanKey): Promise<ModuleKey[]>;
-  upsertCompanyModuleOverride(input: CompanyModuleOverride): Promise<CompanyModuleOverride>;
-}
-
-class InMemoryModuleAccessRepository implements ModuleAccessRepository {
-  private readonly modules: ModuleDefinition[] = [
-    { key: 'delivery', name: 'Delivery', enabledByDefault: true, adminOnly: false },
-    { key: 'pdv' as ModuleKey, name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
-    { key: 'kds' as ModuleKey, name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
-    { key: 'whatsapp', name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
-    { key: 'kiosk', name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
-    { key: 'waiter_app', name: 'App Garcom', enabledByDefault: false, adminOnly: false },
-    { key: 'admin_panel', name: 'Painel Admin', enabledByDefault: true, adminOnly: true },
-    { key: 'orders', name: 'Pedidos', enabledByDefault: true, adminOnly: false },
-    { key: 'menu', name: 'Cardapio', enabledByDefault: true, adminOnly: false },
-    { key: 'payments', name: 'Pagamentos', enabledByDefault: true, adminOnly: false },
-    { key: 'reports', name: 'Relatorios', enabledByDefault: false, adminOnly: true },
-    { key: 'stock', name: 'Estoque', enabledByDefault: false, adminOnly: true },
-    { key: 'fiscal', name: 'Fiscal', enabledByDefault: false, adminOnly: true },
-    { key: 'financial', name: 'Financeiro', enabledByDefault: false, adminOnly: true },
-  ];
-
-  private readonly companyProfiles = new Map<string, CompanyProfile>([
-    ['default-company', { companyId: 'default-company', planKey: 'basic' }],
-    ['company-pro', { companyId: 'company-pro', planKey: 'pro' }],
-    ['company-enterprise', { companyId: 'company-enterprise', planKey: 'enterprise' }],
-  ]);
-
-  private readonly planModules: Record<PlanKey, ModuleKey[]> = {
-    basic: ['delivery', 'pdv' as ModuleKey, 'kds' as ModuleKey, 'orders', 'menu', 'payments'],
-    pro: ['delivery', 'pdv' as ModuleKey, 'kds' as ModuleKey, 'orders', 'menu', 'payments', 'whatsapp', 'kiosk', 'waiter_app', 'reports'],
-    enterprise: [
-      'delivery',
-      'pdv' as ModuleKey,
-      'kds' as ModuleKey,
-      'orders',
-      'menu',
-      'payments',
-      'whatsapp',
-      'kiosk',
-      'waiter_app',
-      'admin_panel',
-      'reports',
-      'stock',
-      'fiscal',
-      'financial',
-    ],
+export interface CompanyModulesCommercialView {
+  company: {
+    id: string;
+    name: string;
+    legalName: string;
+    document: string | null;
+    slug: string | null;
+    status: string;
   };
-
-  private readonly companyOverrides: CompanyModuleOverride[] = [
-    { companyId: 'default-company', moduleKey: 'delivery', enabled: true },
-    { companyId: 'company-pro', moduleKey: 'whatsapp', enabled: false },
-  ];
-
-  async listModules(): Promise<ModuleDefinition[]> {
-    return this.modules;
-  }
-
-  async getCompanyProfile(companyId: string): Promise<CompanyProfile> {
-    return this.companyProfiles.get(companyId) ?? { companyId };
-  }
-
-  async listCompanyModuleOverrides(companyId: string): Promise<CompanyModuleOverride[]> {
-    return this.companyOverrides.filter((item) => item.companyId === companyId);
-  }
-
-  async listPlanModules(planKey: PlanKey): Promise<ModuleKey[]> {
-    return this.planModules[planKey] ?? [];
-  }
-
-  async upsertCompanyModuleOverride(input: CompanyModuleOverride): Promise<CompanyModuleOverride> {
-    const index = this.companyOverrides.findIndex(
-      (item) => item.companyId === input.companyId && item.moduleKey === input.moduleKey,
-    );
-    if (index >= 0) {
-      this.companyOverrides[index] = input;
-      return this.companyOverrides[index];
-    }
-    this.companyOverrides.push(input);
-    return input;
-  }
+  subscription: {
+    id: string;
+    status: SubscriptionStatus;
+    startsAt: string;
+    endsAt: string | null;
+    trialEndsAt: string | null;
+  } | null;
+  plan: {
+    id: string;
+    key: string;
+    name: string;
+  } | null;
+  modules: ModuleStateRow[];
 }
+
+const MODULE_CATALOG: ModuleDefinition[] = [
+  { key: 'delivery', name: 'Delivery', enabledByDefault: true, adminOnly: false },
+  { key: 'pdv', name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
+  { key: 'kds', name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
+  { key: 'whatsapp', name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
+  { key: 'kiosk', name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
+  { key: 'waiter_app', name: 'App Garcom', enabledByDefault: false, adminOnly: false },
+  { key: 'admin_panel', name: 'Painel Admin', enabledByDefault: true, adminOnly: true },
+  { key: 'orders', name: 'Pedidos', enabledByDefault: true, adminOnly: false },
+  { key: 'menu', name: 'Cardapio', enabledByDefault: true, adminOnly: false },
+  { key: 'payments', name: 'Pagamentos', enabledByDefault: true, adminOnly: false },
+  { key: 'reports', name: 'Relatorios', enabledByDefault: false, adminOnly: true },
+  { key: 'stock', name: 'Estoque', enabledByDefault: false, adminOnly: true },
+  { key: 'fiscal', name: 'Fiscal', enabledByDefault: false, adminOnly: true },
+  { key: 'financial', name: 'Financeiro', enabledByDefault: false, adminOnly: true },
+];
 
 @Injectable()
 export class ModulesService {
-  private readonly repository: ModuleAccessRepository = new InMemoryModuleAccessRepository();
+  constructor(private readonly prisma: PrismaService) {}
 
-  async listAvailableModules() {
-    return this.repository.listModules();
+  async listAvailableModules(): Promise<ModuleDefinition[]> {
+    return MODULE_CATALOG;
   }
 
   async listCurrentCompanyModules(companyId: string): Promise<CompanyModuleAccess[]> {
-    const modules = await this.repository.listModules();
-    const profile = await this.repository.getCompanyProfile(companyId);
-    const overrides = await this.repository.listCompanyModuleOverrides(companyId);
-    const overrideMap = new Map(overrides.map((o) => [o.moduleKey, o]));
-    const planModules = profile.planKey ? await this.repository.listPlanModules(profile.planKey) : [];
+    const commercialView = await this.getCompanyModulesView(companyId);
+    const subscriptionAllowed = canUseModules(commercialView.subscription?.status);
 
-    return modules.map((moduleDef) => {
-      const override = overrideMap.get(moduleDef.key);
-      if (override) {
-        return {
-          companyId,
-          moduleKey: moduleDef.key,
-          enabled: override.enabled,
-          adminOnly: moduleDef.adminOnly,
-          enabledByDefault: moduleDef.enabledByDefault,
-          source: 'company_override',
-          planKey: profile.planKey,
-        } satisfies CompanyModuleAccess;
-      }
+    return commercialView.modules.map((moduleItem) => ({
+      companyId,
+      moduleKey: moduleItem.moduleKey,
+      enabled: subscriptionAllowed ? moduleItem.effectiveEnabled : false,
+      adminOnly: moduleItem.adminOnly,
+      enabledByDefault: moduleItem.enabledByDefault,
+      source: moduleItem.source === 'override' ? 'company_override' : 'plan',
+      planKey: toPlanKey(commercialView.plan?.key),
+    }));
+  }
 
-      if (planModules.includes(moduleDef.key)) {
-        return {
-          companyId,
-          moduleKey: moduleDef.key,
-          enabled: true,
-          adminOnly: moduleDef.adminOnly,
-          enabledByDefault: moduleDef.enabledByDefault,
-          source: 'plan',
-          planKey: profile.planKey,
-        } satisfies CompanyModuleAccess;
-      }
+  async getCompanyModulesView(companyId: string): Promise<CompanyModulesCommercialView> {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        id: true,
+        name: true,
+        legalName: true,
+        document: true,
+        slug: true,
+        status: true,
+      },
+    });
+
+    if (!company) {
+      throw new NotFoundException(`Empresa '${companyId}' nao encontrada.`);
+    }
+
+    const subscription = await this.getCurrentSubscription(companyId);
+    const plan = subscription
+      ? await this.prisma.plan.findUnique({
+          where: { id: subscription.planId },
+          select: { id: true, key: true, name: true },
+        })
+      : null;
+
+    const planModules = subscription
+      ? await this.prisma.planModule.findMany({
+          where: { planId: subscription.planId, enabled: true },
+          select: { moduleKey: true },
+        })
+      : [];
+
+    const planSet = new Set(planModules.map((item) => item.moduleKey));
+    const overrides = await this.prisma.companyModuleOverride.findMany({
+      where: { companyId },
+      select: { moduleKey: true, enabled: true },
+    });
+    const overrideMap = new Map(overrides.map((item) => [item.moduleKey, item.enabled]));
+
+    const modules: ModuleStateRow[] = MODULE_CATALOG.map((moduleDef) => {
+      const includedInPlan = planSet.has(moduleDef.key);
+      const overrideEnabled = overrideMap.has(moduleDef.key) ? (overrideMap.get(moduleDef.key) ?? null) : null;
+      const baseEnabled = includedInPlan || moduleDef.enabledByDefault;
+      const effectiveEnabled = computeEffectiveModule({
+        planEnabled: baseEnabled,
+        override: overrideEnabled,
+      });
 
       return {
-        companyId,
         moduleKey: moduleDef.key,
-        enabled: moduleDef.enabledByDefault,
+        includedInPlan,
+        overrideEnabled,
+        effectiveEnabled,
+        source: overrideEnabled !== null ? 'override' : 'plan',
         adminOnly: moduleDef.adminOnly,
         enabledByDefault: moduleDef.enabledByDefault,
-        source: 'default',
-        planKey: profile.planKey,
-      } satisfies CompanyModuleAccess;
+      };
     });
+
+    return {
+      company: {
+        id: company.id,
+        name: company.name ?? company.legalName,
+        legalName: company.legalName,
+        document: company.document,
+        slug: company.slug,
+        status: company.status,
+      },
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            status: subscription.status,
+            startsAt: subscription.startsAt.toISOString(),
+            endsAt: subscription.endsAt ? subscription.endsAt.toISOString() : null,
+            trialEndsAt: subscription.trialEndsAt ? subscription.trialEndsAt.toISOString() : null,
+          }
+        : null,
+      plan,
+      modules,
+    };
   }
 
   async checkAccess(input: {
@@ -163,8 +172,7 @@ export class ModulesService {
     moduleKey: ModuleKey;
     isAdmin: boolean;
   }): Promise<ModuleAccessResult> {
-    const modules = await this.repository.listModules();
-    const moduleDef = modules.find((item) => item.key === input.moduleKey);
+    const moduleDef = MODULE_CATALOG.find((item) => item.key === input.moduleKey);
 
     if (!moduleDef) {
       return {
@@ -180,7 +188,7 @@ export class ModulesService {
 
     const companyModules = await this.listCurrentCompanyModules(input.companyId);
     const companyModule = companyModules.find((item) => item.moduleKey === input.moduleKey);
-    const enabled = companyModule?.enabled ?? moduleDef.enabledByDefault;
+    const enabled = companyModule?.enabled ?? false;
 
     if (!enabled) {
       return {
@@ -228,18 +236,45 @@ export class ModulesService {
   async updateCurrentCompanyModule(input: {
     companyId: string;
     moduleKey: ModuleKey;
-    enabled: boolean;
+    enabled: boolean | null;
+    reason?: string;
+    userId?: string;
   }): Promise<CompanyModuleAccess> {
-    const modules = await this.repository.listModules();
-    const moduleDef = modules.find((item) => item.key === input.moduleKey);
+    const moduleDef = MODULE_CATALOG.find((item) => item.key === input.moduleKey);
     if (!moduleDef) {
       throw new Error(`Modulo '${input.moduleKey}' nao cadastrado na V2.`);
     }
 
-    await this.repository.upsertCompanyModuleOverride({
-      companyId: input.companyId,
-      moduleKey: input.moduleKey,
-      enabled: input.enabled,
+    if (input.enabled === null) {
+      await this.prisma.companyModuleOverride.deleteMany({
+        where: { companyId: input.companyId, moduleKey: input.moduleKey },
+      });
+    } else {
+      await this.prisma.companyModuleOverride.upsert({
+        where: {
+          companyId_moduleKey: {
+            companyId: input.companyId,
+            moduleKey: input.moduleKey,
+          },
+        },
+        update: { enabled: input.enabled },
+        create: {
+          companyId: input.companyId,
+          moduleKey: input.moduleKey,
+          enabled: input.enabled,
+        },
+      });
+    }
+
+    await this.prisma.companyModuleAuditLog.create({
+      data: {
+        companyId: input.companyId,
+        moduleKey: input.moduleKey,
+        action: input.enabled === false ? 'DISABLE' : 'ENABLE',
+        source: input.enabled === null ? 'PLAN' : 'OVERRIDE',
+        userId: input.userId,
+        reason: input.reason,
+      },
     });
 
     const list = await this.listCurrentCompanyModules(input.companyId);
@@ -249,4 +284,25 @@ export class ModulesService {
     }
     return updated;
   }
+
+  private async getCurrentSubscription(companyId: string): Promise<CompanySubscription | null> {
+    return this.prisma.companySubscription.findFirst({
+      where: {
+        companyId,
+        status: {
+          in: ['ACTIVE', 'TRIAL', 'PAST_DUE', 'CANCELED', 'EXPIRED'],
+        },
+      },
+      orderBy: {
+        startsAt: 'desc',
+      },
+    });
+  }
+}
+
+function toPlanKey(value?: string): PlanKey | undefined {
+  if (value === 'basic' || value === 'starter' || value === 'pro' || value === 'enterprise') {
+    return value;
+  }
+  return undefined;
 }

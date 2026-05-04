@@ -15,7 +15,7 @@ export interface RouteDistanceProvider {
 }
 
 @Injectable()
-class InMemoryRouteDistanceProvider implements RouteDistanceProvider {
+export class InMemoryRouteDistanceProvider implements RouteDistanceProvider {
   async getDistance(
     originLat: number,
     originLng: number,
@@ -35,7 +35,7 @@ class InMemoryRouteDistanceProvider implements RouteDistanceProvider {
 @Injectable()
 export class RouteDistanceService {
   // Future provider adapters: OSRM, Google, Mapbox.
-  constructor(private readonly provider: RouteDistanceProvider = new InMemoryRouteDistanceProvider()) {}
+  constructor(private readonly provider: InMemoryRouteDistanceProvider = new InMemoryRouteDistanceProvider()) {}
 
   getDistance(
     originLat: number,

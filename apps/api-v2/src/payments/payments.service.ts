@@ -69,6 +69,12 @@ export class PaymentsService {
     const result = await this.provider.handleWebhook(payload);
     const normalizedStatus = this.normalizeStatus(result.status);
     if (normalizedStatus !== 'PENDING') {
+      const candidates = await this.orderRepository.findByProviderPaymentIdCandidates(result.providerPaymentId);
+      if (candidates.length > 1) {
+        throw new BadRequestException(
+          `Webhook ambiguo para providerPaymentId '${result.providerPaymentId}'.`,
+        );
+      }
       const order = await this.orderRepository.findByProviderPaymentId(result.providerPaymentId);
       if (!order) {
         throw new NotFoundException(

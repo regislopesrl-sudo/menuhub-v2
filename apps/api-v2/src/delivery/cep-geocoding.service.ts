@@ -20,7 +20,7 @@ export interface CepGeocodingProvider {
 }
 
 @Injectable()
-class InMemoryCepGeocodingProvider implements CepGeocodingProvider {
+export class InMemoryCepGeocodingProvider implements CepGeocodingProvider {
   private readonly fixtures: Record<string, GeocodedAddress> = {
     '01001000': {
       cep: '01001000',
