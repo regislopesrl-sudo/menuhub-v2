@@ -8,8 +8,11 @@ import { PaymentsModule } from './payments/payments.module';
 import { KdsModule } from './kds/kds.module';
 import { PdvModule } from './pdv/pdv.module';
 import { DeveloperModule } from './developer/developer.module';
+import { HealthController } from './health.controller';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
-  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule],
+  imports: [ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule, BillingModule],
+  controllers: [HealthController],
 })
 export class AppModule {}

@@ -14,6 +14,7 @@ describe('PaymentsService webhook', () => {
       handleWebhook: jest.fn(),
     };
     const orderRepository = overrides?.orderRepository ?? {
+      findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
       findByProviderPaymentId: jest.fn(),
       applyWebhookPaymentUpdate: jest.fn(),
       findByProviderPaymentIdForCompany: jest.fn(),
@@ -39,6 +40,7 @@ describe('PaymentsService webhook', () => {
   it('endpoint retorna status por providerPaymentId', async () => {
     const { service } = build({
       orderRepository: {
+        findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
         findByProviderPaymentId: jest.fn(),
         applyWebhookPaymentUpdate: jest.fn(),
         findByProviderPaymentIdForCompany: jest.fn().mockResolvedValue({
@@ -67,6 +69,7 @@ describe('PaymentsService webhook', () => {
 
   it('endpoint bloqueia pedido de outra empresa', async () => {
     const repo = {
+      findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
       findByProviderPaymentId: jest.fn(),
       applyWebhookPaymentUpdate: jest.fn(),
       findByProviderPaymentIdForCompany: jest.fn().mockResolvedValue(null),
@@ -135,6 +138,7 @@ describe('PaymentsService webhook', () => {
         }),
       },
       orderRepository: {
+        findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
         findByProviderPaymentId: jest.fn().mockResolvedValue({
           id: 'ord_1',
           status: 'PENDING_CONFIRMATION',
@@ -182,6 +186,7 @@ describe('PaymentsService webhook', () => {
         }),
       },
       orderRepository: {
+        findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
         findByProviderPaymentId: jest.fn().mockResolvedValue({
           id: 'ord_2',
           status: 'PENDING_CONFIRMATION',
@@ -225,6 +230,7 @@ describe('PaymentsService webhook', () => {
         }),
       },
       orderRepository: {
+        findByProviderPaymentIdCandidates: jest.fn().mockResolvedValue([]),
         findByProviderPaymentId: jest.fn().mockResolvedValue(null),
         applyWebhookPaymentUpdate: jest.fn(),
       },

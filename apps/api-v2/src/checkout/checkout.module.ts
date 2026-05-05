@@ -6,12 +6,12 @@ import { MENU_PORT_TOKEN } from '../ports/menu.tokens';
 import { MenuPrismaPort } from '../ports/menu.prisma';
 import { PrismaService } from '../database/prisma.service';
 import type { MenuPort } from '@delivery-futuro/order-core';
-import { OrderPrismaRepository } from '../orders/order.prisma';
-import { OrdersEventsService } from '../orders/orders-events.service';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { CheckoutController } from './checkout.controller';
 import { PaymentsModule } from '../payments/payments.module';
 import { PdvModule } from '../pdv/pdv.module';
+import { OrdersModule } from '../orders/orders.module';
+import { ModulesModule } from '../modules/modules.module';
 
 export function selectMenuProvider(menuMock: MenuPortMock, menuPrisma: MenuPrismaPort): MenuPort {
   const provider = (process.env.MENU_PROVIDER ?? 'mock').toLowerCase();
@@ -19,7 +19,7 @@ export function selectMenuProvider(menuMock: MenuPortMock, menuPrisma: MenuPrism
 }
 
 @Module({
-  imports: [DeliveryModule, PaymentsModule, PdvModule],
+  imports: [DeliveryModule, PaymentsModule, PdvModule, OrdersModule, ModulesModule],
   controllers: [CheckoutController],
   providers: [
     CheckoutService,
@@ -27,8 +27,6 @@ export function selectMenuProvider(menuMock: MenuPortMock, menuPrisma: MenuPrism
     MenuPrismaPort,
     PaymentPortMock,
     PrismaService,
-    OrderPrismaRepository,
-    OrdersEventsService,
     {
       provide: MENU_PORT_TOKEN,
       inject: [MenuPortMock, MenuPrismaPort],

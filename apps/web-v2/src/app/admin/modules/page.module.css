@@ -18,6 +18,14 @@
   gap: 8px;
 }
 
+.ctaRow {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .title {
   margin: 0;
   font-size: 28px;

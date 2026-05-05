@@ -53,6 +53,12 @@ export default function AdminDashboardPage() {
       href: '/admin/modules',
       description: 'Area tecnica para habilitar/desabilitar modulos por empresa.',
     });
+    cards.push({
+      key: 'developer_companies',
+      title: 'Empresas SaaS',
+      href: '/developer/companies',
+      description: 'Cadastro de empresas e gestao comercial de assinatura.',
+    });
   }
 
   return (

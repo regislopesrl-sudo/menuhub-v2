@@ -419,6 +419,33 @@ enum AuthSecurityEventOutcome {
   BLOCKED
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAST_DUE
+  PAID
+  VOID
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 // ================= MODELS =================
 
 model User {
@@ -566,7 +593,11 @@ model AuthSecurityEvent {
 
 model Company {
   id        String   @id @default(uuid()) @map("id")
+  name      String?  @map("name")
   legalName String   @map("legal_name")
+  document  String?  @map("document")
+  slug      String?  @unique @map("slug")
+  status    CompanyStatus @default(ACTIVE) @map("status")
   tradeName String   @map("trade_name")
   cnpj      String?  @unique @map("cnpj")
   phone     String?  @map("phone")
@@ -595,8 +626,208 @@ model Company {
   fiscalDocuments   FiscalDocument[] @relation("CompanyFiscalDocuments")
   settings          CompanySetting[]
   reviews           Review[]
+  moduleOverrides   CompanyModuleOverride[]
+  moduleAuditLogs   CompanyModuleAuditLog[]
+  subscriptions     CompanySubscription[]
+  billingAccount    BillingAccount?
+  invoices          Invoice[]
 
   @@map("companies")
+}
+
+model Plan {
+  id          String   @id @default(uuid()) @map("id")
+  key         String   @unique @map("key")
+  name        String   @map("name")
+  description String?  @map("description")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  modules       PlanModule[]
+  subscriptions CompanySubscription[]
+
+  @@map("plans")
+}
+
+model PlanModule {
+  id          String   @id @default(uuid()) @map("id")
+  planId      String   @map("plan_id")
+  moduleKey   String   @map("module_key")
+  enabled     Boolean  @default(true) @map("enabled")
+  limits      Json?    @map("limits")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, moduleKey])
+  @@index([moduleKey])
+  @@map("plan_modules")
+}
+
+model CompanySubscription {
+  id          String             @id @default(uuid()) @map("id")
+  companyId   String             @map("company_id")
+  planId      String             @map("plan_id")
+  status      SubscriptionStatus @map("status")
+  startsAt    DateTime           @map("starts_at")
+  endsAt      DateTime?          @map("ends_at")
+  trialEndsAt DateTime?          @map("trial_ends_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+  statusEvents SubscriptionStatusEvent[]
+
+  @@index([companyId, status, startsAt])
+  @@index([planId])
+  @@map("company_subscriptions")
+}
+
+model SubscriptionStatusEvent {
+  id              String              @id @default(uuid()) @map("id")
+  subscriptionId  String              @map("subscription_id")
+  fromStatus      SubscriptionStatus? @map("from_status")
+  toStatus        SubscriptionStatus  @map("to_status")
+  reason          String?             @map("reason")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  subscription CompanySubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+  @@map("subscription_status_events")
+}
+
+model CompanyModuleOverride {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  moduleKey String   @map("module_key")
+  enabled   Boolean? @map("enabled")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, moduleKey])
+  @@index([moduleKey])
+  @@map("company_module_overrides")
+}
+
+model CompanyModuleAuditLog {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  moduleKey String   @map("module_key")
+  action    String   @map("action")
+  source    String   @map("source")
+  userId    String?  @map("user_id")
+  reason    String?  @map("reason")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([moduleKey, createdAt])
+  @@map("company_module_audit_logs")
+}
+
+model BillingAccount {
+  id           String   @id @default(uuid()) @map("id")
+  companyId    String   @unique @map("company_id")
+  billingEmail String   @map("billing_email")
+  document     String?  @map("document")
+  legalName    String?  @map("legal_name")
+  addressJson  Json?    @map("address_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("billing_accounts")
+}
+
+model Invoice {
+  id             String       @id @default(uuid()) @map("id")
+  companyId      String       @map("company_id")
+  subscriptionId String?      @map("subscription_id")
+  status         InvoiceStatus @default(OPEN) @map("status")
+  amountCents    Int          @map("amount_cents")
+  dueDate        DateTime     @map("due_date")
+  paidAt         DateTime?    @map("paid_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription CompanySubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  items        InvoiceItem[]
+  attempts     PaymentAttempt[]
+  statusEvents InvoiceStatusEvent[]
+
+  @@index([companyId, status, dueDate])
+  @@index([subscriptionId])
+  @@map("invoices")
+}
+
+model InvoiceStatusEvent {
+  id          String        @id @default(uuid()) @map("id")
+  invoiceId   String        @map("invoice_id")
+  fromStatus  InvoiceStatus? @map("from_status")
+  toStatus    InvoiceStatus @map("to_status")
+  reason      String?       @map("reason")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
+  @@map("invoice_status_events")
+}
+
+model InvoiceItem {
+  id              String   @id @default(uuid()) @map("id")
+  invoiceId       String   @map("invoice_id")
+  description     String   @map("description")
+  quantity        Int      @map("quantity")
+  unitAmountCents Int      @map("unit_amount_cents")
+  totalAmountCents Int     @map("total_amount_cents")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model PaymentAttempt {
+  id                String              @id @default(uuid()) @map("id")
+  invoiceId         String              @map("invoice_id")
+  provider          String              @map("provider")
+  providerPaymentId String?             @map("provider_payment_id")
+  status            PaymentAttemptStatus @default(PENDING) @map("status")
+  errorMessage      String?             @map("error_message")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, status])
+  @@index([provider, providerPaymentId])
+  @@map("payment_attempts")
+}
+
+model BillingWebhookEvent {
+  id          String   @id @default(uuid()) @map("id")
+  provider    String   @map("provider")
+  eventId     String   @map("event_id")
+  eventType   String   @map("event_type")
+  payloadJson Json     @map("payload_json")
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@index([provider, createdAt])
+  @@map("billing_webhook_events")
 }
 
 model Branch {
