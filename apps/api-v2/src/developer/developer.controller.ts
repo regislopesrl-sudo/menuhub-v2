@@ -73,11 +73,36 @@ export class DeveloperController {
         status: true,
       },
     });
+    const enriched = await Promise.all(
+      rows.map(async (item) => {
+        const subscription = await this.prisma.companySubscription.findFirst({
+          where: { companyId: item.id },
+          orderBy: [{ startsAt: 'desc' }],
+          include: { plan: true },
+        });
+        const overrideCount = await this.prisma.companyModuleOverride.count({
+          where: { companyId: item.id, enabled: { not: null } },
+        });
+        const companyModulesView = await this.modulesService.getCompanyModulesView(item.id);
+        const activeModules = companyModulesView.modules.filter((moduleItem) => moduleItem.effectiveEnabled).length;
+        const blockedModules = Math.max(companyModulesView.modules.length - activeModules, 0);
 
-    return rows.map((item) => ({
-      ...item,
-      status: item.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
-    }));
+        return {
+          ...item,
+          status: item.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
+          subscriptionStatus: subscription?.status ?? null,
+          planKey: subscription?.plan?.key ?? null,
+          planName: subscription?.plan?.name ?? null,
+          moduleStats: {
+            totalInPlan: activeModules,
+            blockedOrOff: blockedModules,
+            overrides: overrideCount,
+          },
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   @Post('companies')
@@ -189,54 +214,8 @@ export class DeveloperController {
 
   @Get('companies/:companyId/modules')
   @UseGuards(RequireDeveloperGuard)
-  async getCompanyModules(@Param('companyId') companyId: string) {
-    const [company, subscription, moduleAccess] = await Promise.all([
-      this.prisma.company.findUniqueOrThrow({
-        where: { id: companyId },
-        select: {
-          id: true,
-          name: true,
-          legalName: true,
-          document: true,
-          slug: true,
-          status: true,
-        },
-      }),
-      this.prisma.companySubscription.findFirst({
-        where: { companyId },
-        orderBy: [{ startsAt: 'desc' }],
-        include: { plan: true },
-      }),
-      this.modulesService.listCurrentCompanyModules(companyId),
-    ]);
-
-    return {
-      company: {
-        id: company.id,
-        name: company.name,
-        legalName: company.legalName,
-        document: company.document,
-        slug: company.slug,
-        status: company.status,
-      },
-      subscription: subscription ? this.mapSubscription(subscription) : null,
-      plan: subscription?.plan
-        ? {
-            id: subscription.plan.id,
-            key: subscription.plan.key,
-            name: subscription.plan.name,
-          }
-        : null,
-      modules: moduleAccess.map((item) => ({
-        moduleKey: item.moduleKey,
-        includedInPlan: item.source === 'plan' || item.source === 'company_override',
-        overrideEnabled: item.source === 'company_override' ? item.enabled : null,
-        effectiveEnabled: item.enabled,
-        source: item.source === 'company_override' ? 'override' : 'plan',
-        adminOnly: item.adminOnly,
-        enabledByDefault: item.enabledByDefault,
-      })),
-    };
+  getCompanyModules(@Param('companyId') companyId: string) {
+    return this.modulesService.getCompanyModulesView(companyId);
   }
 
   @Get('companies/:companyId/subscription')

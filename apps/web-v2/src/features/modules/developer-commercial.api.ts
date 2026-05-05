@@ -11,6 +11,14 @@ export type DeveloperCompany = {
   email: string | null;
   phone: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  subscriptionStatus: 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED' | null;
+  planKey: string | null;
+  planName: string | null;
+  moduleStats: {
+    totalInPlan: number;
+    blockedOrOff: number;
+    overrides: number;
+  };
 };
 
 export type PlanSummary = {

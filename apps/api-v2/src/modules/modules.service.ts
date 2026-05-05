@@ -8,21 +8,21 @@ import type {
   PlanKey,
 } from '@delivery-futuro/shared-types';
 
-const MODULE_META: Record<ModuleKey, { name: string; enabledByDefault: boolean; adminOnly: boolean }> = {
-  delivery: { name: 'Delivery', enabledByDefault: true, adminOnly: false },
-  pdv: { name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
-  kds: { name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
-  whatsapp: { name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
-  kiosk: { name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
-  waiter_app: { name: 'App Garcom', enabledByDefault: false, adminOnly: false },
-  admin_panel: { name: 'Painel Admin', enabledByDefault: true, adminOnly: true },
-  orders: { name: 'Pedidos', enabledByDefault: true, adminOnly: false },
-  menu: { name: 'Cardapio', enabledByDefault: true, adminOnly: false },
-  payments: { name: 'Pagamentos', enabledByDefault: true, adminOnly: false },
-  reports: { name: 'Relatorios', enabledByDefault: false, adminOnly: true },
-  stock: { name: 'Estoque', enabledByDefault: false, adminOnly: true },
-  fiscal: { name: 'Fiscal', enabledByDefault: false, adminOnly: true },
-  financial: { name: 'Financeiro', enabledByDefault: false, adminOnly: true },
+const MODULE_META: Record<ModuleKey, { name: string; description: string; enabledByDefault: boolean; adminOnly: boolean }> = {
+  delivery: { name: 'Delivery', description: 'Cardapio online e pedidos.', enabledByDefault: true, adminOnly: false },
+  pdv: { name: 'PDV/Balcao', description: 'Operacao de caixa e vendas presenciais.', enabledByDefault: true, adminOnly: true },
+  kds: { name: 'KDS Cozinha', description: 'Gestao de cozinha e preparo.', enabledByDefault: true, adminOnly: true },
+  whatsapp: { name: 'WhatsApp', description: 'Atendimento e notificacoes.', enabledByDefault: false, adminOnly: false },
+  kiosk: { name: 'Totem/Kiosk', description: 'Autoatendimento em totem.', enabledByDefault: false, adminOnly: false },
+  waiter_app: { name: 'App Garcom', description: 'Fluxo de garcom digital.', enabledByDefault: false, adminOnly: false },
+  admin_panel: { name: 'Painel Admin', description: 'Acesso ao painel administrativo.', enabledByDefault: true, adminOnly: true },
+  orders: { name: 'Pedidos', description: 'Gestao de pedidos e status.', enabledByDefault: true, adminOnly: false },
+  menu: { name: 'Cardapio', description: 'Gestao de itens e categorias.', enabledByDefault: true, adminOnly: false },
+  payments: { name: 'Pagamentos', description: 'Processamento de pagamentos.', enabledByDefault: true, adminOnly: false },
+  reports: { name: 'Relatorios', description: 'Indicadores e performance.', enabledByDefault: false, adminOnly: true },
+  stock: { name: 'Estoque', description: 'Controle de estoque.', enabledByDefault: false, adminOnly: true },
+  fiscal: { name: 'Fiscal', description: 'Rotinas fiscais.', enabledByDefault: false, adminOnly: true },
+  financial: { name: 'Financeiro', description: 'Fluxo financeiro.', enabledByDefault: false, adminOnly: true },
 };
 
 @Injectable()
@@ -378,22 +378,60 @@ export class ModulesService {
   }
 
   async getCompanyModulesView(companyId: string) {
-    const subscription = await this.resolveActiveSubscription(companyId);
-    const modules = await this.listCurrentCompanyModules(companyId);
+    const subscription = await this.prisma.companySubscription.findFirst({
+      where: { companyId },
+      orderBy: [{ startsAt: 'desc' }],
+      include: { plan: true },
+    });
+    const hasActiveSubscription = subscription?.status === 'ACTIVE' || subscription?.status === 'TRIAL';
+    const planModuleRows = subscription
+      ? await this.prisma.planModule.findMany({
+          where: {
+            planId: subscription.planId,
+            enabled: true,
+          },
+        })
+      : [];
+    const planSet = new Set(planModuleRows.map((item) => item.moduleKey as ModuleKey));
+    const overrideRows = await this.prisma.companyModuleOverride.findMany({
+      where: { companyId },
+    });
+    const overrideMap = new Map(overrideRows.map((item) => [item.moduleKey as ModuleKey, item.enabled]));
+    const moduleDefs = await this.listAvailableModules();
+
     return {
-      companyId,
+      company: await this.prisma.company.findUniqueOrThrow({
+        where: { id: companyId },
+        select: { id: true, name: true, legalName: true, document: true, slug: true, status: true },
+      }),
       subscription: subscription
         ? {
             id: subscription.id,
             status: subscription.status,
             planId: subscription.planId,
+            startsAt: subscription.startsAt.toISOString(),
+            endsAt: subscription.endsAt?.toISOString() ?? null,
+            trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
           }
         : null,
-      modules: modules.map((item) => ({
-        moduleKey: item.moduleKey,
+      plan: subscription?.plan ? { id: subscription.plan.id, key: subscription.plan.key, name: subscription.plan.name } : null,
+      modules: moduleDefs.map((item) => ({
+        moduleKey: item.key,
+        key: item.key,
+        label: item.name,
+        description: MODULE_META[item.key].description,
+        includedInPlan: planSet.has(item.key),
+        overrideEnabled: overrideMap.get(item.key) ?? null,
+        effectiveEnabled: hasActiveSubscription
+          ? (overrideMap.get(item.key) ?? null) !== null
+            ? Boolean(overrideMap.get(item.key))
+            : planSet.has(item.key)
+          : false,
+        source: (overrideMap.get(item.key) ?? null) !== null ? 'override' : 'plan',
+        planKey: subscription?.plan?.key ?? null,
+        blockedReason: hasActiveSubscription ? null : 'ASSINATURA_INATIVA',
+        adminOnly: item.adminOnly,
         enabledByDefault: item.enabledByDefault,
-        includedInPlan: item.source === 'plan' || item.source === 'company_override',
-        overrideEnabled: item.source === 'company_override' ? item.enabled : null,
       })),
     };
   }

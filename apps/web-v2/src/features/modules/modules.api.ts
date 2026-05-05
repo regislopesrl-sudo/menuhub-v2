@@ -40,10 +40,15 @@ export interface CompanyModulesCommercialView {
   } | null;
   modules: Array<{
     moduleKey: string;
+    key: string;
+    label: string;
+    description: string;
     includedInPlan: boolean;
     overrideEnabled: boolean | null;
     effectiveEnabled: boolean;
     source: 'plan' | 'override';
+    planKey: string | null;
+    blockedReason: string | null;
     adminOnly: boolean;
     enabledByDefault: boolean;
   }>;
