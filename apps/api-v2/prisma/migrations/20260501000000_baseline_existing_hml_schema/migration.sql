@@ -1,0 +1,3 @@
+-- Baseline for the pre-existing HML schema.
+-- This migration is intentionally empty so Prisma can track incremental
+-- migrations on a database that was created before migration history existed.

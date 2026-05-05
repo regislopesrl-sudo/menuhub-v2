@@ -1,41 +1,58 @@
+﻿import { BadRequestException } from '@nestjs/common';
 import { ModulesService } from './modules.service';
 
 describe('ModulesService', () => {
-  const service = new ModulesService();
+  it('plano controla modulos e bloqueia modulo fora do plano', async () => {
+    const prismaMock = {
+      plan: { findMany: jest.fn() },
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          planId: 'plan_basic',
+          plan: { key: 'basic' },
+        }),
+      },
+      companyModuleOverride: { findMany: jest.fn().mockResolvedValue([]) },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    } as any;
 
-  it('enabledByDefault permite quando nao ha override da empresa', async () => {
-    const result = await service.checkAccess({
-      companyId: 'company-sem-plano',
-      moduleKey: 'orders',
-      isAdmin: false,
-    });
-
+    const service = new ModulesService(prismaMock);
+    const result = await service.checkAccess({ companyId: 'c1', moduleKey: 'orders', isAdmin: false });
     expect(result.allowed).toBe(true);
-    expect(result.reason).toBe('ALLOWED_DEFAULT');
-    expect(result.source).toBe('default');
+
+    await expect(
+      service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'whatsapp', enabled: true }),
+    ).rejects.toThrow(BadRequestException);
   });
 
-  it('override da empresa tem prioridade sobre plano/default', async () => {
-    const result = await service.checkAccess({
-      companyId: 'company-pro',
-      moduleKey: 'whatsapp',
-      isAdmin: false,
-    });
+  it('override developer funciona para desabilitar modulo do plano', async () => {
+    const prismaMock = {
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          planId: 'plan_pro',
+          plan: { key: 'pro' },
+        }),
+      },
+      companyModuleOverride: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders', enabled: false }]),
+        upsert: jest.fn(),
+      },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
+        findFirst: jest.fn().mockResolvedValue({ id: 'pm1' }),
+      },
+      plan: { findMany: jest.fn() },
+    } as any;
 
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toBe('BLOCKED_COMPANY_OVERRIDE');
-    expect(result.source).toBe('company_override');
-  });
+    const service = new ModulesService(prismaMock);
+    const access = await service.checkAccess({ companyId: 'c1', moduleKey: 'orders', isAdmin: true });
+    expect(access.allowed).toBe(false);
+    expect(access.reason).toBe('BLOCKED_COMPANY_OVERRIDE');
 
-  it('atualiza override do modulo da empresa atual', async () => {
-    const updated = await service.updateCurrentCompanyModule({
-      companyId: 'default-company',
-      moduleKey: 'delivery',
-      enabled: false,
-    });
-
-    expect(updated.moduleKey).toBe('delivery');
-    expect(updated.enabled).toBe(false);
-    expect(updated.source).toBe('company_override');
+    prismaMock.companyModuleOverride.findMany.mockResolvedValue([{ moduleKey: 'orders', enabled: true }]);
+    const updated = await service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'orders', enabled: true });
+    expect(updated.enabled).toBe(true);
   });
 });

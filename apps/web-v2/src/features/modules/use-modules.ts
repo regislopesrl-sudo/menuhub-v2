@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { listCurrentCompanyModules, type AppUserRole, type CompanyModuleAccess } from './modules.api';
 
 export interface UseModulesInput {
-  companyId: string;
+  companyId?: string;
   branchId?: string;
   userRole?: AppUserRole;
 }
@@ -20,7 +20,11 @@ export function useModules(input: UseModulesInput) {
       setLoading(true);
       setError(null);
       try {
-        const data = await listCurrentCompanyModules(input);
+        const data = await listCurrentCompanyModules({
+          companyId: input.companyId ?? 'company-demo',
+          branchId: input.branchId,
+          userRole: input.userRole,
+        });
         if (!active) return;
         setModules(data);
       } catch (err) {

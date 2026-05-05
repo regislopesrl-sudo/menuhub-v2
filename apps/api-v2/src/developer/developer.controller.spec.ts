@@ -1,25 +1,25 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { DeveloperController } from './developer.controller';
 
 describe('DeveloperController', () => {
-  const OLD_ENV = process.env.DEVELOPER_ACCESS_CODE;
-  const controller = new DeveloperController();
+  const modulesService = {
+    listPlans: jest.fn(),
+    createPlan: jest.fn(),
+    updatePlan: jest.fn(),
+    listCurrentCompanyModules: jest.fn(),
+    updateCompanyModuleOverride: jest.fn(),
+  };
+  const authService = {
+    loginWithDeveloperCode: jest.fn(),
+  };
 
-  beforeEach(() => {
-    process.env.DEVELOPER_ACCESS_CODE = 'my-dev-code';
-  });
+  const controller = new DeveloperController(modulesService as any, authService as any);
 
-  afterAll(() => {
-    process.env.DEVELOPER_ACCESS_CODE = OLD_ENV;
-  });
+  it('login tecnico usa codigo e retorna sessao', async () => {
+    authService.loginWithDeveloperCode.mockResolvedValue({ accessToken: 'a', refreshToken: 'r', expiresInSec: 900 });
 
-  it('login com codigo valido funciona', () => {
-    const result = controller.login({ accessCode: 'my-dev-code' });
-    expect(result.role).toBe('developer');
-    expect(typeof result.expiresAt).toBe('string');
-  });
+    const result = await controller.login({ code: 'abc123' });
 
-  it('login invalido bloqueia', () => {
-    expect(() => controller.login({ accessCode: 'wrong-code' })).toThrow(UnauthorizedException);
+    expect(authService.loginWithDeveloperCode).toHaveBeenCalledWith({ code: 'abc123' });
+    expect(result).toEqual({ accessToken: 'a', refreshToken: 'r', expiresInSec: 900 });
   });
 });

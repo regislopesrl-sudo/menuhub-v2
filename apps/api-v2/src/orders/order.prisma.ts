@@ -183,6 +183,25 @@ export class OrderPrismaRepository {
     });
   }
 
+  async findByProviderPaymentIdCandidates(providerPaymentId: string) {
+    return this.prisma.order.findMany({
+      where: {
+        internalNotes: {
+          contains: `"providerPaymentId":"${providerPaymentId}"`,
+        },
+      },
+      select: {
+        id: true,
+        companyId: true,
+        branchId: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 2,
+    });
+  }
+
   async findByProviderPaymentIdForCompany(providerPaymentId: string, ctx: RequestContext) {
     return this.prisma.order.findFirst({
       where: {
