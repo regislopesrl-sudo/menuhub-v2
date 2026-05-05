@@ -1,0 +1,95 @@
+.pageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.headerText {
+  display: grid;
+  gap: 6px;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  margin: 0;
+  color: #64748b;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summaryCard {
+  padding: 12px;
+  border: 1px solid #dbe4f6;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.summaryLabel {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.summaryValue {
+  margin: 6px 0 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sectionCard {
+  padding: 14px;
+  border: 1px solid #dbe4f6;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.stateCard {
+  padding: 12px;
+  border: 1px dashed #c7d2fe;
+  color: #475569;
+  background: #f8faff;
+}
+
+.errorCard {
+  padding: 12px;
+  border: 1px solid #fecaca;
+  color: #9f1239;
+  background: #fff1f2;
+}
+
+.actionBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
