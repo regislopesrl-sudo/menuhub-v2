@@ -7,7 +7,7 @@ import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PremiumErrorState, PremiumPageHeader } from '@/components/premium';
 import { saveAuthSession } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api-fetch';
 import { readRoleFromAccessToken } from '@/lib/auth-claims';
@@ -72,15 +72,15 @@ export default function DeveloperLoginPage() {
 
   return (
     <main className={styles.page}>
-      <PageHeader
-        title="Acesso Tecnico"
-        subtitle="Area restrita ao desenvolvedor da plataforma"
-        right={<Badge tone="warning">Developer Only</Badge>}
+      <PremiumPageHeader
+        title="Acesso Técnico"
+        subtitle="Área restrita ao desenvolvedor da plataforma."
+        actions={<Badge tone="warning">Developer Only</Badge>}
       />
 
       <Card className={styles.card}>
         <h1 className={styles.title}>Entrar como desenvolvedor</h1>
-        <p className={styles.sub}>Area restrita para acesso tecnico do backoffice comercial.</p>
+        <p className={styles.sub}>Área restrita para acesso técnico do backoffice comercial.</p>
 
         <div className={styles.tabs}>
           <button type="button" className={mode === 'technical' ? styles.tabActive : styles.tab} onClick={() => setMode('technical')}>
@@ -108,7 +108,7 @@ export default function DeveloperLoginPage() {
             />
           )}
 
-          {error ? <div className={styles.error}>{error}</div> : null}
+          {error ? <PremiumErrorState message={error} /> : null}
 
           <Button type="submit" disabled={loading}>
             {loading ? 'Validando...' : mode === 'technical' ? 'Entrar com email e senha' : 'Entrar com codigo'}

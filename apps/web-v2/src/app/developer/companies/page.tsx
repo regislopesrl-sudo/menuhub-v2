@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader } from '@/components/premium';
 import {
   createDeveloperCompany,
   listDeveloperCompanies,
@@ -81,15 +82,15 @@ export default function DeveloperCompaniesPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Empresas</h1>
-          <p className={styles.subtitle}>Gerencie clientes, planos, modulos e cobranca.</p>
-        </div>
-        <Button variant="primary" onClick={() => void createCompany()} disabled={creating}>
-          {creating ? 'Criando...' : 'Nova empresa'}
-        </Button>
-      </section>
+      <PremiumPageHeader
+        title="Empresas"
+        subtitle="Gerencie clientes, planos, módulos e cobrança."
+        actions={
+          <Button variant="primary" onClick={() => void createCompany()} disabled={creating}>
+            {creating ? 'Criando...' : 'Nova empresa'}
+          </Button>
+        }
+      />
 
       <Card className={styles.formCard}>
         <Input placeholder="Nome fantasia" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
@@ -108,11 +109,11 @@ export default function DeveloperCompaniesPage() {
         </div>
       </Card>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
       {loading ? <Card className={styles.stateCard}>Carregando empresas...</Card> : null}
-      {!loading && items.length === 0 ? <Card className={styles.stateCard}>Nenhuma empresa cadastrada ainda.</Card> : null}
+      {!loading && items.length === 0 ? <PremiumEmptyState title="Nenhuma empresa cadastrada" description="Crie uma nova empresa para iniciar o fluxo comercial SaaS." /> : null}
       {!loading && items.length > 0 && filteredItems.length === 0 ? (
-        <Card className={styles.stateCard}>Nenhuma empresa encontrada para esse filtro.</Card>
+        <PremiumEmptyState title="Sem resultados" description="Ajuste a busca ou o filtro de status para encontrar empresas." />
       ) : null}
 
       <section className={styles.grid}>
@@ -125,12 +126,13 @@ export default function DeveloperCompaniesPage() {
             <div className={styles.metaList}>
               <p><span>Slug:</span> {item.slug ?? '-'}</p>
               <p><span>E-mail:</span> {item.email ?? '-'}</p>
-              <p><span>Plano/Assinatura:</span> Consulte em Assinatura</p>
-              <p><span>Modulos:</span> Gerenciaveis por override comercial</p>
+              <p><span>Plano:</span> {item.planName ?? item.planKey ?? 'Sem plano'}</p>
+              <p><span>Assinatura:</span> {item.subscriptionStatus ?? 'SEM_ASSINATURA'}</p>
+              <p><span>Módulos:</span> {item.moduleStats.totalInPlan} ativos · {item.moduleStats.blockedOrOff} bloqueados · {item.moduleStats.overrides} ajustes</p>
             </div>
             <div className={styles.itemActions}>
               <div className={styles.primaryActions}>
-                <Link href={`/companies/${item.id}/subscription`}>
+                <Link href={`/developer/companies/${item.id}/subscription`}>
                   <Button variant="primary">Assinatura</Button>
                 </Link>
                 <Link href={`/developer/companies/${item.id}/modules`}>
