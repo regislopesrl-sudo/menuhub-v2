@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import styles from './top-nav.module.css';
 import { useModules } from '@/features/modules/use-modules';
 import { getAuthSession } from '@/lib/auth-session';
@@ -9,20 +10,30 @@ import { logoutCurrentSession } from '@/lib/auth-api';
 
 export function TopNav() {
   const pathname = usePathname();
-  const session = getAuthSession();
+  const [mounted, setMounted] = useState(false);
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
   const modules = useModules({ companyId, branchId, userRole: 'admin' });
 
-  const links = [
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const session = mounted ? getAuthSession() : null;
+
+  const links = useMemo(
+    () =>
+      [
     { href: '/', label: 'Login' },
     { href: '/admin', label: 'Painel' },
-    modules.isEnabled('orders') ? { href: '/admin/orders', label: 'Pedidos' } : null,
-    modules.isEnabled('kds') ? { href: '/admin/kds', label: 'KDS' } : null,
-    modules.isEnabled('pdv') ? { href: '/admin/pdv', label: 'PDV' } : null,
-    modules.isEnabled('menu') ? { href: '/admin/menu', label: 'Cardapio' } : null,
-    modules.isEnabled('delivery') ? { href: '/delivery', label: 'Delivery' } : null,
-  ].filter(Boolean) as Array<{ href: string; label: string }>;
+    mounted && modules.isEnabled('orders') ? { href: '/admin/orders', label: 'Pedidos' } : null,
+    mounted && modules.isEnabled('kds') ? { href: '/admin/kds', label: 'KDS' } : null,
+    mounted && modules.isEnabled('pdv') ? { href: '/admin/pdv', label: 'PDV' } : null,
+    mounted && modules.isEnabled('menu') ? { href: '/admin/menu', label: 'Cardapio' } : null,
+    mounted && modules.isEnabled('delivery') ? { href: '/delivery', label: 'Delivery' } : null,
+      ].filter(Boolean) as Array<{ href: string; label: string }>,
+    [mounted, modules],
+  );
 
   return (
     <header className={styles.wrap}>
