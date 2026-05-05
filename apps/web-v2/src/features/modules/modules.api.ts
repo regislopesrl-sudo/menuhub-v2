@@ -111,7 +111,7 @@ export async function getCompanyModulesCommercialView(input: {
   headers: { companyId: string; branchId?: string; userRole?: AppUserRole };
   targetCompanyId: string;
 }) {
-  const res = await fetch(`${API_BASE}/v2/companies/${input.targetCompanyId}/modules`, {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${input.targetCompanyId}/modules`, {
     method: 'GET',
     headers: buildHeaders(input.headers),
     cache: 'no-store',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -19,7 +20,8 @@ const PLAN_OPTIONS = [
   { id: 'enterprise', label: 'Enterprise' },
 ];
 
-export default function CompanySubscriptionPage({ params }: { params: { id: string } }) {
+export default function CompanySubscriptionPage() {
+  const params = useParams<{ id: string }>();
   const companyId = params.id;
   const [current, setCurrent] = useState<CompanySubscription | null>(null);
   const [loading, setLoading] = useState(true);

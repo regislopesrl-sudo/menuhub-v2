@@ -12,6 +12,7 @@ import { DeveloperModule } from './developer/developer.module';
 import { AdminMenuModule } from './admin-menu/admin-menu.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { SettingsModule } from './settings/settings.module';
+import { BillingModule } from './billing/billing.module';
 import { HealthController } from './health.controller';
 import { AuthModuleV2 } from './auth/auth.module';
 import { AuthGuardV2 } from './common/auth.guard';
@@ -20,7 +21,22 @@ import { RequireAdminGuard } from './common/require-admin.guard';
 import { RequireDeveloperGuard } from './common/require-developer.guard';
 
 @Module({
-  imports: [AuthModuleV2, ModulesModule, ChannelsModule, OrdersModule, MenuModule, DeliveryModule, PaymentsModule, KdsModule, PdvModule, DeveloperModule, AdminMenuModule, AdminUsersModule, SettingsModule],
+  imports: [
+    AuthModuleV2,
+    ModulesModule,
+    ChannelsModule,
+    OrdersModule,
+    MenuModule,
+    DeliveryModule,
+    PaymentsModule,
+    KdsModule,
+    PdvModule,
+    DeveloperModule,
+    AdminMenuModule,
+    AdminUsersModule,
+    SettingsModule,
+    BillingModule,
+  ],
   controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuardV2 },

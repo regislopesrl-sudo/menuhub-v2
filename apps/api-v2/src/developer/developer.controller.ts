@@ -189,8 +189,138 @@ export class DeveloperController {
 
   @Get('companies/:companyId/modules')
   @UseGuards(RequireDeveloperGuard)
-  getCompanyModules(@Param('companyId') companyId: string) {
-    return this.modulesService.listCurrentCompanyModules(companyId);
+  async getCompanyModules(@Param('companyId') companyId: string) {
+    const [company, subscription, moduleAccess] = await Promise.all([
+      this.prisma.company.findUniqueOrThrow({
+        where: { id: companyId },
+        select: {
+          id: true,
+          name: true,
+          legalName: true,
+          document: true,
+          slug: true,
+          status: true,
+        },
+      }),
+      this.prisma.companySubscription.findFirst({
+        where: { companyId },
+        orderBy: [{ startsAt: 'desc' }],
+        include: { plan: true },
+      }),
+      this.modulesService.listCurrentCompanyModules(companyId),
+    ]);
+
+    return {
+      company: {
+        id: company.id,
+        name: company.name,
+        legalName: company.legalName,
+        document: company.document,
+        slug: company.slug,
+        status: company.status,
+      },
+      subscription: subscription ? this.mapSubscription(subscription) : null,
+      plan: subscription?.plan
+        ? {
+            id: subscription.plan.id,
+            key: subscription.plan.key,
+            name: subscription.plan.name,
+          }
+        : null,
+      modules: moduleAccess.map((item) => ({
+        moduleKey: item.moduleKey,
+        includedInPlan: item.source === 'plan' || item.source === 'company_override',
+        overrideEnabled: item.source === 'company_override' ? item.enabled : null,
+        effectiveEnabled: item.enabled,
+        source: item.source === 'company_override' ? 'override' : 'plan',
+        adminOnly: item.adminOnly,
+        enabledByDefault: item.enabledByDefault,
+      })),
+    };
+  }
+
+  @Get('companies/:companyId/subscription')
+  @UseGuards(RequireDeveloperGuard)
+  async getCompanySubscription(@Param('companyId') companyId: string) {
+    const subscription = await this.prisma.companySubscription.findFirst({
+      where: { companyId },
+      orderBy: [{ startsAt: 'desc' }],
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      return null;
+    }
+
+    return this.mapSubscription(subscription);
+  }
+
+  @Post('companies/:companyId/subscription')
+  @UseGuards(RequireDeveloperGuard)
+  async createCompanySubscription(
+    @Param('companyId') companyId: string,
+    @Body()
+    body: {
+      planId: string;
+      status: 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+      startsAt: string;
+      endsAt?: string;
+      trialEndsAt?: string;
+    },
+  ) {
+    const planId = String(body?.planId ?? '').trim();
+    if (!planId) {
+      throw new BadRequestException('planId obrigatorio.');
+    }
+
+    const created = await this.prisma.companySubscription.create({
+      data: {
+        companyId,
+        planId,
+        status: body.status,
+        startsAt: new Date(body.startsAt),
+        endsAt: body.endsAt ? new Date(body.endsAt) : null,
+        trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null,
+      },
+      include: { plan: true },
+    });
+
+    return this.mapSubscription(created);
+  }
+
+  @Patch('companies/:companyId/subscription/:subscriptionId')
+  @UseGuards(RequireDeveloperGuard)
+  async patchCompanySubscription(
+    @Param('companyId') companyId: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @Body()
+    body: Partial<{
+      status: 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+      endsAt: string | null;
+      trialEndsAt: string | null;
+    }>,
+  ) {
+    const current = await this.prisma.companySubscription.findUnique({
+      where: { id: subscriptionId },
+    });
+
+    if (!current || current.companyId !== companyId) {
+      throw new BadRequestException('Assinatura nao encontrada para a empresa.');
+    }
+
+    const updated = await this.prisma.companySubscription.update({
+      where: { id: subscriptionId },
+      data: {
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        ...(body.endsAt !== undefined ? { endsAt: body.endsAt ? new Date(body.endsAt) : null } : {}),
+        ...(body.trialEndsAt !== undefined
+          ? { trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null }
+          : {}),
+      },
+      include: { plan: true },
+    });
+
+    return this.mapSubscription(updated);
   }
 
   @Patch('companies/:companyId/modules/:moduleKey')
@@ -205,5 +335,31 @@ export class DeveloperController {
       moduleKey,
       enabled: Boolean(body?.enabled),
     });
+  }
+
+  private mapSubscription(subscription: {
+    id: string;
+    companyId: string;
+    planId: string;
+    status: 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+    startsAt: Date;
+    endsAt: Date | null;
+    trialEndsAt: Date | null;
+    plan: { id: string; key: string; name: string };
+  }) {
+    return {
+      id: subscription.id,
+      companyId: subscription.companyId,
+      planId: subscription.planId,
+      status: subscription.status,
+      startsAt: subscription.startsAt.toISOString(),
+      endsAt: subscription.endsAt?.toISOString() ?? null,
+      trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
+      plan: {
+        id: subscription.plan.id,
+        key: subscription.plan.key,
+        name: subscription.plan.name,
+      },
+    };
   }
 }

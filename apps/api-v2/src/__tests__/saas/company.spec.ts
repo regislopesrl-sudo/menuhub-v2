@@ -12,7 +12,8 @@ describe('SaaS Company Flow', () => {
     const authService = {
       loginWithDeveloperCode: jest.fn().mockResolvedValue({ accessToken: 'token-1' }),
     };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {};
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
 
     const result = await controller.login({ code: 'dev_local_access' });
 
@@ -31,7 +32,8 @@ describe('SaaS Company Flow', () => {
     const authService = {
       loginWithDeveloperCode: jest.fn(),
     };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {};
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
 
     const created = await controller.createPlan({
       key: 'basic',
