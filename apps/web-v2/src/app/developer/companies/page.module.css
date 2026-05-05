@@ -1,47 +1,147 @@
-.page {
+﻿.page {
   min-height: 100vh;
   display: grid;
-  gap: 12px;
+  gap: 14px;
   padding: 24px 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: #64748b;
 }
 
 .formCard {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 12px;
+  border: 1px solid #dbe4f6;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
 }
 
-.item {
+.filterCard {
   display: grid;
-  gap: 8px;
-}
-
-.row {
-  display: flex;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  padding: 12px;
+  border: 1px solid #dbe4f6;
 }
 
-.quickLinks {
+.filterActions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.item {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dbe4f6;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+.itemTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.companyName {
+  font-size: 1.1rem;
+  line-height: 1.25;
+}
+
+.metaList {
+  display: grid;
+  gap: 6px;
+}
+
+.metaList p {
+  margin: 0;
+  color: #475569;
+}
+
+.metaList span {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.itemActions {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.primaryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dangerAction {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stateCard {
+  color: #475569;
+  border: 1px dashed #c7d2fe;
+}
+
 .error {
+  margin: 0;
   color: #9f1239;
+  font-weight: 600;
+}
+
+@media (max-width: 1280px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formCard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
   .formCard,
+  .filterCard,
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .filterActions,
+  .primaryActions,
+  .dangerAction {
+    justify-content: flex-start;
   }
 }
