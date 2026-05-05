@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import {
   getCompanyModulesCommercialView,
   patchCurrentCompanyModule,
@@ -98,6 +99,12 @@ export default function AdminModulesPage() {
       return av - bv;
     });
   }, [view]);
+  const summary = useMemo(() => {
+    const total = cards.length;
+    const active = cards.filter((item) => item.effectiveEnabled).length;
+    const overrides = cards.filter((item) => item.overrideEnabled !== null).length;
+    return { total, active, blocked: total - active, overrides };
+  }, [cards]);
 
   const toggle = async (moduleKey: string, overrideEnabled: boolean | null) => {
     setSavingKey(moduleKey);
@@ -148,24 +155,31 @@ export default function AdminModulesPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.topbar}>
-        <div>
-          <h1 className={styles.title}>Gestao de Modulos</h1>
-          <p className={styles.sub}>Controle de habilitacao por empresa com base em plano + override.</p>
-        </div>
-        <div className={styles.actions}>
-          <Badge tone="warning">Area Tecnica</Badge>
-          <Button onClick={() => void load()}>Atualizar</Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              clearDeveloperSession();
-              router.push('/developer-login');
-            }}
-          >
-            Sair
-          </Button>
-        </div>
+      <PremiumPageHeader
+        title="Gestão de módulos"
+        subtitle="Controle de habilitação por empresa com base em plano e override."
+        actions={
+          <div className={styles.actions}>
+            <Badge tone="warning">Área Técnica</Badge>
+            <Button onClick={() => void load()}>Atualizar</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                clearDeveloperSession();
+                router.push('/developer-login');
+              }}
+            >
+              Sair
+            </Button>
+          </div>
+        }
+      />
+
+      <section className={styles.statsGrid}>
+        <PremiumSummaryCard label="Módulos no catálogo" value={summary.total} />
+        <PremiumSummaryCard label="Ativos" value={summary.active} />
+        <PremiumSummaryCard label="Bloqueados" value={summary.blocked} />
+        <PremiumSummaryCard label="Overrides" value={summary.overrides} />
       </section>
 
       {view ? (
@@ -181,7 +195,7 @@ export default function AdminModulesPage() {
           {!view.subscription || (view.subscription.status !== 'ACTIVE' && view.subscription.status !== 'TRIAL') ? (
             <div className={styles.ctaRow}>
               <p className={styles.sub}>Assinatura inativa: os modulos efetivos ficam bloqueados.</p>
-              <Link href={`/companies/${view.company.id}/subscription`}>
+              <Link href={`/developer/companies/${view.company.id}/subscription`}>
                 <Button variant="primary">Criar assinatura</Button>
               </Link>
             </div>
@@ -190,7 +204,7 @@ export default function AdminModulesPage() {
       ) : null}
 
       {loading ? <LoadingState label="Carregando modulos..." /> : null}
-      {error ? <div className={styles.error}>{error}</div> : null}
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
 
       {!loading && !error && cards.length === 0 ? (
         <EmptyState title="Sem modulos" description="Nenhum modulo encontrado para esta empresa." />
