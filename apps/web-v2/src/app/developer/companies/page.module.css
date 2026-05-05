@@ -55,11 +55,13 @@
 
 .item {
   display: grid;
-  gap: 10px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
   border: 1px solid #dbe4f6;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
   transition: transform 160ms ease, box-shadow 160ms ease;
+  min-height: 280px;
+  grid-template-rows: auto 1fr auto;
 }
 
 .item:hover {
@@ -75,18 +77,21 @@
 }
 
 .companyName {
-  font-size: 1.1rem;
+  font-size: 1.25rem;
+  font-weight: 800;
   line-height: 1.25;
+  letter-spacing: -0.02em;
 }
 
 .metaList {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .metaList p {
   margin: 0;
   color: #475569;
+  line-height: 1.3;
 }
 
 .metaList span {
@@ -95,9 +100,11 @@
 }
 
 .itemActions {
-  display: grid;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .primaryActions {
@@ -109,6 +116,7 @@
 .dangerAction {
   display: flex;
   justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .stateCard {
@@ -143,5 +151,10 @@
   .primaryActions,
   .dangerAction {
     justify-content: flex-start;
+  }
+
+  .itemActions {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
