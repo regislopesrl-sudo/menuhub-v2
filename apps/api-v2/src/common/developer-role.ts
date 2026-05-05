@@ -11,12 +11,8 @@ export function requireDeveloper(ctx: Pick<RequestContext, 'userRole'>): void {
   }
 }
 
-export function isDeveloperOrAdmin(ctx: Pick<RequestContext, 'userRole'>): boolean {
-  return ctx.userRole === 'developer' || ctx.userRole === 'admin' || ctx.userRole === 'master';
-}
-
 export function requireDeveloperOrAdmin(ctx: Pick<RequestContext, 'userRole'>): void {
-  if (!isDeveloperOrAdmin(ctx)) {
-    throw new ForbiddenException('Area tecnica restrita a developer/admin.');
+  if (ctx.userRole !== 'developer' && ctx.userRole !== 'admin') {
+    throw new ForbiddenException('Area tecnica restrita.');
   }
 }

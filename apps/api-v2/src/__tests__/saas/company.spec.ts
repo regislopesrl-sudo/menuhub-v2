@@ -1,39 +1,47 @@
-import { ConflictException } from '@nestjs/common';
 import { DeveloperController } from '../../developer/developer.controller';
 
 describe('SaaS Company Flow', () => {
-  it('criar empresa', async () => {
-    const prisma = {
-      company: {
-        create: jest.fn().mockResolvedValue({ id: 'c1', slug: 'empresa-a' }),
-      },
+  it('login developer usa auth service atual', async () => {
+    const modulesService = {
+      listPlans: jest.fn(),
+      createPlan: jest.fn(),
+      updatePlan: jest.fn(),
+      listCurrentCompanyModules: jest.fn(),
+      updateCompanyModuleOverride: jest.fn(),
     };
-    const controller = new DeveloperController(prisma as never);
+    const authService = {
+      loginWithDeveloperCode: jest.fn().mockResolvedValue({ accessToken: 'token-1' }),
+    };
+    const controller = new DeveloperController(modulesService as never, authService as never);
 
-    const created = await controller.createCompany({
-      name: 'Empresa A',
-      legalName: 'Empresa A LTDA',
-      slug: 'empresa-a',
-    });
+    const result = await controller.login({ code: 'dev_local_access' });
 
-    expect(created.id).toBe('c1');
-    expect(prisma.company.create).toHaveBeenCalled();
+    expect(result.accessToken).toBe('token-1');
+    expect(authService.loginWithDeveloperCode).toHaveBeenCalledWith({ code: 'dev_local_access' });
   });
 
-  it('slug duplicado falha', async () => {
-    const prisma = {
-      company: {
-        create: jest.fn().mockRejectedValue(new ConflictException('slug duplicado')),
-      },
+  it('criar plano usa contrato atual', async () => {
+    const modulesService = {
+      listPlans: jest.fn(),
+      createPlan: jest.fn().mockResolvedValue({ id: 'p1', key: 'basic' }),
+      updatePlan: jest.fn(),
+      listCurrentCompanyModules: jest.fn(),
+      updateCompanyModuleOverride: jest.fn(),
     };
-    const controller = new DeveloperController(prisma as never);
+    const authService = {
+      loginWithDeveloperCode: jest.fn(),
+    };
+    const controller = new DeveloperController(modulesService as never, authService as never);
 
-    await expect(
-      controller.createCompany({
-        name: 'Empresa A',
-        legalName: 'Empresa A LTDA',
-        slug: 'empresa-a',
-      }),
-    ).rejects.toThrow();
+    const created = await controller.createPlan({
+      key: 'basic',
+      name: 'Plano Basic',
+    });
+
+    expect(created.id).toBe('p1');
+    expect(modulesService.createPlan).toHaveBeenCalledWith({
+      key: 'basic',
+      name: 'Plano Basic',
+    });
   });
 });

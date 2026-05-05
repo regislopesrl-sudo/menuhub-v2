@@ -5,6 +5,8 @@ const SESSION_KEY = 'developer_session_v2';
 export type DeveloperSession = {
   role: 'developer';
   expiresAt: string;
+  sessionToken?: string;
+  accessToken?: string;
 };
 
 export function getDeveloperSession(): DeveloperSession | null {
@@ -37,4 +39,16 @@ export function clearDeveloperSession() {
 
 export function hasDeveloperSession(): boolean {
   return getDeveloperSession() !== null;
+}
+
+export function buildDeveloperAccessHeaders(): Record<string, string> {
+  const session = getDeveloperSession();
+  if (!session) return {};
+  if (session.accessToken) {
+    return { authorization: `Bearer ${session.accessToken}` };
+  }
+  if (session.sessionToken) {
+    return { 'x-developer-session': session.sessionToken };
+  }
+  return {};
 }

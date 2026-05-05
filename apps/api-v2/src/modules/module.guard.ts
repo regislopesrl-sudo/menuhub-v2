@@ -3,9 +3,11 @@ import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { MODULE_ACCESS_KEY } from './module-access.decorator';
 import { ModulesService } from './modules.service';
 import { buildRequestContextFromHeaders } from '../common/request-context';
+import type { RequestContext } from '../common/request-context';
 
 type AuthLikeRequest = {
   headers: Record<string, string | string[] | undefined>;
+  context?: RequestContext;
 };
 
 @Injectable()
@@ -19,8 +21,12 @@ export class ModuleGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthLikeRequest>();
-    const ctx = buildRequestContextFromHeaders(request.headers);
-    const isAdmin = ctx.userRole === 'admin' || ctx.userRole === 'master';
+    const ctx = request.context ?? buildRequestContextFromHeaders(request.headers);
+    const isAdmin =
+      ctx.userRole === 'admin' ||
+      ctx.userRole === 'master' ||
+      ctx.userRole === 'owner' ||
+      ctx.userRole === 'manager';
     const access = await this.modulesService.checkAccess({
       companyId: ctx.companyId,
       moduleKey: requiredModule,

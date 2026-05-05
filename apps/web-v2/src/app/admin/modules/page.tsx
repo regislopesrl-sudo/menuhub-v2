@@ -31,9 +31,22 @@ const MODULE_ORDER = [
   'fiscal',
 ];
 
+const MODULE_DESCRIPTIONS: Record<string, string> = {
+  delivery: 'Canal de pedidos online com checkout e entrega.',
+  pdv: 'Canal de balcao para venda presencial rapida.',
+  kds: 'Painel de cozinha para preparo em tempo real.',
+  kiosk: 'Autoatendimento para clientes no totem.',
+  waiter_app: 'Atendimento de salao para garcom.',
+  whatsapp: 'Canal de pedidos e atendimento via WhatsApp.',
+  reports: 'Indicadores e relatorios operacionais.',
+  financial: 'Controle financeiro e conciliacao basica.',
+  stock: 'Estoque e movimentacoes de insumos/produtos.',
+  fiscal: 'Emissao e controle fiscal.',
+};
+
 export default function AdminModulesPage() {
   const router = useRouter();
-  const [isDeveloper, setIsDeveloper] = useState(false);
+  const [isDeveloper, setIsDeveloper] = useState<boolean | null>(null);
 
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'default-company';
   const headers = useMemo(
@@ -123,7 +136,7 @@ export default function AdminModulesPage() {
     }
   };
 
-  if (access.loading) {
+  if (access.loading || isDeveloper === null) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
   }
   if (!access.allowed) {
@@ -141,6 +154,7 @@ export default function AdminModulesPage() {
           <p className={styles.sub}>Controle de habilitacao por empresa com base em plano + override.</p>
         </div>
         <div className={styles.actions}>
+          <Badge tone="warning">Area Tecnica</Badge>
           <Button onClick={() => void load()}>Atualizar</Button>
           <Button
             variant="danger"
@@ -195,6 +209,7 @@ export default function AdminModulesPage() {
                 <Badge>{item.includedInPlan ? 'in_plan' : 'out_plan'}</Badge>
                 <Badge>{item.overrideEnabled === null ? 'override:none' : `override:${item.overrideEnabled}`}</Badge>
               </div>
+              <p className={styles.description}>{MODULE_DESCRIPTIONS[item.moduleKey] ?? 'Modulo comercial configuravel por plano e override.'}</p>
               <div className={styles.actions}>
                 <Button
                   variant={item.effectiveEnabled ? 'danger' : 'primary'}

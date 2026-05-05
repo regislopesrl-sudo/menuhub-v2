@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type {
   CompanyModuleAccess,
@@ -7,164 +7,243 @@ import type {
   ModuleKey,
   PlanKey,
 } from '@delivery-futuro/shared-types';
-import type { CompanySubscription, SubscriptionStatus } from '@prisma/client';
-import { computeEffectiveModule } from './domain/compute-effective-module';
-import { canUseModules } from '../subscriptions/domain/can-use-modules';
 
-interface ModuleStateRow {
-  moduleKey: ModuleKey;
-  includedInPlan: boolean;
-  overrideEnabled: boolean | null;
-  effectiveEnabled: boolean;
-  source: 'plan' | 'override';
-  adminOnly: boolean;
-  enabledByDefault: boolean;
-}
-
-export interface CompanyModulesCommercialView {
-  company: {
-    id: string;
-    name: string;
-    legalName: string;
-    document: string | null;
-    slug: string | null;
-    status: string;
-  };
-  subscription: {
-    id: string;
-    status: SubscriptionStatus;
-    startsAt: string;
-    endsAt: string | null;
-    trialEndsAt: string | null;
-  } | null;
-  plan: {
-    id: string;
-    key: string;
-    name: string;
-  } | null;
-  modules: ModuleStateRow[];
-}
-
-const MODULE_CATALOG: ModuleDefinition[] = [
-  { key: 'delivery', name: 'Delivery', enabledByDefault: true, adminOnly: false },
-  { key: 'pdv', name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
-  { key: 'kds', name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
-  { key: 'whatsapp', name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
-  { key: 'kiosk', name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
-  { key: 'waiter_app', name: 'App Garcom', enabledByDefault: false, adminOnly: false },
-  { key: 'admin_panel', name: 'Painel Admin', enabledByDefault: true, adminOnly: true },
-  { key: 'orders', name: 'Pedidos', enabledByDefault: true, adminOnly: false },
-  { key: 'menu', name: 'Cardapio', enabledByDefault: true, adminOnly: false },
-  { key: 'payments', name: 'Pagamentos', enabledByDefault: true, adminOnly: false },
-  { key: 'reports', name: 'Relatorios', enabledByDefault: false, adminOnly: true },
-  { key: 'stock', name: 'Estoque', enabledByDefault: false, adminOnly: true },
-  { key: 'fiscal', name: 'Fiscal', enabledByDefault: false, adminOnly: true },
-  { key: 'financial', name: 'Financeiro', enabledByDefault: false, adminOnly: true },
-];
+const MODULE_META: Record<ModuleKey, { name: string; enabledByDefault: boolean; adminOnly: boolean }> = {
+  delivery: { name: 'Delivery', enabledByDefault: true, adminOnly: false },
+  pdv: { name: 'PDV/Balcao', enabledByDefault: true, adminOnly: true },
+  kds: { name: 'KDS Cozinha', enabledByDefault: true, adminOnly: true },
+  whatsapp: { name: 'WhatsApp', enabledByDefault: false, adminOnly: false },
+  kiosk: { name: 'Totem/Kiosk', enabledByDefault: false, adminOnly: false },
+  waiter_app: { name: 'App Garcom', enabledByDefault: false, adminOnly: false },
+  admin_panel: { name: 'Painel Admin', enabledByDefault: true, adminOnly: true },
+  orders: { name: 'Pedidos', enabledByDefault: true, adminOnly: false },
+  menu: { name: 'Cardapio', enabledByDefault: true, adminOnly: false },
+  payments: { name: 'Pagamentos', enabledByDefault: true, adminOnly: false },
+  reports: { name: 'Relatorios', enabledByDefault: false, adminOnly: true },
+  stock: { name: 'Estoque', enabledByDefault: false, adminOnly: true },
+  fiscal: { name: 'Fiscal', enabledByDefault: false, adminOnly: true },
+  financial: { name: 'Financeiro', enabledByDefault: false, adminOnly: true },
+};
 
 @Injectable()
 export class ModulesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listAvailableModules(): Promise<ModuleDefinition[]> {
-    return MODULE_CATALOG;
-  }
-
-  async listCurrentCompanyModules(companyId: string): Promise<CompanyModuleAccess[]> {
-    const commercialView = await this.getCompanyModulesView(companyId);
-    const subscriptionAllowed = canUseModules(commercialView.subscription?.status);
-
-    return commercialView.modules.map((moduleItem) => ({
-      companyId,
-      moduleKey: moduleItem.moduleKey,
-      enabled: subscriptionAllowed ? moduleItem.effectiveEnabled : false,
-      adminOnly: moduleItem.adminOnly,
-      enabledByDefault: moduleItem.enabledByDefault,
-      source: moduleItem.source === 'override' ? 'company_override' : 'plan',
-      planKey: toPlanKey(commercialView.plan?.key),
+    return (Object.keys(MODULE_META) as ModuleKey[]).map((key) => ({
+      key,
+      name: MODULE_META[key].name,
+      enabledByDefault: MODULE_META[key].enabledByDefault,
+      adminOnly: MODULE_META[key].adminOnly,
     }));
   }
 
-  async getCompanyModulesView(companyId: string): Promise<CompanyModulesCommercialView> {
-    const company = await this.prisma.company.findUnique({
-      where: { id: companyId },
-      select: {
-        id: true,
-        name: true,
-        legalName: true,
-        document: true,
-        slug: true,
-        status: true,
+  async listPlans() {
+    const plans = await this.prisma.plan.findMany({
+      where: { isActive: true },
+      orderBy: [{ key: 'asc' }],
+      include: {
+        modules: { orderBy: [{ moduleKey: 'asc' }] },
+        limits: { orderBy: [{ limitKey: 'asc' }] },
       },
     });
 
-    if (!company) {
-      throw new NotFoundException(`Empresa '${companyId}' nao encontrada.`);
+    return plans.map((plan) => ({
+      id: plan.id,
+      key: plan.key,
+      name: plan.name,
+      description: plan.description,
+      isActive: plan.isActive,
+      modules: plan.modules.map((item) => ({
+        moduleKey: item.moduleKey,
+        enabled: item.enabled,
+        adminOnly: item.adminOnly,
+      })),
+      limits: plan.limits.map((item) => ({
+        limitKey: item.limitKey,
+        limitValue: item.limitValue,
+      })),
+      createdAt: plan.createdAt.toISOString(),
+      updatedAt: plan.updatedAt.toISOString(),
+    }));
+  }
+
+  async createPlan(input: {
+    key: string;
+    name: string;
+    description?: string;
+    modules?: Array<{ moduleKey: ModuleKey; enabled?: boolean; adminOnly?: boolean }>;
+    limits?: Array<{ limitKey: string; limitValue: number }>;
+  }) {
+    const key = String(input.key ?? '').trim().toLowerCase();
+    const name = String(input.name ?? '').trim();
+    if (!key || !name) {
+      throw new BadRequestException('key e name sao obrigatorios.');
     }
 
-    const subscription = await this.getCurrentSubscription(companyId);
-    const plan = subscription
-      ? await this.prisma.plan.findUnique({
-          where: { id: subscription.planId },
-          select: { id: true, key: true, name: true },
-        })
-      : null;
-
-    const planModules = subscription
-      ? await this.prisma.planModule.findMany({
-          where: { planId: subscription.planId, enabled: true },
-          select: { moduleKey: true },
-        })
-      : [];
-
-    const planSet = new Set(planModules.map((item) => item.moduleKey));
-    const overrides = await this.prisma.companyModuleOverride.findMany({
-      where: { companyId },
-      select: { moduleKey: true, enabled: true },
-    });
-    const overrideMap = new Map(overrides.map((item) => [item.moduleKey, item.enabled]));
-
-    const modules: ModuleStateRow[] = MODULE_CATALOG.map((moduleDef) => {
-      const includedInPlan = planSet.has(moduleDef.key);
-      const overrideEnabled = overrideMap.has(moduleDef.key) ? (overrideMap.get(moduleDef.key) ?? null) : null;
-      const baseEnabled = includedInPlan || moduleDef.enabledByDefault;
-      const effectiveEnabled = computeEffectiveModule({
-        planEnabled: baseEnabled,
-        override: overrideEnabled,
-      });
-
-      return {
-        moduleKey: moduleDef.key,
-        includedInPlan,
-        overrideEnabled,
-        effectiveEnabled,
-        source: overrideEnabled !== null ? 'override' : 'plan',
-        adminOnly: moduleDef.adminOnly,
-        enabledByDefault: moduleDef.enabledByDefault,
-      };
+    const created = await this.prisma.plan.create({
+      data: {
+        key,
+        name,
+        description: input.description?.trim() || null,
+        modules: input.modules?.length
+          ? {
+              createMany: {
+                data: input.modules.map((item) => ({
+                  moduleKey: item.moduleKey,
+                  enabled: item.enabled ?? true,
+                  adminOnly: item.adminOnly ?? MODULE_META[item.moduleKey].adminOnly,
+                })),
+              },
+            }
+          : undefined,
+        limits: input.limits?.length
+          ? {
+              createMany: {
+                data: input.limits.map((item) => ({
+                  limitKey: item.limitKey,
+                  limitValue: item.limitValue,
+                })),
+              },
+            }
+          : undefined,
+      },
+      include: {
+        modules: true,
+        limits: true,
+      },
     });
 
     return {
-      company: {
-        id: company.id,
-        name: company.name ?? company.legalName,
-        legalName: company.legalName,
-        document: company.document,
-        slug: company.slug,
-        status: company.status,
-      },
-      subscription: subscription
-        ? {
-            id: subscription.id,
-            status: subscription.status,
-            startsAt: subscription.startsAt.toISOString(),
-            endsAt: subscription.endsAt ? subscription.endsAt.toISOString() : null,
-            trialEndsAt: subscription.trialEndsAt ? subscription.trialEndsAt.toISOString() : null,
-          }
-        : null,
-      plan,
-      modules,
+      id: created.id,
+      key: created.key,
+      name: created.name,
+      description: created.description,
+      isActive: created.isActive,
+      modules: created.modules,
+      limits: created.limits,
     };
+  }
+
+  async updatePlan(
+    id: string,
+    input: {
+      name?: string;
+      description?: string | null;
+      isActive?: boolean;
+      modules?: Array<{ moduleKey: ModuleKey; enabled?: boolean; adminOnly?: boolean }>;
+      limits?: Array<{ limitKey: string; limitValue: number }>;
+    },
+  ) {
+    const existing = await this.prisma.plan.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Plano '${id}' nao encontrado.`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.plan.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined ? { name: String(input.name).trim() } : {}),
+          ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
+          ...(input.isActive !== undefined ? { isActive: Boolean(input.isActive) } : {}),
+        },
+      });
+
+      if (input.modules) {
+        await tx.planModule.deleteMany({ where: { planId: id } });
+        if (input.modules.length > 0) {
+          await tx.planModule.createMany({
+            data: input.modules.map((item) => ({
+              planId: id,
+              moduleKey: item.moduleKey,
+              enabled: item.enabled ?? true,
+              adminOnly: item.adminOnly ?? MODULE_META[item.moduleKey].adminOnly,
+            })),
+          });
+        }
+      }
+
+      if (input.limits) {
+        await tx.planLimit.deleteMany({ where: { planId: id } });
+        if (input.limits.length > 0) {
+          await tx.planLimit.createMany({
+            data: input.limits.map((item) => ({
+              planId: id,
+              limitKey: item.limitKey,
+              limitValue: item.limitValue,
+            })),
+          });
+        }
+      }
+    });
+
+    const updated = await this.prisma.plan.findUniqueOrThrow({
+      where: { id },
+      include: { modules: true, limits: true },
+    });
+
+    return {
+      id: updated.id,
+      key: updated.key,
+      name: updated.name,
+      description: updated.description,
+      isActive: updated.isActive,
+      modules: updated.modules,
+      limits: updated.limits,
+    };
+  }
+
+  async listCurrentCompanyModules(companyId: string): Promise<CompanyModuleAccess[]> {
+    const modules = await this.listAvailableModules();
+    const subscription = await this.resolveActiveSubscription(companyId);
+    const overrideRows = await this.prisma.companyModuleOverride.findMany({
+      where: { companyId },
+    });
+    const overrideMap = new Map(
+      overrideRows
+        .filter((item): item is typeof item & { enabled: boolean } => item.enabled !== null)
+        .map((item) => [item.moduleKey, item.enabled]),
+    );
+
+    const planModuleRows = subscription
+      ? await this.prisma.planModule.findMany({
+          where: {
+            planId: subscription.planId,
+            enabled: true,
+          },
+        })
+      : [];
+
+    const planSet = new Set(planModuleRows.map((item) => item.moduleKey as ModuleKey));
+    const planKey = subscription ? (subscription.planId as PlanKey) : undefined;
+
+    return modules.map((moduleDef) => {
+      const fromPlan = planSet.has(moduleDef.key);
+      const override = overrideMap.get(moduleDef.key);
+
+      if (override !== undefined) {
+        return {
+          companyId,
+          moduleKey: moduleDef.key,
+          enabled: fromPlan ? override : false,
+          adminOnly: moduleDef.adminOnly,
+          enabledByDefault: moduleDef.enabledByDefault,
+          source: 'company_override',
+          planKey,
+        } satisfies CompanyModuleAccess;
+      }
+
+      return {
+        companyId,
+        moduleKey: moduleDef.key,
+        enabled: fromPlan,
+        adminOnly: moduleDef.adminOnly,
+        enabledByDefault: moduleDef.enabledByDefault,
+        source: 'plan',
+        planKey,
+      } satisfies CompanyModuleAccess;
+    });
   }
 
   async checkAccess(input: {
@@ -172,8 +251,7 @@ export class ModulesService {
     moduleKey: ModuleKey;
     isAdmin: boolean;
   }): Promise<ModuleAccessResult> {
-    const moduleDef = MODULE_CATALOG.find((item) => item.key === input.moduleKey);
-
+    const moduleDef = MODULE_META[input.moduleKey];
     if (!moduleDef) {
       return {
         companyId: input.companyId,
@@ -187,19 +265,18 @@ export class ModulesService {
     }
 
     const companyModules = await this.listCurrentCompanyModules(input.companyId);
-    const companyModule = companyModules.find((item) => item.moduleKey === input.moduleKey);
-    const enabled = companyModule?.enabled ?? false;
+    const current = companyModules.find((item) => item.moduleKey === input.moduleKey);
 
-    if (!enabled) {
+    if (!current || !current.enabled) {
       return {
         companyId: input.companyId,
         moduleKey: input.moduleKey,
         allowed: false,
-        reason: companyModule?.source === 'company_override' ? 'BLOCKED_COMPANY_OVERRIDE' : 'BLOCKED_NOT_ENABLED',
+        reason: current?.source === 'company_override' ? 'BLOCKED_COMPANY_OVERRIDE' : 'BLOCKED_NOT_ENABLED',
         adminOnly: moduleDef.adminOnly,
         enabledByDefault: moduleDef.enabledByDefault,
-        source: companyModule?.source ?? 'default',
-        planKey: companyModule?.planKey,
+        source: current?.source ?? 'plan',
+        planKey: current?.planKey,
       };
     }
 
@@ -211,8 +288,8 @@ export class ModulesService {
         reason: 'BLOCKED_ADMIN_ONLY',
         adminOnly: moduleDef.adminOnly,
         enabledByDefault: moduleDef.enabledByDefault,
-        source: companyModule?.source ?? 'default',
-        planKey: companyModule?.planKey,
+        source: current.source,
+        planKey: current.planKey,
       };
     }
 
@@ -220,89 +297,104 @@ export class ModulesService {
       companyId: input.companyId,
       moduleKey: input.moduleKey,
       allowed: true,
-      reason:
-        companyModule?.source === 'company_override'
-          ? 'ALLOWED_COMPANY_OVERRIDE'
-          : companyModule?.source === 'plan'
-            ? 'ALLOWED_PLAN'
-            : 'ALLOWED_DEFAULT',
+      reason: current.source === 'company_override' ? 'ALLOWED_COMPANY_OVERRIDE' : 'ALLOWED_PLAN',
       adminOnly: moduleDef.adminOnly,
       enabledByDefault: moduleDef.enabledByDefault,
-      source: companyModule?.source ?? 'default',
-      planKey: companyModule?.planKey,
+      source: current.source,
+      planKey: current.planKey,
     };
   }
 
-  async updateCurrentCompanyModule(input: {
+  async updateCompanyModuleOverride(input: {
     companyId: string;
     moduleKey: ModuleKey;
-    enabled: boolean | null;
-    reason?: string;
-    userId?: string;
+    enabled: boolean;
   }): Promise<CompanyModuleAccess> {
-    const moduleDef = MODULE_CATALOG.find((item) => item.key === input.moduleKey);
+    const moduleDef = MODULE_META[input.moduleKey];
     if (!moduleDef) {
-      throw new Error(`Modulo '${input.moduleKey}' nao cadastrado na V2.`);
+      throw new BadRequestException(`Modulo '${input.moduleKey}' nao cadastrado na V2.`);
     }
 
-    if (input.enabled === null) {
-      await this.prisma.companyModuleOverride.deleteMany({
-        where: { companyId: input.companyId, moduleKey: input.moduleKey },
-      });
-    } else {
-      await this.prisma.companyModuleOverride.upsert({
-        where: {
-          companyId_moduleKey: {
-            companyId: input.companyId,
-            moduleKey: input.moduleKey,
-          },
-        },
-        update: { enabled: input.enabled },
-        create: {
+    const subscription = await this.resolveActiveSubscription(input.companyId);
+    if (!subscription) {
+      throw new BadRequestException('Empresa sem assinatura ativa para aplicar override.');
+    }
+
+    const planHasModule = await this.prisma.planModule.findFirst({
+      where: {
+        planId: subscription.planId,
+        moduleKey: input.moduleKey,
+        enabled: true,
+      },
+      select: { id: true },
+    });
+
+    if (input.enabled && !planHasModule) {
+      throw new BadRequestException(`Modulo '${input.moduleKey}' nao esta disponivel no plano atual da empresa.`);
+    }
+
+    await this.prisma.companyModuleOverride.upsert({
+      where: {
+        companyId_moduleKey: {
           companyId: input.companyId,
           moduleKey: input.moduleKey,
-          enabled: input.enabled,
         },
-      });
-    }
-
-    await this.prisma.companyModuleAuditLog.create({
-      data: {
+      },
+      create: {
         companyId: input.companyId,
         moduleKey: input.moduleKey,
-        action: input.enabled === false ? 'DISABLE' : 'ENABLE',
-        source: input.enabled === null ? 'PLAN' : 'OVERRIDE',
-        userId: input.userId,
-        reason: input.reason,
+        enabled: input.enabled,
+      },
+      update: {
+        enabled: input.enabled,
       },
     });
 
     const list = await this.listCurrentCompanyModules(input.companyId);
     const updated = list.find((item) => item.moduleKey === input.moduleKey);
     if (!updated) {
-      throw new Error(`Falha ao atualizar modulo '${input.moduleKey}'.`);
+      throw new NotFoundException(`Falha ao carregar modulo '${input.moduleKey}' apos override.`);
     }
     return updated;
   }
 
-  private async getCurrentSubscription(companyId: string): Promise<CompanySubscription | null> {
+  async updateCurrentCompanyModule(input: {
+    companyId: string;
+    moduleKey: ModuleKey;
+    enabled: boolean;
+  }): Promise<CompanyModuleAccess> {
+    return this.updateCompanyModuleOverride(input);
+  }
+
+  private async resolveActiveSubscription(companyId: string) {
     return this.prisma.companySubscription.findFirst({
       where: {
         companyId,
-        status: {
-          in: ['ACTIVE', 'TRIAL', 'PAST_DUE', 'CANCELED', 'EXPIRED'],
-        },
+        status: 'ACTIVE',
       },
-      orderBy: {
-        startsAt: 'desc',
-      },
+      orderBy: [{ startsAt: 'desc' }],
+      include: { plan: true },
     });
   }
-}
 
-function toPlanKey(value?: string): PlanKey | undefined {
-  if (value === 'basic' || value === 'starter' || value === 'pro' || value === 'enterprise') {
-    return value;
+  async getCompanyModulesView(companyId: string) {
+    const subscription = await this.resolveActiveSubscription(companyId);
+    const modules = await this.listCurrentCompanyModules(companyId);
+    return {
+      companyId,
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            status: subscription.status,
+            planId: subscription.planId,
+          }
+        : null,
+      modules: modules.map((item) => ({
+        moduleKey: item.moduleKey,
+        enabledByDefault: item.enabledByDefault,
+        includedInPlan: item.source === 'plan' || item.source === 'company_override',
+        overrideEnabled: item.source === 'company_override' ? item.enabled : null,
+      })),
+    };
   }
-  return undefined;
 }

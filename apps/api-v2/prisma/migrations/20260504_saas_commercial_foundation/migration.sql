@@ -43,13 +43,14 @@ CREATE TABLE IF NOT EXISTS "plan_modules" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "plan_modules_plan_id_module_key_key" ON "plan_modules"("plan_id", "module_key");
 CREATE INDEX IF NOT EXISTS "plan_modules_module_key_idx" ON "plan_modules"("module_key");
+ALTER TABLE "plan_modules" ADD COLUMN IF NOT EXISTS "limits" JSONB;
 
 CREATE TABLE IF NOT EXISTS "company_subscriptions" (
   "id" TEXT PRIMARY KEY,
   "company_id" TEXT NOT NULL,
   "plan_id" TEXT NOT NULL,
   "status" "SubscriptionStatus" NOT NULL,
-  "starts_at" TIMESTAMP(3) NOT NULL,
+  "started_at" TIMESTAMP(3) NOT NULL,
   "ends_at" TIMESTAMP(3),
   "trial_ends_at" TIMESTAMP(3),
   "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -58,7 +59,22 @@ CREATE TABLE IF NOT EXISTS "company_subscriptions" (
   CONSTRAINT "company_subscriptions_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS "company_subscriptions_company_id_status_starts_at_idx" ON "company_subscriptions"("company_id", "status", "starts_at");
+ALTER TABLE "company_subscriptions"
+  ADD COLUMN IF NOT EXISTS "trial_ends_at" TIMESTAMP(3);
+
+DO $$ BEGIN
+  ALTER TABLE "company_subscriptions"
+    ALTER COLUMN "status" TYPE "SubscriptionStatus"
+    USING CASE
+      WHEN "status" IN ('ACTIVE', 'TRIAL', 'PAST_DUE', 'CANCELED', 'EXPIRED') THEN "status"::"SubscriptionStatus"
+      ELSE 'ACTIVE'::"SubscriptionStatus"
+    END;
+EXCEPTION
+  WHEN undefined_column THEN null;
+  WHEN datatype_mismatch THEN null;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "company_subscriptions_company_id_status_starts_at_idx" ON "company_subscriptions"("company_id", "status", "started_at");
 CREATE INDEX IF NOT EXISTS "company_subscriptions_plan_id_idx" ON "company_subscriptions"("plan_id");
 
 CREATE TABLE IF NOT EXISTS "company_module_overrides" (

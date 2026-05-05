@@ -2,13 +2,12 @@ import { Module } from '@nestjs/common';
 import { ModulesController } from './modules.controller';
 import { ModulesService } from './modules.service';
 import { ModuleGuard } from './module.guard';
+import { RequireDeveloperGuard } from '../common/require-developer.guard';
 import { PrismaService } from '../database/prisma.service';
-import { RuntimeFacadeService } from './runtime-facade.service';
 
 @Module({
   controllers: [ModulesController],
-  providers: [ModulesService, ModuleGuard, PrismaService, RuntimeFacadeService],
-  exports: [ModulesService, ModuleGuard, RuntimeFacadeService],
+  providers: [ModulesService, ModuleGuard, RequireDeveloperGuard, PrismaService],
+  exports: [ModulesService, ModuleGuard],
 })
 export class ModulesModule {}
-

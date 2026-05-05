@@ -1,0 +1,610 @@
+﻿.page {
+  min-height: 100vh;
+  padding: 28px 0 44px;
+  display: grid;
+  gap: 18px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric {
+  padding: 14px;
+  display: grid;
+  gap: 4px;
+  border-radius: 18px;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: var(--text);
+  font-size: 28px;
+}
+
+.notice,
+.warning {
+  border-radius: 18px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.notice {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.notice button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.warning {
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.schemaNotice {
+  border: 1px solid #fde68a;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fffbeb, #fff7ed);
+  color: #92400e;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.schemaNotice strong {
+  color: #78350f;
+}
+
+
+.workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.categories {
+  position: sticky;
+  top: 84px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.sidebarTitle {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.categoryButton {
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: #334155;
+  padding: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.categoryButton:hover,
+.categoryActive {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.content {
+  display: grid;
+  gap: 12px;
+}
+
+.filters {
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(6, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.productCard {
+  overflow: hidden;
+  border-radius: 18px;
+  display: grid;
+  grid-template-rows: 140px 1fr;
+}
+
+.productInactive {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.productInactive .productMedia {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
+.productMedia {
+  background:
+    linear-gradient(135deg, rgba(239, 68, 68, 0.15), transparent 45%),
+    linear-gradient(145deg, #f8fafc, #e2e8f0);
+  display: grid;
+  place-items: center;
+  color: #991b1b;
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.productMedia img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.productBody {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.productTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.productTop h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.productTop p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cardFooter,
+.optionRow,
+.addonHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pricePanel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pricePanel > div {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f8fafc;
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.pricePanel span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pricePanel strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.channelRow,
+.actions,
+.modalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  min-height: 36px;
+}
+
+.simpleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.managementCard {
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  border-radius: 18px;
+}
+
+.managementCard span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.categoryCardHeader,
+.managementActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.managementActions {
+  justify-content: flex-start;
+}
+
+.importPanel {
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+}
+
+.importPanel h2,
+.importPanel p {
+  margin: 0;
+}
+
+.importPanel p {
+  color: var(--muted);
+}
+
+.importPanel textarea {
+  min-height: 220px;
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  padding: 12px;
+  font: inherit;
+}
+
+.importPreview {
+  display: grid;
+  gap: 8px;
+}
+
+.importValid,
+.importInvalid {
+  border-radius: 18px;
+  padding: 8px;
+  display: grid;
+  gap: 2px;
+}
+
+.importValid {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.importInvalid {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+}
+
+.addonSummary,
+.addonSummaryEmpty {
+  border-top: 1px dashed #dbe4ef;
+  padding-top: 8px;
+}
+
+.addonSummary {
+  display: grid;
+  gap: 6px;
+}
+
+.addonSummary > div {
+  display: grid;
+  gap: 2px;
+}
+
+.addonSummary strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.addonSummary span,
+.addonSummary small,
+.addonSummaryEmpty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.addonSummaryEmpty {
+  margin: 0;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  background: rgba(15, 23, 42, 0.48);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  color: var(--text);
+}
+
+.modalHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.formGrid label,
+.formLabel {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.toggleGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.toggle {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-weight: 800;
+}
+
+.recommendationPicker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recommendationPicker label {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modalActions {
+  justify-content: flex-end;
+}
+
+.addonList {
+  display: grid;
+  gap: 10px;
+}
+
+.addonEditor {
+  display: grid;
+  gap: 12px;
+}
+
+.addonCreator {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(239, 68, 68, 0.08), transparent 46%),
+    #fff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.addonCreator strong {
+  display: block;
+  color: var(--text);
+}
+
+.addonCreator span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.addonForm,
+.groupEditGrid,
+.optionCreateRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(80px, 0.5fr)) repeat(3, minmax(110px, 0.7fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.addonGroup {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.addonHeader strong {
+  display: block;
+  color: var(--text);
+}
+
+.addonHeader span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.optionList {
+  display: grid;
+  gap: 8px;
+}
+
+.optionRow {
+  border-top: 1px dashed #dbe4ef;
+  padding-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(90px, 0.6fr) minmax(90px, 0.5fr) minmax(70px, 0.4fr) minmax(72px, 0.4fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.optionRow > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggleCompact {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  min-height: 38px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+@media (max-width: 1040px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .categories {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+
+  .sidebarTitle {
+    grid-column: 1 / -1;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .filters,
+  .formGrid,
+  .toggleGrid,
+  .recommendationPicker,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .productTop,
+  .modalHeader,
+  .warning,
+  .notice,
+  .schemaNotice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pricePanel {
+    grid-template-columns: 1fr;
+  }
+
+  .addonForm,
+  .groupEditGrid,
+  .optionCreateRow,
+  .optionRow {
+    grid-template-columns: 1fr;
+  }
+}
+
