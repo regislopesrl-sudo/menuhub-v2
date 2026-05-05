@@ -1,3 +1,5 @@
+import { buildDeveloperAccessHeaders } from '@/lib/developer-session';
+
 export interface ModuleDefinition {
   key: string;
   name: string;
@@ -56,6 +58,7 @@ function buildHeaders(input: { companyId: string; branchId?: string; userRole?: 
     'x-company-id': input.companyId,
     ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
     'x-user-role': input.userRole ?? 'admin',
+    ...buildDeveloperAccessHeaders(),
   };
 }
 

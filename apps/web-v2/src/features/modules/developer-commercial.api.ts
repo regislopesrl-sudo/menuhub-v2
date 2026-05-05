@@ -1,3 +1,5 @@
+import { apiFetch } from '@/lib/api-fetch';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 
 export type DeveloperCompany = {
@@ -88,8 +90,7 @@ async function readJson<T>(res: Response, fallback: string): Promise<T> {
 }
 
 export async function listDeveloperCompanies(): Promise<DeveloperCompany[]> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies`, { cache: 'no-store' });
-  return readJson<DeveloperCompany[]>(res, 'Falha ao listar empresas.');
+  return apiFetch<DeveloperCompany[]>('/v2/developer/companies', { method: 'GET' });
 }
 
 export async function createDeveloperCompany(input: {
@@ -101,12 +102,10 @@ export async function createDeveloperCompany(input: {
   phone?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 }): Promise<DeveloperCompany> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies`, {
+  return apiFetch<DeveloperCompany>('/v2/developer/companies', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  return readJson<DeveloperCompany>(res, 'Falha ao criar empresa.');
 }
 
 export async function patchDeveloperCompany(
@@ -121,19 +120,16 @@ export async function patchDeveloperCompany(
     status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   }>,
 ): Promise<DeveloperCompany> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${id}`, {
+  return apiFetch<DeveloperCompany>(`/v2/developer/companies/${id}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  return readJson<DeveloperCompany>(res, 'Falha ao atualizar empresa.');
 }
 
 export async function getDeveloperCompanySubscription(companyId: string): Promise<CompanySubscription | null> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/subscription`, {
-    cache: 'no-store',
+  return apiFetch<CompanySubscription | null>(`/v2/developer/companies/${companyId}/subscription`, {
+    method: 'GET',
   });
-  return readJson<CompanySubscription | null>(res, 'Falha ao carregar assinatura.');
 }
 
 export async function getDeveloperCompanyBilling(companyId: string): Promise<{
@@ -218,7 +214,7 @@ export async function createDeveloperCompanySubscription(
 ): Promise<CompanySubscription> {
   const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/subscription`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildDevHeaders(companyId),
     body: JSON.stringify(input),
   });
   return readJson<CompanySubscription>(res, 'Falha ao criar assinatura.');
@@ -235,7 +231,7 @@ export async function patchDeveloperCompanySubscription(
 ): Promise<CompanySubscription> {
   const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/subscription/${subscriptionId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildDevHeaders(companyId),
     body: JSON.stringify(input),
   });
   return readJson<CompanySubscription>(res, 'Falha ao atualizar assinatura.');
