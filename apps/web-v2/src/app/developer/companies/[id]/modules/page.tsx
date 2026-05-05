@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import {
   getCompanyModulesCommercialView,
   patchCurrentCompanyModule,
@@ -124,29 +125,24 @@ export default function DeveloperCompanyModulesPage() {
 
   return (
     <main className={styles.page}>
-      <Card className={styles.headerCard}>
-        <div className={styles.headerTop}>
-          <div>
-            <h1 className={styles.title}>Modulos da empresa</h1>
-            <p className={styles.subtitle}>
-              {view?.company?.name ?? 'Empresa'}
-              {view?.company?.slug ? ` · ${view.company.slug}` : ''}
-            </p>
-          </div>
-          <div className={styles.headerActions}>
+      <PremiumPageHeader
+        title="Módulos da empresa"
+        subtitle={`${view?.company?.name ?? 'Empresa'}${view?.company?.slug ? ` · ${view.company.slug}` : ''}`}
+        actions={
+          <>
             <Badge tone={statusTone(subscriptionStatus)}>{subscriptionStatus ?? 'SEM_ASSINATURA'}</Badge>
             <Link href="/developer/companies">
               <Button>Voltar para Empresas</Button>
             </Link>
-          </div>
-        </div>
-      </Card>
+          </>
+        }
+      />
 
       <section className={styles.summaryGrid}>
-        <Card className={styles.summaryCard}><span>Plano atual</span><strong>{view?.plan?.name ?? 'Sem plano'}</strong></Card>
-        <Card className={styles.summaryCard}><span>Modulos ativos</span><strong>{summary.active}</strong></Card>
-        <Card className={styles.summaryCard}><span>Modulos bloqueados</span><strong>{summary.blocked}</strong></Card>
-        <Card className={styles.summaryCard}><span>Overrides manuais</span><strong>{summary.overrides}</strong></Card>
+        <PremiumSummaryCard label="Plano atual" value={view?.plan?.name ?? 'Sem plano'} />
+        <PremiumSummaryCard label="Módulos ativos" value={summary.active} />
+        <PremiumSummaryCard label="Módulos bloqueados" value={summary.blocked} />
+        <PremiumSummaryCard label="Overrides manuais" value={summary.overrides} />
       </section>
 
       {!canEdit ? (
@@ -155,51 +151,51 @@ export default function DeveloperCompanyModulesPage() {
         </Card>
       ) : null}
 
-      {loading ? <Card className={styles.stateCard}>Carregando modulos...</Card> : null}
-      {error ? <Card className={styles.errorCard}>{error}</Card> : null}
-      {!loading && !error && summary.total === 0 ? <Card className={styles.stateCard}>Nenhum modulo encontrado para esta empresa.</Card> : null}
+      {loading ? <Card className={styles.stateCard}>Carregando módulos...</Card> : null}
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
+      {!loading && !error && summary.total === 0 ? <PremiumEmptyState title="Sem módulos" description="Nenhum módulo encontrado para esta empresa." /> : null}
 
       {!loading && !error && summary.total > 0 ? (
         <section className={styles.grid}>
           {view?.modules.map((row) => {
-            const meta = MODULE_META[row.moduleKey] ?? {
-              title: row.moduleKey,
-              description: 'Modulo comercial configuravel por plano e override.',
+            const meta = MODULE_META[row.key] ?? {
+              title: row.label,
+              description: row.description,
             };
-            const saving = savingKey === row.moduleKey;
+            const saving = savingKey === row.key;
             return (
-              <Card key={row.moduleKey} className={styles.moduleCard}>
+              <Card key={row.key} className={styles.moduleCard}>
                 <div className={styles.moduleTop}>
                   <div>
                     <h3>{meta.title}</h3>
                     <p>{meta.description}</p>
                   </div>
-                  <Badge>{row.moduleKey}</Badge>
+                  <Badge>{row.key}</Badge>
                 </div>
 
                 <div className={styles.badges}>
                   <Badge tone={row.effectiveEnabled ? 'success' : 'danger'}>{row.effectiveEnabled ? 'Ativo' : 'Bloqueado'}</Badge>
                   <Badge tone={row.source === 'override' ? 'warning' : 'success'}>{row.source === 'override' ? 'Override' : 'Plano'}</Badge>
                   <Badge>{row.includedInPlan ? 'Incluido no plano' : 'Fora do plano'}</Badge>
-                  <Badge>{view?.plan?.key ?? '-'}</Badge>
+                  <Badge>{row.planKey ?? '-'}</Badge>
                 </div>
 
                 <p className={styles.originText}>
                   Origem: {row.source === 'override' ? 'Override manual' : 'Plano'}
-                  {!canEdit ? ' · Bloqueado por assinatura' : ''}
+                  {row.blockedReason ? ' · Bloqueado por assinatura' : ''}
                 </p>
 
                 <div className={styles.actionRow}>
                   <Button
                     variant={row.effectiveEnabled ? 'danger' : 'primary'}
-                    onClick={() => void handleToggle(row.moduleKey, row.effectiveEnabled)}
+                    onClick={() => void handleToggle(row.key, row.effectiveEnabled)}
                     disabled={saving || !canEdit}
                   >
                     {saving ? 'Salvando...' : row.effectiveEnabled ? 'Desabilitar' : 'Habilitar'}
                   </Button>
 
                   {row.overrideEnabled !== null ? (
-                    <Button onClick={() => void handleClearOverride(row.moduleKey, row.includedInPlan)} disabled={saving || !canEdit}>
+                    <Button onClick={() => void handleClearOverride(row.key, row.includedInPlan)} disabled={saving || !canEdit}>
                       Limpar override
                     </Button>
                   ) : null}

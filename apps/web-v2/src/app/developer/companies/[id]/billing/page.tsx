@@ -1,11 +1,13 @@
 ﻿'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
+import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import {
   createDeveloperInvoicePaymentLink,
   createDeveloperMockInvoice,
@@ -47,7 +49,7 @@ export default function BillingPage() {
       setSubscriptionStatus(billing.subscription?.status ?? 'SEM_ASSINATURA');
       setInvoices(invoiceList);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar billing.');
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar os dados.');
     } finally {
       setLoading(false);
     }
@@ -121,11 +123,27 @@ export default function BillingPage() {
 
   return (
     <main className={styles.page}>
-      <h1>Billing da Empresa</h1>
+      <PremiumPageHeader
+        title="Billing da empresa"
+        subtitle="Gerencie cobrança, faturas e status financeiro."
+        actions={
+          <Link href="/developer/companies">
+            <Button>Voltar para Empresas</Button>
+          </Link>
+        }
+      />
+
+      <section className={styles.summaryGrid}>
+        <PremiumSummaryCard label="Assinatura" value={subscriptionStatus} />
+        <PremiumSummaryCard label="Faturas" value={invoices.length} />
+        <PremiumSummaryCard label="Pagas" value={invoices.filter((invoice) => invoice.status === 'PAID').length} />
+        <PremiumSummaryCard label="Em atraso" value={invoices.filter((invoice) => invoice.status === 'PAST_DUE').length} />
+      </section>
+
       <div className={styles.row}>
         <Badge>{subscriptionStatus}</Badge>
       </div>
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
       {loading ? <p>Carregando...</p> : null}
 
       <Card className={styles.card}>
@@ -133,7 +151,7 @@ export default function BillingPage() {
         <div className={styles.form}>
           <Input placeholder="Billing email" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} />
           <Input placeholder="Documento" value={document} onChange={(e) => setDocument(e.target.value)} />
-          <Input placeholder="Razao social" value={legalName} onChange={(e) => setLegalName(e.target.value)} />
+          <Input placeholder="Razão social" value={legalName} onChange={(e) => setLegalName(e.target.value)} />
           <Button variant="primary" onClick={() => void saveBillingAccount()}>Salvar billing account</Button>
         </div>
       </Card>
@@ -151,7 +169,7 @@ export default function BillingPage() {
                 <strong>{invoice.id.slice(0, 8)}</strong>
                 <p>R$ {(invoice.amountCents / 100).toFixed(2)} • {invoice.status}</p>
                 {invoice.status === 'PAST_DUE' ? (
-                  <p className={styles.pastDue}>Em atraso ha {getOverdueDays(invoice)} dia(s). Regularize o pagamento.</p>
+                  <p className={styles.pastDue}>Em atraso há {getOverdueDays(invoice)} dia(s). Regularize o pagamento.</p>
                 ) : null}
                 {paymentLinks[invoice.id] ? (
                   <p className={styles.meta}>
@@ -171,7 +189,7 @@ export default function BillingPage() {
               </div>
             </div>
           ))}
-          {invoices.length === 0 ? <p>Sem faturas.</p> : null}
+          {invoices.length === 0 ? <PremiumEmptyState title="Sem faturas" description="Gere uma fatura mock para iniciar os testes de cobrança local." /> : null}
         </div>
       </Card>
     </main>
