@@ -1,6 +1,9 @@
-Ôªø# Smoke Test HML - V2
+# Smoke Test HML - V2
 
-Este documento descreve o smoke test execut√°vel da V2 em homologa√ß√£o.
+Este documento descreve o smoke test execut·vel da V2 em homologaÁ„o.
+
+> Checklist operacional consolidado (deploy, migration, rebuild, smoke e rollback):
+> `docs/hml-deploy-smoke-checklist.md`
 
 - API HML: `https://api-hml.menuhub.net.br`
 - WEB HML: `https://app-hml.menuhub.net.br`
@@ -19,18 +22,18 @@ Este documento descreve o smoke test execut√°vel da V2 em homologa√ß√£o.
 
 - `scripts/smoke-test-hml-v2.ps1`
 
-## Pr√©-requisitos
+## PrÈ-requisitos
 
 - PowerShell 5+ ou PowerShell 7+
 - API HML online
-- Um `ProductId` v√°lido da empresa para checkout
-- Headers/contexto v√°lidos:
+- Um `ProductId` v·lido da empresa para checkout
+- Headers/contexto v·lidos:
   - `x-company-id`
   - `x-branch-id` (opcional)
   - `x-user-role=admin`
   - `x-channel=delivery`
 
-## Exemplo de execu√ß√£o
+## Exemplo de execuÁ„o
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test-hml-v2.ps1 `
@@ -42,16 +45,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test-hml-v2.ps1 `
   -Number "100"
 ```
 
-## Par√¢metros do script
+## Par‚metros do script
 
 - `ApiBase` (default: `https://api-hml.menuhub.net.br`)
-- `CompanyId` (obrigat√≥rio)
+- `CompanyId` (obrigatÛrio)
 - `BranchId` (opcional)
-- `ProductId` (obrigat√≥rio)
+- `ProductId` (obrigatÛrio)
 - `Cep` (default: `01001000`)
 - `Number` (default: `100`)
 
-## Checklist autom√°tico (script)
+## Checklist autom·tico (script)
 
 O script executa na ordem:
 
@@ -64,57 +67,57 @@ O script executa na ordem:
 7. `GET /v2/orders`
 8. `GET /v2/orders/:id`
 9. `PATCH /v2/orders/:id/status` (para `CONFIRMED`)
-10. Instru√ß√£o para valida√ß√£o manual do painel admin
+10. InstruÁ„o para validaÁ„o manual do painel admin
 
 ## Checklist manual (navegador)
 
 Abrir `https://app-hml.menuhub.net.br/admin/orders` e validar:
 
-- pedido rec√©m-criado aparece na listagem
-- status inicial do pedido est√° coerente
-- ap√≥s PATCH, status atualizado aparece
-- erros de conex√£o/socket n√£o bloqueiam a visualiza√ß√£o
+- pedido recÈm-criado aparece na listagem
+- status inicial do pedido est· coerente
+- apÛs PATCH, status atualizado aparece
+- erros de conex„o/socket n„o bloqueiam a visualizaÁ„o
 - home sai de `API Verificando` para `API Online`
 - badge de WebSocket fica `Conectado`
 
-### Valida√ß√£o de assets Next (obrigat√≥ria)
+### ValidaÁ„o de assets Next (obrigatÛria)
 
 1. Abrir `https://app-hml.menuhub.net.br` e capturar o HTML.
 2. Confirmar que pelo menos um arquivo CSS de `/_next/static/css` retorna `200`.
 3. Confirmar que pelo menos um chunk JS referenciado no HTML (`/_next/static/chunks/...`) retorna `200`.
 4. Se houver `404` em `/_next/static`, revisar proxy Nginx do HML para `/_next/` e `/_next/static/`.
 
-## Sa√≠da esperada
+## SaÌda esperada
 
 - resumo final com `[PASS]` para todos os itens
-- c√≥digo de sa√≠da `0` quando sucesso
-- c√≥digo de sa√≠da `1` quando houver falhas
+- cÛdigo de saÌda `0` quando sucesso
+- cÛdigo de saÌda `1` quando houver falhas
 
-## Erros comuns e a√ß√µes
+## Erros comuns e aÁıes
 
 - `401/403`:
   - validar `x-company-id` e `x-user-role`
-  - validar m√≥dulo habilitado para a empresa
+  - validar mÛdulo habilitado para a empresa
 
 - `404` no checkout/menu:
-  - `ProductId` inv√°lido ou n√£o pertence √† empresa/filial
+  - `ProductId` inv·lido ou n„o pertence ‡ empresa/filial
 
 - `400` no checkout quote:
-  - CEP/n√∫mero inv√°lidos ou endere√ßo fora da √°rea
+  - CEP/n˙mero inv·lidos ou endereÁo fora da ·rea
 
 - `providerPaymentId ausente`:
-  - provider de pagamento n√£o retornou payload PIX completo
-  - verificar `PAYMENT_PROVIDER` e configura√ß√£o do provider
+  - provider de pagamento n„o retornou payload PIX completo
+  - verificar `PAYMENT_PROVIDER` e configuraÁ„o do provider
 
 - pagamento travado em `PENDING`:
-  - webhook n√£o chegou
-  - `MERCADO_PAGO_NOTIFICATION_URL` inacess√≠vel
+  - webhook n„o chegou
+  - `MERCADO_PAGO_NOTIFICATION_URL` inacessÌvel
   - validar endpoint `POST /v2/payments/webhook/mercadopago`
 
 - falha de CORS/socket no painel:
   - validar `CORS_ORIGIN` e `SOCKET_CORS_ORIGIN` na `api-v2`
   - conferir URL da API usada pelo frontend em HML
 
-## Observa√ß√£o
+## ObservaÁ„o
 
-Este smoke test n√£o altera l√≥gica de aplica√ß√£o e n√£o toca V1.
+Este smoke test n„o altera lÛgica de aplicaÁ„o e n„o toca V1.
