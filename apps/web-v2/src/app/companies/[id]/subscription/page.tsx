@@ -1,10 +1,13 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input, Select } from '@/components/ui/Input';
+import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import {
   createDeveloperCompanySubscription,
   getDeveloperCompanySubscription,
@@ -19,7 +22,8 @@ const PLAN_OPTIONS = [
   { id: 'enterprise', label: 'Enterprise' },
 ];
 
-export default function CompanySubscriptionPage({ params }: { params: { id: string } }) {
+export default function CompanySubscriptionPage() {
+  const params = useParams<{ id: string }>();
   const companyId = params.id;
   const [current, setCurrent] = useState<CompanySubscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,13 +75,28 @@ export default function CompanySubscriptionPage({ params }: { params: { id: stri
 
   return (
     <main className={styles.page}>
-      <h1>Assinatura da Empresa</h1>
-      {error ? <p className={styles.error}>{error}</p> : null}
+      <PremiumPageHeader
+        title="Assinatura da empresa"
+        subtitle="Ative, altere ou cancele planos comerciais."
+        actions={
+          <Link href="/developer/companies">
+            <Button>Voltar para Empresas</Button>
+          </Link>
+        }
+      />
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
+
+      <section className={styles.summaryGrid}>
+        <PremiumSummaryCard label="Status" value={current?.status ?? 'SEM_ASSINATURA'} />
+        <PremiumSummaryCard label="Plano atual" value={current?.plan?.name ?? current?.planId ?? 'Sem plano'} />
+        <PremiumSummaryCard label="Início" value={current ? new Date(current.startsAt).toLocaleDateString() : '-'} />
+        <PremiumSummaryCard label="Trial até" value={current?.trialEndsAt ? new Date(current.trialEndsAt).toLocaleDateString() : '-'} />
+      </section>
 
       <Card className={styles.card}>
         <h2>Status atual</h2>
         {loading ? <p>Carregando...</p> : null}
-        {!loading && !current ? <Badge tone="warning">SEM_ASSINATURA</Badge> : null}
+        {!loading && !current ? <PremiumEmptyState title="Sem assinatura" description="Selecione um plano e crie a assinatura comercial da empresa." /> : null}
         {current ? (
           <>
             <div className={styles.row}>

@@ -4,14 +4,12 @@ services:
     image: postgres:16-alpine
     container_name: menuhub-postgres-v2-hml
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-menuhub_v2_hml}
-      POSTGRES_USER: ${POSTGRES_USER:-menuhub}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-menuhub_hml_change_me}
+    env_file:
+      - ./apps/api-v2/.env.hml
     volumes:
       - postgres_v2_hml_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-menuhub} -d ${POSTGRES_DB:-menuhub_v2_hml}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 8
@@ -30,8 +28,6 @@ services:
       npm run start --workspace @delivery-futuro/api-v2"
     env_file:
       - ./apps/api-v2/.env.hml
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-menuhub}:${POSTGRES_PASSWORD:-menuhub_hml_change_me}@postgres-v2:5432/${POSTGRES_DB:-menuhub_v2_hml}
     ports:
       - "127.0.0.1:3202:3202"
     volumes:

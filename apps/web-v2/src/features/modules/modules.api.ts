@@ -1,3 +1,5 @@
+import { buildDeveloperAccessHeaders } from '@/lib/developer-session';
+
 export interface ModuleDefinition {
   key: string;
   name: string;
@@ -38,10 +40,15 @@ export interface CompanyModulesCommercialView {
   } | null;
   modules: Array<{
     moduleKey: string;
+    key: string;
+    label: string;
+    description: string;
     includedInPlan: boolean;
     overrideEnabled: boolean | null;
     effectiveEnabled: boolean;
     source: 'plan' | 'override';
+    planKey: string | null;
+    blockedReason: string | null;
     adminOnly: boolean;
     enabledByDefault: boolean;
   }>;
@@ -56,6 +63,7 @@ function buildHeaders(input: { companyId: string; branchId?: string; userRole?: 
     'x-company-id': input.companyId,
     ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
     'x-user-role': input.userRole ?? 'admin',
+    ...buildDeveloperAccessHeaders(),
   };
 }
 
@@ -108,7 +116,7 @@ export async function getCompanyModulesCommercialView(input: {
   headers: { companyId: string; branchId?: string; userRole?: AppUserRole };
   targetCompanyId: string;
 }) {
-  const res = await fetch(`${API_BASE}/v2/companies/${input.targetCompanyId}/modules`, {
+  const res = await fetch(`${API_BASE}/v2/developer/companies/${input.targetCompanyId}/modules`, {
     method: 'GET',
     headers: buildHeaders(input.headers),
     cache: 'no-store',

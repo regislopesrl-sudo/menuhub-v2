@@ -1,5 +1,6 @@
-﻿export type AppUserRole =
+export type AppUserRole =
   | 'admin'
+  | 'technical_admin'
   | 'user'
   | 'master'
   | 'developer'
@@ -26,4 +27,5 @@ export interface AuthTokens {
   refreshToken: string;
   expiresInSec: number;
 }
+
 

@@ -12,7 +12,8 @@ async function bootstrap() {
     origin: corsOrigin.length === 1 && corsOrigin[0] === '*' ? true : corsOrigin,
     credentials: true,
   });
-  await app.listen(3202);
+  const port = Number(process.env.PORT ?? 3202);
+  await app.listen(port);
 }
 
 void bootstrap();

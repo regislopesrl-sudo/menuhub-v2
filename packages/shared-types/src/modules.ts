@@ -14,7 +14,7 @@ export type ModuleKey =
   | 'fiscal'
   | 'financial';
 
-export type PlanKey = 'basic' | 'starter' | 'pro' | 'enterprise';
+export type PlanKey = 'basic' | 'pro' | 'enterprise';
 
 export interface ModuleDefinition {
   key: ModuleKey;

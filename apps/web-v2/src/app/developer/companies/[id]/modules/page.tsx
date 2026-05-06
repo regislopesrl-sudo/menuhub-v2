@@ -1,53 +1,210 @@
 ﻿'use client';
 
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { listDeveloperCompanyModules, patchDeveloperCompanyModule } from '@/features/modules/developer-plans.api';
+import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
+import {
+  getCompanyModulesCommercialView,
+  patchCurrentCompanyModule,
+  type CompanyModulesCommercialView,
+} from '@/features/modules/modules.api';
+import styles from './page.module.css';
 
-type Row = { companyId: string; moduleKey: string; enabled: boolean; source: string; planKey?: string };
+type SubscriptionStatus = 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+
+type ModuleUiMeta = {
+  title: string;
+  description: string;
+};
+
+const MODULE_META: Record<string, ModuleUiMeta> = {
+  delivery: { title: 'Delivery', description: 'Cardapio online e pedidos.' },
+  pdv: { title: 'PDV', description: 'Operacao de caixa e vendas presenciais.' },
+  kds: { title: 'KDS', description: 'Cozinha e preparo.' },
+  whatsapp: { title: 'WhatsApp', description: 'Atendimento e notificacoes.' },
+  kiosk: { title: 'Kiosk', description: 'Autoatendimento.' },
+  waiter_app: { title: 'Waiter App', description: 'Garcom digital.' },
+  admin_panel: { title: 'Admin Panel', description: 'Acesso ao painel administrativo.' },
+  orders: { title: 'Pedidos', description: 'Fluxo de pedidos e acompanhamento.' },
+  menu: { title: 'Cardapio', description: 'Gestao de itens e categorias.' },
+  payments: { title: 'Pagamentos', description: 'Processamento de pagamento.' },
+  reports: { title: 'Relatorios', description: 'Indicadores e analises operacionais.' },
+  stock: { title: 'Estoque', description: 'Controle de estoque e movimentacao.' },
+  fiscal: { title: 'Fiscal', description: 'Rotinas e obrigacoes fiscais.' },
+  financial: { title: 'Financeiro', description: 'Gestao financeira do negocio.' },
+};
+
+function statusTone(status: SubscriptionStatus | null): 'success' | 'warning' | 'danger' {
+  if (status === 'ACTIVE' || status === 'TRIAL') return 'success';
+  if (status === 'PAST_DUE') return 'warning';
+  return 'danger';
+}
 
 export default function DeveloperCompanyModulesPage() {
   const params = useParams<{ id: string }>();
   const companyId = params?.id;
-  const [rows, setRows] = useState<Row[]>([]);
+
+  const [view, setView] = useState<CompanyModulesCommercialView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!companyId) return;
+    setLoading(true);
     setError(null);
     try {
-      setRows(await listDeveloperCompanyModules(companyId));
+      const payload = await getCompanyModulesCommercialView({
+        headers: { companyId, userRole: 'developer' },
+        targetCompanyId: companyId,
+      });
+      setView(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar modulos');
+      setError(err instanceof Error ? err.message : 'Falha ao carregar modulos da empresa.');
+    } finally {
+      setLoading(false);
     }
-  }
+  }, [companyId]);
 
-  useEffect(() => { void load(); }, [companyId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const subscriptionStatus = (view?.subscription?.status ?? null) as SubscriptionStatus | null;
+  const canEdit = subscriptionStatus === 'ACTIVE' || subscriptionStatus === 'TRIAL';
+
+  const summary = useMemo(() => {
+    const list = view?.modules ?? [];
+    const active = list.filter((item) => item.effectiveEnabled).length;
+    const blocked = list.length - active;
+    const overrides = list.filter((item) => item.overrideEnabled !== null).length;
+    return { active, blocked, overrides, total: list.length };
+  }, [view]);
+
+  const handleToggle = async (moduleKey: string, effectiveEnabled: boolean) => {
+    if (!companyId || !canEdit) return;
+    setSavingKey(moduleKey);
+    setError(null);
+    try {
+      await patchCurrentCompanyModule({
+        headers: { companyId, userRole: 'developer' },
+        moduleKey,
+        enabled: !effectiveEnabled,
+        reason: 'Ajuste manual de modulo por empresa',
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao alterar modulo.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleClearOverride = async (moduleKey: string, includedInPlan: boolean) => {
+    if (!companyId || !canEdit) return;
+    setSavingKey(moduleKey);
+    setError(null);
+    try {
+      await patchCurrentCompanyModule({
+        headers: { companyId, userRole: 'developer' },
+        moduleKey,
+        enabled: includedInPlan,
+        reason: 'Limpeza de override (retorno ao plano)',
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao limpar override.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
 
   return (
-    <main style={{ padding: 24, display: 'grid', gap: 12 }}>
-      <Card>
-        <h1>Company Modules</h1>
-        <p>Empresa: {companyId}</p>
-      </Card>
-      {error ? <Card><p>{error}</p></Card> : null}
-      {rows.map((row) => (
-        <Card key={row.moduleKey}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <strong>{row.moduleKey}</strong>
-              <p>source: {row.source} | plan: {row.planKey ?? '-'}</p>
-            </div>
-            <Button onClick={async () => {
-              if (!companyId) return;
-              await patchDeveloperCompanyModule(companyId, row.moduleKey, !row.enabled);
-              await load();
-            }}>{row.enabled ? 'Desabilitar' : 'Habilitar'}</Button>
-          </div>
+    <main className={styles.page}>
+      <PremiumPageHeader
+        title="Módulos da empresa"
+        subtitle={`${view?.company?.name ?? 'Empresa'}${view?.company?.slug ? ` · ${view.company.slug}` : ''}`}
+        actions={
+          <>
+            <Badge tone={statusTone(subscriptionStatus)}>{subscriptionStatus ?? 'SEM_ASSINATURA'}</Badge>
+            <Link href="/developer/companies">
+              <Button>Voltar para Empresas</Button>
+            </Link>
+          </>
+        }
+      />
+
+      <section className={styles.summaryGrid}>
+        <PremiumSummaryCard label="Plano atual" value={view?.plan?.name ?? 'Sem plano'} />
+        <PremiumSummaryCard label="Módulos ativos" value={summary.active} />
+        <PremiumSummaryCard label="Módulos bloqueados" value={summary.blocked} />
+        <PremiumSummaryCard label="Overrides manuais" value={summary.overrides} />
+      </section>
+
+      {!canEdit ? (
+        <Card className={styles.alertCard}>
+          Assinatura inativa. Ative a assinatura para alterar modulos.
         </Card>
-      ))}
+      ) : null}
+
+      {loading ? <Card className={styles.stateCard}>Carregando módulos...</Card> : null}
+      {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
+      {!loading && !error && summary.total === 0 ? <PremiumEmptyState title="Sem módulos" description="Nenhum módulo encontrado para esta empresa." /> : null}
+
+      {!loading && !error && summary.total > 0 ? (
+        <section className={styles.grid}>
+          {view?.modules.map((row) => {
+            const meta = MODULE_META[row.key] ?? {
+              title: row.label,
+              description: row.description,
+            };
+            const saving = savingKey === row.key;
+            return (
+              <Card key={row.key} className={styles.moduleCard}>
+                <div className={styles.moduleTop}>
+                  <div>
+                    <h3>{meta.title}</h3>
+                    <p>{meta.description}</p>
+                  </div>
+                  <Badge>{row.key}</Badge>
+                </div>
+
+                <div className={styles.badges}>
+                  <Badge tone={row.effectiveEnabled ? 'success' : 'danger'}>{row.effectiveEnabled ? 'Ativo' : 'Bloqueado'}</Badge>
+                  <Badge tone={row.source === 'override' ? 'warning' : 'success'}>{row.source === 'override' ? 'Override' : 'Plano'}</Badge>
+                  <Badge>{row.includedInPlan ? 'Incluido no plano' : 'Fora do plano'}</Badge>
+                  <Badge>{row.planKey ?? '-'}</Badge>
+                </div>
+
+                <p className={styles.originText}>
+                  Origem: {row.source === 'override' ? 'Override manual' : 'Plano'}
+                  {row.blockedReason ? ' · Bloqueado por assinatura' : ''}
+                </p>
+
+                <div className={styles.actionRow}>
+                  <Button
+                    variant={row.effectiveEnabled ? 'danger' : 'primary'}
+                    onClick={() => void handleToggle(row.key, row.effectiveEnabled)}
+                    disabled={saving || !canEdit}
+                  >
+                    {saving ? 'Salvando...' : row.effectiveEnabled ? 'Desabilitar' : 'Habilitar'}
+                  </Button>
+
+                  {row.overrideEnabled !== null ? (
+                    <Button onClick={() => void handleClearOverride(row.key, row.includedInPlan)} disabled={saving || !canEdit}>
+                      Limpar override
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            );
+          })}
+        </section>
+      ) : null}
     </main>
   );
 }
