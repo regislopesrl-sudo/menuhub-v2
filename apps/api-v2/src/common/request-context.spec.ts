@@ -38,12 +38,21 @@ describe('buildRequestContextFromHeaders', () => {
     expect(ctx.branchId).toBe('branch_a');
   });
 
-  it('aceita role developer', () => {
+  it('nunca eleva developer via header fallback', () => {
     const ctx = buildRequestContextFromHeaders({
       'x-company-id': 'company_a',
       'x-user-role': 'developer',
     });
-    expect(ctx.userRole).toBe('developer');
+    expect(ctx.userRole).toBe('user');
+    expect(ctx.permissions).toEqual([]);
+  });
+
+  it('nunca eleva technical_admin via header fallback', () => {
+    const ctx = buildRequestContextFromHeaders({
+      'x-company-id': 'company_a',
+      'x-user-role': 'technical_admin',
+    });
+    expect(ctx.userRole).toBe('user');
     expect(ctx.permissions).toEqual([]);
   });
 });

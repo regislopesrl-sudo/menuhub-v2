@@ -31,6 +31,7 @@ export interface RequestContext {
 type HeaderMap = Record<string, string | string[] | undefined>;
 
 const VALID_ROLES: UserRole[] = ['admin', 'technical_admin', 'user', 'master', 'developer', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
+const HEADER_FALLBACK_ALLOWED_ROLES: UserRole[] = ['admin', 'user', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
 const VALID_CHANNELS: ChannelKey[] = ['delivery', 'pdv', 'whatsapp', 'kiosk', 'waiter_app', 'admin_panel'];
 
 export function buildRequestContextFromHeaders(headers: HeaderMap): RequestContext {
@@ -40,9 +41,11 @@ export function buildRequestContextFromHeaders(headers: HeaderMap): RequestConte
   }
 
   const userRoleRaw = readHeader(headers, 'x-user-role');
-  const userRole: UserRole = VALID_ROLES.includes((userRoleRaw ?? '').toLowerCase() as UserRole)
-    ? ((userRoleRaw ?? '').toLowerCase() as UserRole)
-    : 'user';
+  const normalizedRole = (userRoleRaw ?? '').toLowerCase() as UserRole;
+  const userRole: UserRole =
+    VALID_ROLES.includes(normalizedRole) && HEADER_FALLBACK_ALLOWED_ROLES.includes(normalizedRole)
+      ? normalizedRole
+      : 'user';
 
   const requestId = readHeader(headers, 'x-request-id') ?? randomUUID();
   const channelRaw = readHeader(headers, 'x-channel')?.toLowerCase();
@@ -53,6 +56,7 @@ export function buildRequestContextFromHeaders(headers: HeaderMap): RequestConte
     branchId: readHeader(headers, 'x-branch-id'),
     userRole,
     requestId,
+    source: 'header-fallback',
     channel,
     permissions: [],
   };
@@ -68,6 +72,7 @@ export function buildRequestContextFromClaims(headers: HeaderMap, claims: AuthTo
     branchId: claims.branchId,
     userRole: claims.role,
     requestId,
+    source: 'jwt',
     channel,
     permissions: claims.permissions,
     userId: claims.sub,

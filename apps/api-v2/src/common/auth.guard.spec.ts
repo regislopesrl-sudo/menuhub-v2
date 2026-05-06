@@ -16,12 +16,14 @@ describe('AuthGuardV2', () => {
   });
 
   function makeContext(headers: Record<string, string>) {
+    const request = { headers } as any;
     return {
       getHandler: jest.fn(),
       getClass: jest.fn(),
       switchToHttp: () => ({
-        getRequest: () => ({ headers }),
+        getRequest: () => request,
       }),
+      __request: request,
     } as any;
   }
 
@@ -52,5 +54,15 @@ describe('AuthGuardV2', () => {
     expect(() =>
       guard.canActivate(makeContext({ 'x-company-id': 'company_a', 'x-user-role': 'developer' })),
     ).toThrow(UnauthorizedException);
+  });
+
+  it('em fallback local, header developer nao concede role developer', () => {
+    process.env.ALLOW_HEADER_CONTEXT_FALLBACK = 'true';
+    const guard = new AuthGuardV2(reflector, jwtService as any);
+    const ctx = makeContext({ 'x-company-id': 'company_a', 'x-user-role': 'developer' });
+
+    expect(guard.canActivate(ctx)).toBe(true);
+    expect(ctx.__request.context.userRole).toBe('user');
+    expect(ctx.__request.context.source).toBe('header-fallback');
   });
 });
