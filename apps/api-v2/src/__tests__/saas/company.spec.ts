@@ -33,10 +33,18 @@ describe('SaaS Company Flow', () => {
     };
     const controller = new DeveloperController(modulesService as never, authService as never);
 
-    const created = await controller.createPlan({
-      key: 'basic',
-      name: 'Plano Basic',
-    });
+    const created = await controller.createPlan(
+      {
+        companyId: 'c1',
+        userRole: 'technical_admin',
+        requestId: 'r1',
+        permissions: ['*'],
+      },
+      {
+        key: 'basic',
+        name: 'Plano Basic',
+      },
+    );
 
     expect(created.id).toBe('p1');
     expect(modulesService.createPlan).toHaveBeenCalledWith({
