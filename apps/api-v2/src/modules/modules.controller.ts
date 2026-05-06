@@ -4,6 +4,7 @@ import { ModulesService } from './modules.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { RequireDeveloperGuard } from '../common/require-developer.guard';
+import { assertCompanyScope } from '../common/platform-access';
 
 @Controller('v2')
 export class ModulesController {
@@ -26,7 +27,11 @@ export class ModulesController {
 
   @Get('companies/:companyId/modules')
   @UseGuards(RequireDeveloperGuard)
-  async getCompanyModulesView(@Param('companyId') companyId: string) {
+  async getCompanyModulesView(
+    @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCompanyScope(ctx, companyId);
     return this.modulesService.getCompanyModulesView(companyId);
   }
 

@@ -25,6 +25,17 @@ describe('BillingController', () => {
     expect(service.listInvoices).toHaveBeenCalledWith('c1');
   });
 
+  it('permite technical_admin consultar billing de outra empresa', async () => {
+    service.getCompanyBilling.mockResolvedValueOnce({ companyId: 'c2' });
+    await controller.getBilling('c2', {
+      companyId: 'c1',
+      userRole: 'technical_admin',
+      requestId: 'r1',
+      permissions: ['*'],
+    });
+    expect(service.getCompanyBilling).toHaveBeenCalledWith('c2');
+  });
+
   it('cria payment link para invoice da empresa atual', async () => {
     service.createPaymentLink.mockResolvedValueOnce({ provider: 'mock', status: 'PENDING' });
     await controller.createPaymentLink('i1', { companyId: 'c1', userRole: 'developer', requestId: 'r1' });

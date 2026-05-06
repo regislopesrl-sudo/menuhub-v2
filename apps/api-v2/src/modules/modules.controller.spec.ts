@@ -1,4 +1,5 @@
-﻿import type { ModuleKey } from '@delivery-futuro/shared-types';
+import { ForbiddenException } from '@nestjs/common';
+import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { ModulesController } from './modules.controller';
 
 describe('ModulesController', () => {
@@ -6,6 +7,7 @@ describe('ModulesController', () => {
     listAvailableModules: jest.fn(),
     listCurrentCompanyModules: jest.fn(),
     updateCurrentCompanyModule: jest.fn(),
+    getCompanyModulesView: jest.fn(),
   };
   const controller = new ModulesController(service as never);
 
@@ -25,5 +27,16 @@ describe('ModulesController', () => {
       moduleKey: 'delivery',
       enabled: true,
     });
+  });
+
+  it('bloqueia acesso cross-company para developer em modules view', async () => {
+    await expect(
+      controller.getCompanyModulesView('c2', {
+        companyId: 'c1',
+        userRole: 'developer',
+        requestId: 'r1',
+        permissions: [],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

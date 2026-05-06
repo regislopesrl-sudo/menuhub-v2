@@ -1,4 +1,5 @@
 import { DeveloperController } from './developer.controller';
+import { ForbiddenException } from '@nestjs/common';
 
 describe('DeveloperController', () => {
   const modulesService = {
@@ -22,5 +23,23 @@ describe('DeveloperController', () => {
 
     expect(authService.loginWithDeveloperCode).toHaveBeenCalledWith({ code: 'abc123' });
     expect(result).toEqual({ accessToken: 'a', refreshToken: 'r', expiresInSec: 900 });
+  });
+
+  it('listPlans bloqueia usuario developer sem contexto platform', () => {
+    expect(() =>
+      controller.listPlans({ companyId: 'c1', userRole: 'developer', requestId: 'r1', permissions: [] }),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('listPlans permite technical_admin', () => {
+    modulesService.listPlans.mockReturnValueOnce([{ key: 'pro' }]);
+    const result = controller.listPlans({
+      companyId: 'c1',
+      userRole: 'technical_admin',
+      requestId: 'r1',
+      permissions: ['*'],
+    });
+    expect(modulesService.listPlans).toHaveBeenCalled();
+    expect(result).toEqual([{ key: 'pro' }]);
   });
 });
