@@ -1,12 +1,12 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { RequestContext } from './request-context';
 import { assertSameCompany } from './assert-same-company';
+import { PLATFORM_PERMISSIONS, hasAnyPermission, isTechnicalAdminSource } from './rbac';
 
 export function isPlatformContext(ctx: RequestContext): boolean {
   return (
-    ctx.source === 'technical-admin' ||
-    Boolean(ctx.permissions?.includes('platform:admin')) ||
-    Boolean(ctx.permissions?.includes('*'))
+    isTechnicalAdminSource(ctx) ||
+    hasAnyPermission(ctx, [PLATFORM_PERMISSIONS.ADMIN, PLATFORM_PERMISSIONS.ALL])
   );
 }
 
