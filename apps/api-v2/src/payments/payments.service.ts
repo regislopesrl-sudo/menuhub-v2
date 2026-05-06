@@ -4,15 +4,15 @@ import { OrderPrismaRepository } from '../orders/order.prisma';
 import { OrdersEventsService } from '../orders/orders-events.service';
 import { PAYMENT_PROVIDER_TOKEN } from './providers/payment-provider.tokens';
 import type { PaymentProvider } from './providers/payment-provider.interface';
+import { PrismaService } from '../database/prisma.service';
 
 @Injectable()
 export class PaymentsService {
-  private readonly processedEvents = new Set<string>();
-
   constructor(
     @Inject(PAYMENT_PROVIDER_TOKEN) private readonly provider: PaymentProvider,
     private readonly orderRepository: OrderPrismaRepository,
     private readonly ordersEvents: OrdersEventsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   createPixPayment(order: { id: string; orderNumber?: string; total: number }, ctx: RequestContext) {
@@ -55,7 +55,8 @@ export class PaymentsService {
       throw new BadRequestException('Payload de webhook invalido: eventId obrigatorio.');
     }
 
-    if (this.processedEvents.has(eventId)) {
+    const duplicate = await this.registerWebhookEvent(provider, eventId, payload);
+    if (duplicate) {
       return {
         provider,
         providerPaymentId: String(((payload as Record<string, unknown>)?.providerPaymentId) ?? ''),
@@ -114,8 +115,35 @@ export class PaymentsService {
       }
     }
 
-    this.processedEvents.add(eventId);
+    await this.markWebhookEventProcessed(provider, eventId);
     return result;
+  }
+
+  private async registerWebhookEvent(provider: string, eventId: string, payload: unknown): Promise<boolean> {
+    try {
+      await this.prisma.billingWebhookEvent.create({
+        data: {
+          provider,
+          eventId,
+          eventType: 'payments.webhook',
+          payloadJson: payload as object,
+        },
+      });
+      return false;
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      if (code === 'P2002') {
+        return true;
+      }
+      throw error;
+    }
+  }
+
+  private async markWebhookEventProcessed(provider: string, eventId: string) {
+    await this.prisma.billingWebhookEvent.updateMany({
+      where: { provider, eventId, processedAt: null },
+      data: { processedAt: new Date() },
+    });
   }
 
   private normalizeStatus(status: string): 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'PENDING' {
