@@ -1,9 +1,10 @@
-﻿import { BadRequestException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { AuthTokenClaims } from '../auth/auth.types';
 
 export type UserRole =
   | 'admin'
+  | 'technical_admin'
   | 'user'
   | 'master'
   | 'developer'
@@ -28,7 +29,7 @@ export interface RequestContext {
 
 type HeaderMap = Record<string, string | string[] | undefined>;
 
-const VALID_ROLES: UserRole[] = ['admin', 'user', 'master', 'developer', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
+const VALID_ROLES: UserRole[] = ['admin', 'technical_admin', 'user', 'master', 'developer', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
 const VALID_CHANNELS: ChannelKey[] = ['delivery', 'pdv', 'whatsapp', 'kiosk', 'waiter_app', 'admin_panel'];
 
 export function buildRequestContextFromHeaders(headers: HeaderMap): RequestContext {
@@ -95,5 +96,6 @@ function readHeader(headers: HeaderMap, key: string): string | undefined {
   }
   return undefined;
 }
+
 
 

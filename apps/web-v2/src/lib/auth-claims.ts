@@ -1,5 +1,6 @@
 export type SessionRole =
   | 'admin'
+  | 'technical_admin'
   | 'master'
   | 'user'
   | 'developer'
@@ -27,6 +28,7 @@ export function readRoleFromAccessToken(token: string): SessionRole {
   const role = String(payload?.role ?? '').toLowerCase();
   if (
     role === 'admin' ||
+    role === 'technical_admin' ||
     role === 'master' ||
     role === 'user' ||
     role === 'developer' ||
@@ -41,3 +43,4 @@ export function readRoleFromAccessToken(token: string): SessionRole {
   }
   return 'user';
 }
+

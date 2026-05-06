@@ -25,7 +25,7 @@ export function AuthGuard({ scope, children }: { scope: Scope; children: ReactNo
       try {
         const me = await authMe();
         const role = String(me.role ?? '').toLowerCase();
-        const isDeveloper = role === 'developer';
+        const isDeveloper = role === 'developer' || role === 'technical_admin';
         const isAdmin = isDeveloper || role === 'admin' || role === 'master' || role === 'owner' || role === 'manager';
 
         if (scope === 'developer' && !isDeveloper) {

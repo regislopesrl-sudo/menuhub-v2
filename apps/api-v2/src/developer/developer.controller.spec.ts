@@ -11,8 +11,9 @@ describe('DeveloperController', () => {
   const authService = {
     loginWithDeveloperCode: jest.fn(),
   };
+  const prisma = {};
 
-  const controller = new DeveloperController(modulesService as any, authService as any);
+  const controller = new DeveloperController(modulesService as any, authService as any, prisma as any);
 
   it('login tecnico usa codigo e retorna sessao', async () => {
     authService.loginWithDeveloperCode.mockResolvedValue({ accessToken: 'a', refreshToken: 'r', expiresInSec: 900 });

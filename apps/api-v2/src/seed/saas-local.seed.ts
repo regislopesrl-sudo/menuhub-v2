@@ -3,6 +3,13 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function run() {
+  const ensurePlan = async (key: string, name: string, description: string) =>
+    prisma.plan.upsert({
+      where: { key },
+      update: { name, isActive: true, description },
+      create: { key, name, description },
+    });
+
   const starter = await prisma.plan.upsert({
     where: { key: 'starter' },
     update: { name: 'Starter', isActive: true },
@@ -18,20 +25,38 @@ async function run() {
     update: { name: 'Enterprise', isActive: true },
     create: { key: 'enterprise', name: 'Enterprise', description: 'Plano enterprise' },
   });
+  const demo = await ensurePlan('demo', 'Demo', 'Plano de demonstracao local');
+  const premium = await ensurePlan('premium', 'Premium', 'Plano premium SaaS local');
 
   const modulesByPlan: Record<string, string[]> = {
     starter: ['delivery', 'orders', 'menu', 'payments'],
     pro: ['delivery', 'orders', 'menu', 'payments', 'pdv', 'kds', 'whatsapp', 'reports'],
     enterprise: ['delivery', 'orders', 'menu', 'payments', 'pdv', 'kds', 'whatsapp', 'reports', 'stock', 'fiscal', 'financial', 'admin_panel'],
+    demo: ['delivery', 'pdv', 'kds', 'whatsapp', 'kiosk', 'waiter_app'],
+    premium: ['delivery', 'pdv', 'kds', 'whatsapp', 'kiosk', 'waiter_app', 'orders', 'menu', 'payments', 'admin_panel'],
   };
 
   for (const [planKey, moduleKeys] of Object.entries(modulesByPlan)) {
-    const plan = planKey === 'starter' ? starter : planKey === 'pro' ? pro : enterprise;
+    const plan =
+      planKey === 'starter'
+        ? starter
+        : planKey === 'pro'
+          ? pro
+          : planKey === 'enterprise'
+            ? enterprise
+            : planKey === 'demo'
+              ? demo
+              : premium;
     for (const moduleKey of moduleKeys) {
       await prisma.planModule.upsert({
         where: { planId_moduleKey: { planId: plan.id, moduleKey } },
         update: { enabled: true },
-        create: { planId: plan.id, moduleKey, enabled: true },
+        create: {
+          planId: plan.id,
+          moduleKey,
+          enabled: true,
+          adminOnly: ['pdv', 'kds', 'admin_panel', 'reports', 'stock', 'fiscal', 'financial'].includes(moduleKey),
+        },
       });
     }
   }
@@ -58,14 +83,44 @@ async function run() {
     },
   });
 
-  await prisma.companySubscription.create({
-    data: {
-      companyId: company.id,
-      planId: pro.id,
-      status: 'ACTIVE',
-      startsAt: new Date(),
+  const now = new Date();
+  const activeCompanies = await prisma.company.findMany({
+    where: { status: 'ACTIVE' },
+    select: { id: true, slug: true, name: true },
+  });
+
+  for (const currentCompany of activeCompanies) {
+    const lastSubscription = await prisma.companySubscription.findFirst({
+      where: { companyId: currentCompany.id },
+      orderBy: [{ startsAt: 'desc' }],
+    });
+
+    if (!lastSubscription) {
+      await prisma.companySubscription.create({
+        data: {
+          companyId: currentCompany.id,
+          planId: currentCompany.slug === 'demo-saas' ? premium.id : pro.id,
+          status: 'ACTIVE',
+          startsAt: now,
+        },
+      });
+    }
+  }
+
+  await prisma.billingAccount.upsert({
+    where: { companyId: company.id },
+    update: {
+      billingEmail: company.email ?? 'billing@menuhub.local',
+      legalName: company.legalName,
+      document: company.document,
     },
-  }).catch(() => undefined);
+    create: {
+      companyId: company.id,
+      billingEmail: company.email ?? 'billing@menuhub.local',
+      legalName: company.legalName,
+      document: company.document,
+    },
+  });
 
   await prisma.user.upsert({
     where: { email: 'admin.demo@menuhub.local' },

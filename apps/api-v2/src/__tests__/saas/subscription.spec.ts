@@ -11,7 +11,8 @@ describe('SaaS Subscription Flow', () => {
       updateCompanyModuleOverride: jest.fn(),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {};
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
 
     const result = await controller.listPlans();
     expect(result).toHaveLength(1);
@@ -31,7 +32,8 @@ describe('SaaS Subscription Flow', () => {
       }),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {};
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
 
     const result = await controller.updateCompanyModule('c1', 'kds', { enabled: true });
     expect(result.enabled).toBe(true);

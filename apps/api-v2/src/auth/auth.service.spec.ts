@@ -105,4 +105,24 @@ describe('AuthServiceV2', () => {
 
     await expect(service.loginWithDeveloperCode({ code: 'wrong' })).rejects.toThrow(UnauthorizedException);
   });
+
+  it('login tecnico por email/senha retorna role technical_admin', async () => {
+    const prismaMock = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...baseUser,
+          roles: [{ role: { name: 'TECHNICAL_ADMIN', permissions: [] } }],
+          memberships: [{ companyId: 'company_a', roleKey: 'owner', isActive: true }],
+        }),
+      },
+      refreshToken: { create: jest.fn() },
+    } as any;
+    const service = new AuthServiceV2(prismaMock, jwtMock as any);
+
+    await service.login({ email: 'tecnico@menuhub.local', password: '123456' });
+
+    expect(jwtMock.signAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'technical_admin' }),
+    );
+  });
 });

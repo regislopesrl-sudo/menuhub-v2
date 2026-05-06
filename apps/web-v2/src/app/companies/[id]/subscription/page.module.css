@@ -5,6 +5,12 @@
   padding: 24px 0;
 }
 
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .card {
   display: grid;
   gap: 10px;
@@ -27,6 +33,10 @@
 }
 
 @media (max-width: 760px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
   .form {
     grid-template-columns: 1fr;
   }

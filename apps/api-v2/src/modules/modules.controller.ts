@@ -24,6 +24,12 @@ export class ModulesController {
     return this.modulesService.listCurrentCompanyModules(ctx.companyId);
   }
 
+  @Get('companies/:companyId/modules')
+  @UseGuards(RequireDeveloperGuard)
+  async getCompanyModulesView(@Param('companyId') companyId: string) {
+    return this.modulesService.getCompanyModulesView(companyId);
+  }
+
   @Patch('companies/current/modules/:moduleKey')
   @UseGuards(RequireDeveloperGuard)
   async updateCurrentCompanyModule(

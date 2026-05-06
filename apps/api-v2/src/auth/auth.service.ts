@@ -54,18 +54,23 @@ export class AuthServiceV2 {
       throw new UnauthorizedException('Credenciais invalidas.');
     }
 
-    const isDeveloper = user.roles.some((item) => item.role.name.toLowerCase() === 'developer');
+    const roleKeys = user.roles.map((item) => item.role.name.trim().toLowerCase().replace(/[\s-]+/g, '_'));
+    const isDeveloper = roleKeys.includes('developer');
+    const isTechnicalAdmin = roleKeys.includes('technical_admin');
     let companyId: string;
     let branchScope: string[];
     let branchId: string | undefined;
     let role: AppUserRole;
 
-    if (isDeveloper) {
-      role = 'developer';
+    if (isDeveloper || isTechnicalAdmin) {
+      role = isTechnicalAdmin ? 'technical_admin' : 'developer';
       const firstMembership = user.memberships[0];
       companyId = firstMembership?.companyId ?? user.branchAccesses[0]?.branch.companyId ?? '';
       if (!companyId) {
-        throw new UnauthorizedException('Usuario developer sem escopo de empresa inicial.');
+        companyId = String(process.env.DEFAULT_COMPANY_ID ?? '').trim();
+      }
+      if (!companyId) {
+        throw new UnauthorizedException('Usuario tecnico sem escopo de empresa inicial.');
       }
       branchScope = user.branchAccesses
         .filter((access) => access.branch.companyId === companyId)
@@ -332,6 +337,7 @@ export class AuthServiceV2 {
   private normalizeRoleKey(roleKey: string): AppUserRole {
     const key = String(roleKey ?? '').trim().toLowerCase();
     if (
+      key === 'technical_admin' ||
       key === 'owner' ||
       key === 'manager' ||
       key === 'cashier' ||
@@ -348,6 +354,7 @@ export class AuthServiceV2 {
   private buildPermissions(role: AppUserRole): string[] {
     const matrix: Record<string, string[]> = {
       developer: ['*'],
+      technical_admin: ['*'],
       owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read'],
       manager: ['admin.users.read', 'settings.read', 'orders.manage', 'modules.read'],
       cashier: ['orders.manage', 'pdv.operate'],
