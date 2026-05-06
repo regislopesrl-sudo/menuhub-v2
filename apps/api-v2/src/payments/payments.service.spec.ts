@@ -6,6 +6,7 @@ describe('PaymentsService webhook', () => {
     provider?: any;
     orderRepository?: any;
     ordersEvents?: any;
+    prisma?: any;
   }) {
     const provider = overrides?.provider ?? {
       providerName: 'mock',
@@ -22,11 +23,18 @@ describe('PaymentsService webhook', () => {
     const ordersEvents = overrides?.ordersEvents ?? {
       emitOrderStatusUpdated: jest.fn(),
     };
+    const prisma = overrides?.prisma ?? {
+      billingWebhookEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'evt_db_1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
     return {
-      service: new PaymentsService(provider, orderRepository, ordersEvents),
+      service: new PaymentsService(provider, orderRepository, ordersEvents, prisma),
       provider,
       orderRepository,
       ordersEvents,
+      prisma,
     };
   }
 
@@ -91,7 +99,11 @@ describe('PaymentsService webhook', () => {
   });
 
   it('webhook duplicado e ignorado', async () => {
-    const { service, provider } = build({
+    const createMock = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'evt_db_1' })
+      .mockRejectedValueOnce({ code: 'P2002' });
+    const { service, provider, prisma } = build({
       provider: {
         providerName: 'mock',
         createPixPayment: jest.fn(),
@@ -103,6 +115,12 @@ describe('PaymentsService webhook', () => {
           status: 'PENDING',
           processed: true,
         }),
+      },
+      prisma: {
+        billingWebhookEvent: {
+          create: createMock,
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
       },
     });
 
@@ -121,6 +139,7 @@ describe('PaymentsService webhook', () => {
     expect(second.processed).toBe(false);
     expect(second.reason).toBe('DUPLICATE_EVENT');
     expect(provider.handleWebhook).toHaveBeenCalledTimes(1);
+    expect(prisma.billingWebhookEvent.create).toHaveBeenCalledTimes(2);
   });
 
   it('webhook APPROVED atualiza pedido e emite evento', async () => {
