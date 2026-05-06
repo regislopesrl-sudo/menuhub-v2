@@ -4,7 +4,7 @@ import { assertSameCompany } from './assert-same-company';
 
 export function isPlatformContext(ctx: RequestContext): boolean {
   return (
-    ctx.userRole === 'technical_admin' ||
+    ctx.source === 'technical-admin' ||
     Boolean(ctx.permissions?.includes('platform:admin')) ||
     Boolean(ctx.permissions?.includes('*'))
   );

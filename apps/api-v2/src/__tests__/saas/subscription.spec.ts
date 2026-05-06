@@ -11,11 +11,13 @@ describe('SaaS Subscription Flow', () => {
       updateCompanyModuleOverride: jest.fn(),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {} as never;
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma);
 
     const result = await controller.listPlans({
       companyId: 'c1',
-      userRole: 'technical_admin',
+      userRole: 'developer',
+      source: 'technical-admin',
       requestId: 'r1',
       permissions: ['*'],
     });
@@ -36,7 +38,8 @@ describe('SaaS Subscription Flow', () => {
       }),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const controller = new DeveloperController(modulesService as never, authService as never);
+    const prisma = {} as never;
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma);
 
     const result = await controller.updateCompanyModule(
       'c1',

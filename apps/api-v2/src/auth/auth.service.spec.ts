@@ -125,7 +125,7 @@ describe('AuthServiceV2', () => {
     );
   });
 
-  it('login tecnico por email/senha retorna role technical_admin', async () => {
+  it('login tecnico por email/senha permanece no papel permitido pelo union atual', async () => {
     const prismaMock = {
       user: {
         findFirst: jest.fn().mockResolvedValue({
@@ -140,8 +140,6 @@ describe('AuthServiceV2', () => {
 
     await service.login({ email: 'tecnico@menuhub.local', password: '123456' });
 
-    expect(jwtMock.signAccessToken).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'technical_admin' }),
-    );
+    expect(jwtMock.signAccessToken).toHaveBeenCalledWith(expect.objectContaining({ role: 'developer' }));
   });
 });

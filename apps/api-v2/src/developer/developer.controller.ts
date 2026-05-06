@@ -93,7 +93,9 @@ export class DeveloperController {
           where: { companyId: item.id, enabled: { not: null } },
         });
         const companyModulesView = await this.modulesService.getCompanyModulesView(item.id);
-        const activeModules = companyModulesView.modules.filter((moduleItem) => moduleItem.effectiveEnabled).length;
+        const activeModules = companyModulesView.modules.filter((moduleItem) =>
+          moduleItem.overrideEnabled !== null ? moduleItem.overrideEnabled : moduleItem.enabledByDefault,
+        ).length;
         const blockedModules = Math.max(companyModulesView.modules.length - activeModules, 0);
 
         return {

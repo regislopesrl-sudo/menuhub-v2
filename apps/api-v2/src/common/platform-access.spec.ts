@@ -9,11 +9,11 @@ describe('platform-access', () => {
     permissions: [],
   };
 
-  it('identifica technical_admin como contexto platform', () => {
+  it('identifica source technical-admin como contexto platform', () => {
     expect(
       isPlatformContext({
         ...baseCtx,
-        userRole: 'technical_admin',
+        source: 'technical-admin',
       }),
     ).toBe(true);
   });
@@ -31,12 +31,12 @@ describe('platform-access', () => {
     expect(() => assertPlatformAdmin(baseCtx)).toThrow(ForbiddenException);
   });
 
-  it('permite cross-company para technical_admin', () => {
+  it('permite cross-company para source technical-admin', () => {
     expect(() =>
       assertCompanyScope(
         {
           ...baseCtx,
-          userRole: 'technical_admin',
+          source: 'technical-admin',
         },
         'c2',
       ),

@@ -25,11 +25,12 @@ describe('BillingController', () => {
     expect(service.listInvoices).toHaveBeenCalledWith('c1');
   });
 
-  it('permite technical_admin consultar billing de outra empresa', async () => {
+  it('permite contexto platform consultar billing de outra empresa', async () => {
     service.getCompanyBilling.mockResolvedValueOnce({ companyId: 'c2' });
     await controller.getBilling('c2', {
       companyId: 'c1',
-      userRole: 'technical_admin',
+      userRole: 'developer',
+      source: 'technical-admin',
       requestId: 'r1',
       permissions: ['*'],
     });
