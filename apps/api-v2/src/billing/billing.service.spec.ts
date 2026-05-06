@@ -28,15 +28,33 @@ describe('BillingService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'ba1', companyId: 'c1', billingEmail: 'billing@x.com' }),
       },
+      moduleDefinition: {
+        findMany: jest.fn().mockResolvedValue([
+          { key: 'pdv', name: 'PDV', enabledByDefault: true, adminOnly: false },
+          { key: 'kds', name: 'KDS', enabledByDefault: true, adminOnly: false },
+        ]),
+      },
+      companyModuleOverride: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'kds', enabled: false }]),
+      },
       companySubscription: {
         findFirst: jest.fn().mockResolvedValue({
           id: 's1',
           companyId: 'c1',
           status: 'ACTIVE',
+          startsAt: new Date('2026-05-01T00:00:00.000Z'),
+          endsAt: null,
+          trialEndsAt: null,
           plan: { id: 'p1', key: 'pro', name: 'Pro' },
         }),
         findUnique: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
         update: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
+      },
+      branch: {
+        count: jest.fn().mockResolvedValue(1),
+      },
+      userCompanyMembership: {
+        count: jest.fn().mockResolvedValue(3),
       },
       invoice: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -187,5 +205,26 @@ describe('BillingService', () => {
         data: expect.objectContaining({ status: 'PAST_DUE' }),
       }),
     );
+  });
+
+  it('retorna billing current com payload defensivo sem segredos', async () => {
+    const { service } = createService();
+    const result = await service.getCurrentBillingOverview('c1');
+
+    expect(result.plan?.name).toBe('Pro');
+    expect(result.modules.length).toBeGreaterThan(0);
+    expect(result.limits).toEqual(expect.any(Array));
+    expect(result.billing.provider).toBeDefined();
+    expect(result).not.toHaveProperty('accessToken');
+    expect(result).not.toHaveProperty('secret');
+  });
+
+  it('retorna missing_subscription quando empresa nao possui assinatura', async () => {
+    const { service, prisma } = createService();
+    prisma.companySubscription.findFirst.mockResolvedValueOnce(null);
+    const result = await service.getCurrentBillingOverview('c1');
+    expect(result.subscription).toBeNull();
+    expect(result.plan).toBeNull();
+    expect(result.billing.status).toBe('missing_subscription');
   });
 });

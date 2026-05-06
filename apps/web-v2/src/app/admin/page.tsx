@@ -248,6 +248,7 @@ export default function AdminDashboardPage() {
           {canMenu ? <ActionTile href="/admin/menu" title="Gerenciar Cardapio" description="Produtos, adicionais e destaques" tone="violet" /> : null}
           <ActionTile href="/admin/users" title="Usuarios" description="Acessos, roles e filiais" tone="green" />
           <ActionTile href="/admin/settings" title="Configuracoes" description="Empresa, filial, operacao e pagamentos" tone="blue" />
+          <ActionTile href="/admin/billing" title="Assinatura e cobranca" description="Plano, limites e status da assinatura SaaS" tone="violet" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
 
@@ -273,6 +274,13 @@ export default function AdminDashboardPage() {
             <Badge>Configuracoes</Badge>
             <h2 className={styles.cardTitle}>Configuracoes</h2>
             <p className={styles.cardText}>Empresa, loja, horarios, canais, delivery, pagamentos e aparencia.</p>
+          </Card>
+        </Link>
+        <Link href="/admin/billing" className={styles.cardLink}>
+          <Card className={styles.card}>
+            <Badge>Billing</Badge>
+            <h2 className={styles.cardTitle}>Assinatura e cobranca</h2>
+            <p className={styles.cardText}>Plano atual, limites, modulos, cobrancas e historico de faturas.</p>
           </Card>
         </Link>
         <Link href="/admin/users" className={styles.cardLink}>

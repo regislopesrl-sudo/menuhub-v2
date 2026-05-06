@@ -4,6 +4,17 @@ import { PrismaService } from '../database/prisma.service';
 import { BILLING_PROVIDER_TOKEN } from './providers/billing-provider.tokens';
 import type { BillingProvider } from './providers/billing-provider.interface';
 
+const FALLBACK_MODULES = [
+  'pdv',
+  'kds',
+  'delivery',
+  'menu',
+  'payments',
+  'kiosk',
+  'waiter_app',
+  'reports',
+] as const;
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -27,6 +38,147 @@ export class BillingService {
     }
 
     return { company, billingAccount: account, subscription };
+  }
+
+  async getCurrentBillingOverview(companyId: string) {
+    const [subscription, moduleOverrides, invoices, branchesUsed, usersUsed] = await Promise.all([
+      this.prisma.companySubscription.findFirst({
+        where: { companyId },
+        orderBy: { startsAt: 'desc' },
+        include: {
+          plan: {
+            include: {
+              modules: true,
+              limits: true,
+            },
+          },
+        },
+      }),
+      this.prisma.companyModuleOverride.findMany({
+        where: { companyId },
+        select: { moduleKey: true, enabled: true },
+      }),
+      this.prisma.invoice.findMany({
+        where: { companyId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { attempts: true },
+      }),
+      this.prisma.branch.count({ where: { companyId, isActive: true } }),
+      this.prisma.userCompanyMembership.count({ where: { companyId, isActive: true } }),
+    ]);
+
+    const overrideMap = new Map(moduleOverrides.map((item: { moduleKey: string; enabled: boolean | null }) => [item.moduleKey, item.enabled]));
+    const planModuleMap = new Map(
+      (subscription?.plan.modules ?? []).map((moduleItem: { moduleKey: string; enabled: boolean; adminOnly: boolean }) => [moduleItem.moduleKey, moduleItem]),
+    );
+
+    const moduleKeys = new Set<string>([
+      ...FALLBACK_MODULES,
+      ...(subscription?.plan.modules ?? []).map((item: { moduleKey: string }) => item.moduleKey),
+      ...moduleOverrides.map((item: { moduleKey: string }) => item.moduleKey),
+    ]);
+
+    const modules = Array.from(moduleKeys)
+      .sort()
+      .map((key) => {
+        const planModule = planModuleMap.get(key);
+        const overrideEnabled = overrideMap.has(key) ? overrideMap.get(key) : null;
+        const includedInPlan = Boolean(planModule?.enabled);
+        const enabledByDefault = false;
+        const enabled =
+          overrideEnabled === null || overrideEnabled === undefined
+            ? includedInPlan || enabledByDefault
+            : Boolean(overrideEnabled);
+        let source: 'plan' | 'default' | 'company_override' = 'default';
+        if (overrideEnabled !== null && overrideEnabled !== undefined) {
+          source = 'company_override';
+        } else if (includedInPlan) {
+          source = 'plan';
+        }
+        return {
+          key,
+          name: this.humanizeModuleKey(key),
+          enabled,
+          includedInPlan,
+          source,
+          overrideEnabled: overrideEnabled ?? null,
+          adminOnly: planModule?.adminOnly ?? false,
+          blocked: !enabled,
+        };
+      });
+
+    const limitsRaw = subscription?.plan.limits ?? [];
+    const limits = limitsRaw.map((item: { limitKey: string; limitValue: number }) => {
+      const used = this.resolveUsedLimit(item.limitKey, branchesUsed, usersUsed);
+      return {
+        key: item.limitKey,
+        label: this.humanizeLimitKey(item.limitKey),
+        limit: item.limitValue,
+        used,
+      };
+    });
+
+    const status =
+      subscription?.status === SubscriptionStatus.ACTIVE
+        ? 'active'
+        : subscription?.status === SubscriptionStatus.TRIAL
+          ? 'trialing'
+          : subscription?.status === SubscriptionStatus.PAST_DUE
+            ? 'past_due'
+            : subscription?.status === SubscriptionStatus.CANCELED
+              ? 'canceled'
+              : subscription?.status === SubscriptionStatus.EXPIRED
+                ? 'expired'
+                : 'missing_subscription';
+
+    const nextOpenInvoice = invoices.find((item: { status: InvoiceStatus }) => item.status === InvoiceStatus.OPEN);
+    const lastPaidInvoice = invoices.find((item: { status: InvoiceStatus }) => item.status === InvoiceStatus.PAID);
+    const providerName = (process.env.BILLING_PROVIDER ?? 'mock').trim().toLowerCase() || 'mock';
+
+    return {
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            status: subscription.status,
+            startsAt: subscription.startsAt.toISOString(),
+            endsAt: subscription.endsAt?.toISOString() ?? null,
+            trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
+            cancelAt: subscription.endsAt?.toISOString() ?? null,
+          }
+        : null,
+      plan: subscription
+        ? {
+            id: subscription.plan.id,
+            key: subscription.plan.key,
+            name: subscription.plan.name,
+            description: subscription.plan.description ?? '',
+            priceCents: this.resolvePlanPriceCents(subscription.plan.key),
+            currency: 'BRL',
+            billingInterval: 'monthly',
+          }
+        : null,
+      modules,
+      limits,
+      billing: {
+        status,
+        nextBillingAt: nextOpenInvoice?.dueDate?.toISOString() ?? null,
+        lastPaymentAt: lastPaidInvoice?.paidAt?.toISOString() ?? null,
+        provider: providerName,
+      },
+      history: invoices.map((item: { id: string; status: InvoiceStatus; amountCents: number; dueDate: Date; paidAt: Date | null; createdAt: Date }) => ({
+        id: item.id,
+        status: item.status,
+        amountCents: item.amountCents,
+        dueDate: item.dueDate.toISOString(),
+        paidAt: item.paidAt?.toISOString() ?? null,
+        createdAt: item.createdAt.toISOString(),
+      })),
+      support: {
+        canUpgrade: true,
+        upgradeAction: 'contact_support',
+      },
+    };
   }
 
   async upsertBillingAccount(
@@ -419,5 +571,46 @@ export class BillingService {
         },
       });
     }
+  }
+
+  private resolvePlanPriceCents(planKey: string): number {
+    const byPlan: Record<string, number> = {
+      basic: 9900,
+      starter: 9900,
+      pro: 19900,
+      enterprise: 49900,
+    };
+    return byPlan[planKey] ?? 0;
+  }
+
+  private resolveUsedLimit(limitKey: string, branchesUsed: number, usersUsed: number): number | null {
+    if (limitKey === 'branches') return branchesUsed;
+    if (limitKey === 'users') return usersUsed;
+    return null;
+  }
+
+  private humanizeLimitKey(limitKey: string): string {
+    const labels: Record<string, string> = {
+      branches: 'Filiais',
+      users: 'Usuarios',
+      orders_per_month: 'Pedidos por mes',
+      products: 'Produtos',
+      channels: 'Canais habilitados',
+    };
+    return labels[limitKey] ?? limitKey.replace(/_/g, ' ');
+  }
+
+  private humanizeModuleKey(moduleKey: string): string {
+    const labels: Record<string, string> = {
+      pdv: 'PDV',
+      kds: 'KDS',
+      delivery: 'Delivery',
+      menu: 'Catalogo',
+      payments: 'Pagamentos',
+      kiosk: 'Kiosk/Totem',
+      waiter_app: 'App Garcom',
+      reports: 'Relatorios',
+    };
+    return labels[moduleKey] ?? moduleKey;
   }
 }

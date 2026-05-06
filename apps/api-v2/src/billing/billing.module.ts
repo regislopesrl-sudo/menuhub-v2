@@ -6,6 +6,7 @@ import { BILLING_PROVIDER_TOKEN } from './providers/billing-provider.tokens';
 import { MockBillingProvider } from './providers/mock-billing.provider';
 import { MercadoPagoBillingProvider } from './providers/mercado-pago-billing.provider';
 import { BillingWebhookController } from './billing.webhook.controller';
+import { AdminBillingController } from './admin-billing.controller';
 
 function resolveBillingProviderFromEnv(): 'mock' | 'mercado_pago' {
   const provider = (process.env.BILLING_PROVIDER ?? 'mock').trim().toLowerCase();
@@ -13,7 +14,7 @@ function resolveBillingProviderFromEnv(): 'mock' | 'mercado_pago' {
 }
 
 @Module({
-  controllers: [BillingController, BillingWebhookController],
+  controllers: [BillingController, BillingWebhookController, AdminBillingController],
   providers: [
     BillingService,
     PrismaService,
