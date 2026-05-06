@@ -183,18 +183,13 @@ export class AdminUsersService {
   async updateUserStatus(userId: string, ctx: RequestContext, isActive: boolean) {
     this.assertAdminRole(ctx);
     await this.findCompanyUserOrThrow(userId, ctx);
-    const updated = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       await tx.userCompanyMembership.updateMany({
         where: { userId, companyId: ctx.companyId },
         data: { isActive: Boolean(isActive) },
       });
-      return tx.user.update({
-        where: { id: userId },
-        data: { isActive: Boolean(isActive) },
-        include: this.userInclude(),
-      });
     });
-    return this.mapUser(updated);
+    return this.getUser(userId, ctx);
   }
 
   async assignRoles(userId: string, ctx: RequestContext, input: AssignAdminUserRolesDto) {
@@ -222,7 +217,14 @@ export class AdminUsersService {
     );
 
     await this.prisma.$transaction([
-      this.prisma.userBranchAccess.deleteMany({ where: { userId } }),
+      this.prisma.userBranchAccess.deleteMany({
+        where: {
+          userId,
+          branch: {
+            companyId: ctx.companyId,
+          },
+        },
+      }),
       this.prisma.userBranchAccess.createMany({
         data: branches.map((branch) => ({
           userId,
@@ -239,20 +241,26 @@ export class AdminUsersService {
     this.assertAdminRole(ctx);
     await this.findCompanyUserOrThrow(userId, ctx);
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        isActive: false,
-        deletedAt: new Date(),
-        email: null,
-        phone: null,
-        lastLoginAt: null,
-      },
-    });
-    await this.prisma.userCompanyMembership.updateMany({
-      where: { userId, companyId: ctx.companyId },
-      data: { isActive: false },
-    });
+    await this.prisma.$transaction([
+      this.prisma.userCompanyMembership.updateMany({
+        where: { userId, companyId: ctx.companyId },
+        data: { isActive: false },
+      }),
+      this.prisma.userBranchAccess.deleteMany({
+        where: {
+          userId,
+          branch: {
+            companyId: ctx.companyId,
+          },
+        },
+      }),
+      this.prisma.companyUserRole.deleteMany({
+        where: {
+          userId,
+          companyId: ctx.companyId,
+        },
+      }),
+    ]);
 
     return {
       success: true,

@@ -123,5 +123,17 @@ describe('CompanyRbacService', () => {
       service.assertUserHasPermission('company_a', 'user_1', 'orders.manage'),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('bloqueia atribuicao de role global fora de contexto platform', async () => {
+    const repository = repositoryMock();
+    const service = new CompanyRbacService(repository);
+
+    await expect(
+      service.replaceUserRoles(ctx, 'user_1', {
+        globalRoleIds: ['role_admin'],
+        companyRoleIds: [],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
 
