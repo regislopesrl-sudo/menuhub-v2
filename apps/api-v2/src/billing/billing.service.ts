@@ -302,11 +302,18 @@ export class BillingService {
     });
 
     if (result.providerPaymentId) {
-      const attempt = await this.prisma.paymentAttempt.findFirst({
+      const attempts = await this.prisma.paymentAttempt.findMany({
         where: { provider, providerPaymentId: result.providerPaymentId },
         orderBy: { createdAt: 'desc' },
         include: { invoice: true },
+        take: 2,
       });
+      if (attempts.length > 1) {
+        throw new BadRequestException(
+          `Webhook ambiguo para providerPaymentId '${result.providerPaymentId}'.`,
+        );
+      }
+      const attempt = attempts[0];
 
       if (attempt) {
         if (result.status === 'PAID') {
