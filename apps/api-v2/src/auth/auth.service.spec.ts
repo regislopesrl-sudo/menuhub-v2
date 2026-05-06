@@ -29,6 +29,11 @@ describe('AuthServiceV2', () => {
     memberships: [{ companyId: 'company_a', roleKey: 'owner', isActive: true }],
   };
 
+  afterEach(() => {
+    delete process.env.APP_ENV;
+    delete process.env.NODE_ENV;
+  });
+
   it('login valido retorna tokens', async () => {
     const prismaMock = {
       user: { findFirst: jest.fn().mockResolvedValue(baseUser) },
@@ -104,6 +109,20 @@ describe('AuthServiceV2', () => {
     const service = new AuthServiceV2(prismaMock, jwtMock as any);
 
     await expect(service.loginWithDeveloperCode({ code: 'wrong' })).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('developer-login por codigo e bloqueado em ambiente production-like', async () => {
+    process.env.APP_ENV = 'prd';
+    process.env.DEVELOPER_ACCESS_CODE = 'dev-code-ok';
+    const prismaMock = {
+      user: { findFirst: jest.fn() },
+      refreshToken: { create: jest.fn() },
+    } as any;
+    const service = new AuthServiceV2(prismaMock, jwtMock as any);
+
+    await expect(service.loginWithDeveloperCode({ code: 'dev-code-ok' })).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('login tecnico por email/senha retorna role technical_admin', async () => {

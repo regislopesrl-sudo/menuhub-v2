@@ -47,13 +47,15 @@ describe('BillingService', () => {
       },
       paymentAttempt: {
         create: jest.fn().mockResolvedValue({ id: 'pa1', status: 'SUCCEEDED' }),
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'pa1',
-          invoiceId: 'i1',
-          provider: 'mock',
-          providerPaymentId: 'mock_payment_1',
-          invoice: { id: 'i1', companyId: 'c1', subscriptionId: 's1' },
-        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'pa1',
+            invoiceId: 'i1',
+            provider: 'mock',
+            providerPaymentId: 'mock_payment_1',
+            invoice: { id: 'i1', companyId: 'c1', subscriptionId: 's1' },
+          },
+        ]),
         update: jest.fn().mockResolvedValue({ id: 'pa1', status: 'SUCCEEDED' }),
       },
       billingWebhookEvent: {
@@ -131,6 +133,29 @@ describe('BillingService', () => {
     await expect(mercadoPago.createPaymentForInvoice({} as never)).rejects.toThrow(
       'Mercado Pago billing provider not configured',
     );
+  });
+
+  it('bloqueia webhook ambiguo para providerPaymentId duplicado', async () => {
+    const { service, prisma } = createService();
+    prisma.paymentAttempt.findMany.mockResolvedValueOnce([
+      {
+        id: 'pa1',
+        invoiceId: 'i1',
+        provider: 'mock',
+        providerPaymentId: 'mock_payment_1',
+        invoice: { id: 'i1', companyId: 'c1', subscriptionId: 's1' },
+      },
+      {
+        id: 'pa2',
+        invoiceId: 'i2',
+        provider: 'mock',
+        providerPaymentId: 'mock_payment_1',
+        invoice: { id: 'i2', companyId: 'c2', subscriptionId: 's2' },
+      },
+    ]);
+    await expect(
+      service.handleWebhook('mock', { eventId: 'evt_2', providerPaymentId: 'mock_payment_1', status: 'PAID' }, {}),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('runBillingCycle gera invoice mensal quando nao existe OPEN no mes', async () => {

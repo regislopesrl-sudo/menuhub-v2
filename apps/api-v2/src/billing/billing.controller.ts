@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { requireDeveloperOrAdmin } from '../common/developer-role';
-import { assertSameCompany } from '../common/assert-same-company';
+import { assertCompanyScope } from '../common/platform-access';
 import { BillingService } from './billing.service';
 
 @Controller('v2/developer')
@@ -16,7 +16,7 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     requireDeveloperOrAdmin(ctx);
-    assertSameCompany(ctx.companyId, companyId);
+    assertCompanyScope(ctx, companyId);
     return this.billingService.getCompanyBilling(companyId);
   }
 
@@ -27,7 +27,7 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     requireDeveloperOrAdmin(ctx);
-    assertSameCompany(ctx.companyId, companyId);
+    assertCompanyScope(ctx, companyId);
     return this.billingService.upsertBillingAccount(companyId, body);
   }
 
@@ -37,7 +37,7 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     requireDeveloperOrAdmin(ctx);
-    assertSameCompany(ctx.companyId, companyId);
+    assertCompanyScope(ctx, companyId);
     return this.billingService.listInvoices(companyId);
   }
 
@@ -47,7 +47,7 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     requireDeveloperOrAdmin(ctx);
-    assertSameCompany(ctx.companyId, companyId);
+    assertCompanyScope(ctx, companyId);
     return this.billingService.createMockInvoice(companyId);
   }
 
@@ -76,7 +76,7 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     requireDeveloperOrAdmin(ctx);
-    assertSameCompany(ctx.companyId, companyId);
+    assertCompanyScope(ctx, companyId);
     return this.billingService.runBillingCycle(companyId, body?.referenceDate);
   }
 }

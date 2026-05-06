@@ -21,6 +21,7 @@ export interface RequestContext {
   branchId?: string;
   userRole: UserRole;
   requestId: string;
+  source?: 'jwt' | 'header-fallback' | 'technical-admin';
   channel?: ChannelKey;
   permissions?: string[];
   userId?: string;

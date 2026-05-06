@@ -5,6 +5,9 @@ import { RequireDeveloperGuard } from '../common/require-developer.guard';
 import { ModulesService } from '../modules/modules.service';
 import { AuthServiceV2 } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
+import { CurrentContext } from '../common/current-context.decorator';
+import type { RequestContext } from '../common/request-context';
+import { assertCompanyScope, assertPlatformAdmin } from '../common/platform-access';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -22,13 +25,15 @@ export class DeveloperController {
 
   @Get('plans')
   @UseGuards(RequireDeveloperGuard)
-  listPlans() {
+  listPlans(@CurrentContext() ctx: RequestContext) {
+    assertPlatformAdmin(ctx);
     return this.modulesService.listPlans();
   }
 
   @Post('plans')
   @UseGuards(RequireDeveloperGuard)
   createPlan(
+    @CurrentContext() ctx: RequestContext,
     @Body()
     body: {
       key: string;
@@ -38,12 +43,14 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
+    assertPlatformAdmin(ctx);
     return this.modulesService.createPlan(body);
   }
 
   @Patch('plans/:id')
   @UseGuards(RequireDeveloperGuard)
   updatePlan(
+    @CurrentContext() ctx: RequestContext,
     @Param('id') id: string,
     @Body()
     body: {
@@ -54,12 +61,14 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
+    assertPlatformAdmin(ctx);
     return this.modulesService.updatePlan(id, body);
   }
 
   @Get('companies')
   @UseGuards(RequireDeveloperGuard)
-  async listCompanies() {
+  async listCompanies(@CurrentContext() ctx: RequestContext) {
+    assertPlatformAdmin(ctx);
     const rows = await this.prisma.company.findMany({
       orderBy: [{ createdAt: 'desc' }],
       select: {
@@ -108,6 +117,7 @@ export class DeveloperController {
   @Post('companies')
   @UseGuards(RequireDeveloperGuard)
   async createCompany(
+    @CurrentContext() ctx: RequestContext,
     @Body()
     body: {
       name: string;
@@ -119,6 +129,7 @@ export class DeveloperController {
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
   ) {
+    assertPlatformAdmin(ctx);
     const name = String(body?.name ?? '').trim();
     const legalName = String(body?.legalName ?? '').trim();
     const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
@@ -162,6 +173,7 @@ export class DeveloperController {
   @Patch('companies/:companyId')
   @UseGuards(RequireDeveloperGuard)
   async updateCompany(
+    @CurrentContext() ctx: RequestContext,
     @Param('companyId') companyId: string,
     @Body()
     body: Partial<{
@@ -174,6 +186,7 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
+    assertPlatformAdmin(ctx);
     const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
     const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
     if (body.name !== undefined && !nextName) {
@@ -214,13 +227,21 @@ export class DeveloperController {
 
   @Get('companies/:companyId/modules')
   @UseGuards(RequireDeveloperGuard)
-  getCompanyModules(@Param('companyId') companyId: string) {
+  getCompanyModules(
+    @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCompanyScope(ctx, companyId);
     return this.modulesService.getCompanyModulesView(companyId);
   }
 
   @Get('companies/:companyId/subscription')
   @UseGuards(RequireDeveloperGuard)
-  async getCompanySubscription(@Param('companyId') companyId: string) {
+  async getCompanySubscription(
+    @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCompanyScope(ctx, companyId);
     const subscription = await this.prisma.companySubscription.findFirst({
       where: { companyId },
       orderBy: [{ startsAt: 'desc' }],
@@ -238,6 +259,7 @@ export class DeveloperController {
   @UseGuards(RequireDeveloperGuard)
   async createCompanySubscription(
     @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
     @Body()
     body: {
       planId: string;
@@ -247,6 +269,7 @@ export class DeveloperController {
       trialEndsAt?: string;
     },
   ) {
+    assertCompanyScope(ctx, companyId);
     const planId = String(body?.planId ?? '').trim();
     if (!planId) {
       throw new BadRequestException('planId obrigatorio.');
@@ -272,6 +295,7 @@ export class DeveloperController {
   async patchCompanySubscription(
     @Param('companyId') companyId: string,
     @Param('subscriptionId') subscriptionId: string,
+    @CurrentContext() ctx: RequestContext,
     @Body()
     body: Partial<{
       status: 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
@@ -279,6 +303,7 @@ export class DeveloperController {
       trialEndsAt: string | null;
     }>,
   ) {
+    assertCompanyScope(ctx, companyId);
     const current = await this.prisma.companySubscription.findUnique({
       where: { id: subscriptionId },
     });
@@ -307,8 +332,10 @@ export class DeveloperController {
   updateCompanyModule(
     @Param('companyId') companyId: string,
     @Param('moduleKey') moduleKey: ModuleKey,
+    @CurrentContext() ctx: RequestContext,
     @Body() body: { enabled: boolean },
   ) {
+    assertCompanyScope(ctx, companyId);
     return this.modulesService.updateCompanyModuleOverride({
       companyId,
       moduleKey,

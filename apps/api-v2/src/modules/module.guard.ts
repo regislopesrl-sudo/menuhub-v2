@@ -1,9 +1,10 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { MODULE_ACCESS_KEY } from './module-access.decorator';
 import { ModulesService } from './modules.service';
 import { buildRequestContextFromHeaders } from '../common/request-context';
 import type { RequestContext } from '../common/request-context';
+import { allowHeaderContextFallback } from '../common/runtime-env';
 
 type AuthLikeRequest = {
   headers: Record<string, string | string[] | undefined>;
@@ -21,7 +22,15 @@ export class ModuleGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthLikeRequest>();
-    const ctx = request.context ?? buildRequestContextFromHeaders(request.headers);
+    let ctx = request.context;
+    if (!ctx) {
+      if (!allowHeaderContextFallback()) {
+        throw new UnauthorizedException('Authorization Bearer token obrigatorio.');
+      }
+      console.warn('[ModuleGuard] Header context fallback ativo. Use Authorization Bearer token.');
+      ctx = buildRequestContextFromHeaders(request.headers);
+      request.context = ctx;
+    }
     const isAdmin =
       ctx.userRole === 'admin' ||
       ctx.userRole === 'master' ||

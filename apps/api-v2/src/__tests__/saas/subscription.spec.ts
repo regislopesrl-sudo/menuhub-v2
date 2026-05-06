@@ -11,10 +11,16 @@ describe('SaaS Subscription Flow', () => {
       updateCompanyModuleOverride: jest.fn(),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const prisma = {};
-    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
+    const prisma = {} as never;
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma);
 
-    const result = await controller.listPlans();
+    const result = await controller.listPlans({
+      companyId: 'c1',
+      userRole: 'developer',
+      source: 'technical-admin',
+      requestId: 'r1',
+      permissions: ['*'],
+    });
     expect(result).toHaveLength(1);
     expect(modulesService.listPlans).toHaveBeenCalled();
   });
@@ -32,10 +38,20 @@ describe('SaaS Subscription Flow', () => {
       }),
     };
     const authService = { loginWithDeveloperCode: jest.fn() };
-    const prisma = {};
-    const controller = new DeveloperController(modulesService as never, authService as never, prisma as never);
+    const prisma = {} as never;
+    const controller = new DeveloperController(modulesService as never, authService as never, prisma);
 
-    const result = await controller.updateCompanyModule('c1', 'kds', { enabled: true });
+    const result = await controller.updateCompanyModule(
+      'c1',
+      'kds',
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        requestId: 'r1',
+        permissions: [],
+      },
+      { enabled: true },
+    );
     expect(result.enabled).toBe(true);
     expect(modulesService.updateCompanyModuleOverride).toHaveBeenCalledWith({
       companyId: 'c1',
