@@ -25,7 +25,6 @@ import {
   type CompanySettingsResponse,
   type OperationSettingsResponse,
   type PaymentSettingsResponse,
-  type SettingsHeaders,
 } from '@/features/settings/settings.api';
 
 type SettingsTab =
@@ -63,15 +62,15 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 export default function AdminSettingsPage() {
-  const headers = useMemo<SettingsHeaders>(
+  const moduleHeaders = useMemo(
     () => ({
       companyId: process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo',
       branchId: process.env.NEXT_PUBLIC_MOCK_BRANCH_ID,
-      userRole: 'admin',
+      userRole: 'admin' as const,
     }),
     [],
   );
-  const modules = useModules(headers);
+  const modules = useModules(moduleHeaders);
   const [activeTab, setActiveTab] = useState<SettingsTab>('company');
   const [company, setCompany] = useState<CompanySettingsResponse | null>(null);
   const [branch, setBranch] = useState<BranchSettingsResponse | null>(null);
@@ -89,10 +88,10 @@ export default function AdminSettingsPage() {
       setError(null);
       try {
         const [companyData, branchData, operationData, paymentData] = await Promise.all([
-          getCompanySettings(headers),
-          getBranchSettings(headers),
-          getOperationSettings(headers),
-          getPaymentSettings(headers),
+          getCompanySettings(),
+          getBranchSettings(),
+          getOperationSettings(),
+          getPaymentSettings(),
         ]);
         if (!active) return;
         setCompany(companyData);
@@ -110,7 +109,7 @@ export default function AdminSettingsPage() {
     return () => {
       active = false;
     };
-  }, [headers]);
+  }, []);
 
   const kpis = useMemo(() => {
     const openDays = operation?.schedules.filter((item) => item.isOpen).length ?? 0;
@@ -171,7 +170,7 @@ export default function AdminSettingsPage() {
               bannerUrl: currentCompany.bannerUrl,
               closedMessage: currentCompany.closedMessage,
             };
-      const response = await patchCompanySettings(headers, payload);
+      const response = await patchCompanySettings(undefined, payload);
       setCompany(response);
       setSuccessMessage(mode === 'company' ? 'Empresa atualizada.' : 'Aparencia publica atualizada.');
     } catch (err) {
@@ -193,7 +192,7 @@ export default function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const response = await patchBranchSettings(headers, currentBranch);
+      const response = await patchBranchSettings(undefined, currentBranch);
       setBranch(response);
       setSuccessMessage('Loja / filial atualizada.');
     } catch (err) {
@@ -242,7 +241,7 @@ export default function AdminSettingsPage() {
             : mode === 'delivery'
               ? { delivery: currentOperation.delivery }
               : { fiscal: currentOperation.fiscal };
-      const response = await patchOperationSettings(headers, payload);
+      const response = await patchOperationSettings(undefined, payload);
       setOperation(response);
       setSuccessMessage('Operacao atualizada.');
     } catch (err) {
@@ -260,7 +259,7 @@ export default function AdminSettingsPage() {
     setError(null);
     setSuccessMessage(null);
     try {
-      const response = await patchPaymentSettings(headers, {
+      const response = await patchPaymentSettings(undefined, {
         pixActive: currentPayments.pixActive,
         cashActive: currentPayments.cashActive,
         onlineCardActive: currentPayments.onlineCardActive,

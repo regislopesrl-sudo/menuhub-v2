@@ -122,23 +122,23 @@ export interface PaymentSettingsResponse {
   secretStatus: 'configured' | 'not_configured';
 }
 
-function buildHeaders(input: SettingsHeaders) {
+function buildHeaders(input?: SettingsHeaders) {
   return {
     'Content-Type': 'application/json',
-    'x-company-id': input.companyId,
-    ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
     'x-channel': 'admin_panel',
+    ...(input?.companyId ? { 'x-company-id': input.companyId } : {}),
+    ...(input?.branchId ? { 'x-branch-id': input.branchId } : {}),
   };
 }
 
-export function getCompanySettings(headers: SettingsHeaders) {
+export function getCompanySettings(headers?: SettingsHeaders) {
   return apiFetch<CompanySettingsResponse>('/v2/settings/company', {
     method: 'GET',
     headers: buildHeaders(headers),
   });
 }
 
-export function patchCompanySettings(headers: SettingsHeaders, body: Partial<CompanySettingsResponse>) {
+export function patchCompanySettings(headers: SettingsHeaders | undefined, body: Partial<CompanySettingsResponse>) {
   return apiFetch<CompanySettingsResponse>('/v2/settings/company', {
     method: 'PATCH',
     headers: buildHeaders(headers),
@@ -146,14 +146,14 @@ export function patchCompanySettings(headers: SettingsHeaders, body: Partial<Com
   });
 }
 
-export function getBranchSettings(headers: SettingsHeaders) {
+export function getBranchSettings(headers?: SettingsHeaders) {
   return apiFetch<BranchSettingsResponse>('/v2/settings/branch', {
     method: 'GET',
     headers: buildHeaders(headers),
   });
 }
 
-export function patchBranchSettings(headers: SettingsHeaders, body: Partial<BranchSettingsResponse>) {
+export function patchBranchSettings(headers: SettingsHeaders | undefined, body: Partial<BranchSettingsResponse>) {
   return apiFetch<BranchSettingsResponse>('/v2/settings/branch', {
     method: 'PATCH',
     headers: buildHeaders(headers),
@@ -161,14 +161,14 @@ export function patchBranchSettings(headers: SettingsHeaders, body: Partial<Bran
   });
 }
 
-export function getOperationSettings(headers: SettingsHeaders) {
+export function getOperationSettings(headers?: SettingsHeaders) {
   return apiFetch<OperationSettingsResponse>('/v2/settings/operation', {
     method: 'GET',
     headers: buildHeaders(headers),
   });
 }
 
-export function patchOperationSettings(headers: SettingsHeaders, body: Record<string, unknown>) {
+export function patchOperationSettings(headers: SettingsHeaders | undefined, body: Record<string, unknown>) {
   return apiFetch<OperationSettingsResponse>('/v2/settings/operation', {
     method: 'PATCH',
     headers: buildHeaders(headers),
@@ -176,14 +176,14 @@ export function patchOperationSettings(headers: SettingsHeaders, body: Record<st
   });
 }
 
-export function getPaymentSettings(headers: SettingsHeaders) {
+export function getPaymentSettings(headers?: SettingsHeaders) {
   return apiFetch<PaymentSettingsResponse>('/v2/settings/payments', {
     method: 'GET',
     headers: buildHeaders(headers),
   });
 }
 
-export function patchPaymentSettings(headers: SettingsHeaders, body: Partial<PaymentSettingsResponse>) {
+export function patchPaymentSettings(headers: SettingsHeaders | undefined, body: Partial<PaymentSettingsResponse>) {
   return apiFetch<PaymentSettingsResponse>('/v2/settings/payments', {
     method: 'PATCH',
     headers: buildHeaders(headers),
