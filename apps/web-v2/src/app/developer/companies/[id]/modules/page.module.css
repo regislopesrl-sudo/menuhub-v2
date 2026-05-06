@@ -119,6 +119,12 @@
   color: #475569;
 }
 
+.moduleError {
+  margin: 0;
+  color: #be123c;
+  font-weight: 600;
+}
+
 .actionRow {
   display: flex;
   gap: 8px;

@@ -1,17 +1,18 @@
 ﻿'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import {
-  getCompanyModulesCommercialView,
-  patchCurrentCompanyModule,
-  type CompanyModulesCommercialView,
-} from '@/features/modules/modules.api';
+  getDeveloperCompanyModules,
+  patchDeveloperCompanyModule,
+  type DeveloperCompanyModulesView,
+} from '@/features/developer/developer-companies.api';
+import { getAuthSession } from '@/lib/auth-session';
 import styles from './page.module.css';
 
 type SubscriptionStatus = 'ACTIVE' | 'TRIAL' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
@@ -44,24 +45,30 @@ function statusTone(status: SubscriptionStatus | null): 'success' | 'warning' | 
   return 'danger';
 }
 
+function sourceLabel(source: 'plan' | 'override' | 'default'): string {
+  if (source === 'override') return 'company_override';
+  if (source === 'plan') return 'plan';
+  return 'default';
+}
+
 export default function DeveloperCompanyModulesPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const companyId = params?.id;
 
-  const [view, setView] = useState<CompanyModulesCommercialView | null>(null);
+  const [view, setView] = useState<DeveloperCompanyModulesView | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moduleErrors, setModuleErrors] = useState<Record<string, string>>({});
+  const [restricted, setRestricted] = useState(false);
 
   const load = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     setError(null);
     try {
-      const payload = await getCompanyModulesCommercialView({
-        headers: { companyId, userRole: 'developer' },
-        targetCompanyId: companyId,
-      });
+      const payload = await getDeveloperCompanyModules(companyId);
       setView(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar modulos da empresa.');
@@ -71,8 +78,18 @@ export default function DeveloperCompanyModulesPage() {
   }, [companyId]);
 
   useEffect(() => {
+    const session = getAuthSession();
+    const isPlatformUser = session?.role === 'developer' || session?.role === 'technical_admin';
+    if (!isPlatformUser) {
+      setRestricted(true);
+      setLoading(false);
+      window.setTimeout(() => {
+        router.push('/developer-login');
+      }, 1200);
+      return;
+    }
     void load();
-  }, [load]);
+  }, [load, router]);
 
   const subscriptionStatus = (view?.subscription?.status ?? null) as SubscriptionStatus | null;
   const canEdit = subscriptionStatus === 'ACTIVE' || subscriptionStatus === 'TRIAL';
@@ -88,45 +105,37 @@ export default function DeveloperCompanyModulesPage() {
   const handleToggle = async (moduleKey: string, effectiveEnabled: boolean) => {
     if (!companyId || !canEdit) return;
     setSavingKey(moduleKey);
+    setModuleErrors((current) => ({ ...current, [moduleKey]: '' }));
     setError(null);
     try {
-      await patchCurrentCompanyModule({
-        headers: { companyId, userRole: 'developer' },
+      await patchDeveloperCompanyModule({
+        companyId,
         moduleKey,
         enabled: !effectiveEnabled,
-        reason: 'Ajuste manual de modulo por empresa',
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao alterar modulo.');
+      const message = err instanceof Error ? err.message : 'Falha ao alterar modulo.';
+      setModuleErrors((current) => ({ ...current, [moduleKey]: message }));
     } finally {
       setSavingKey(null);
     }
   };
 
-  const handleClearOverride = async (moduleKey: string, includedInPlan: boolean) => {
-    if (!companyId || !canEdit) return;
-    setSavingKey(moduleKey);
-    setError(null);
-    try {
-      await patchCurrentCompanyModule({
-        headers: { companyId, userRole: 'developer' },
-        moduleKey,
-        enabled: includedInPlan,
-        reason: 'Limpeza de override (retorno ao plano)',
-      });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao limpar override.');
-    } finally {
-      setSavingKey(null);
-    }
-  };
+  if (restricted) {
+    return (
+      <main className={styles.page}>
+        <Card className={styles.alertCard}>
+          Area restrita da plataforma. Redirecionando para o login tecnico...
+        </Card>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.page}>
       <PremiumPageHeader
-        title="Módulos da empresa"
+        title="Modulos por empresa"
         subtitle={`${view?.company?.name ?? 'Empresa'}${view?.company?.slug ? ` · ${view.company.slug}` : ''}`}
         actions={
           <>
@@ -140,8 +149,8 @@ export default function DeveloperCompanyModulesPage() {
 
       <section className={styles.summaryGrid}>
         <PremiumSummaryCard label="Plano atual" value={view?.plan?.name ?? 'Sem plano'} />
-        <PremiumSummaryCard label="Módulos ativos" value={summary.active} />
-        <PremiumSummaryCard label="Módulos bloqueados" value={summary.blocked} />
+        <PremiumSummaryCard label="Modulos ativos" value={summary.active} />
+        <PremiumSummaryCard label="Modulos bloqueados" value={summary.blocked} />
         <PremiumSummaryCard label="Overrides manuais" value={summary.overrides} />
       </section>
 
@@ -151,9 +160,9 @@ export default function DeveloperCompanyModulesPage() {
         </Card>
       ) : null}
 
-      {loading ? <Card className={styles.stateCard}>Carregando módulos...</Card> : null}
+      {loading ? <Card className={styles.stateCard}>Carregando modulos...</Card> : null}
       {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
-      {!loading && !error && summary.total === 0 ? <PremiumEmptyState title="Sem módulos" description="Nenhum módulo encontrado para esta empresa." /> : null}
+      {!loading && !error && summary.total === 0 ? <PremiumEmptyState title="Sem modulos" description="Nenhum modulo encontrado para esta empresa." /> : null}
 
       {!loading && !error && summary.total > 0 ? (
         <section className={styles.grid}>
@@ -174,16 +183,18 @@ export default function DeveloperCompanyModulesPage() {
                 </div>
 
                 <div className={styles.badges}>
-                  <Badge tone={row.effectiveEnabled ? 'success' : 'danger'}>{row.effectiveEnabled ? 'Ativo' : 'Bloqueado'}</Badge>
-                  <Badge tone={row.source === 'override' ? 'warning' : 'success'}>{row.source === 'override' ? 'Override' : 'Plano'}</Badge>
-                  <Badge>{row.includedInPlan ? 'Incluido no plano' : 'Fora do plano'}</Badge>
-                  <Badge>{row.planKey ?? '-'}</Badge>
+                  <Badge tone={row.effectiveEnabled ? 'success' : 'danger'}>{row.effectiveEnabled ? 'enabled' : 'disabled'}</Badge>
+                  <Badge tone={row.source === 'override' ? 'warning' : 'success'}>{sourceLabel(row.source)}</Badge>
+                  <Badge>{row.adminOnly ? 'adminOnly' : 'standard'}</Badge>
+                  <Badge>{row.includedInPlan ? 'no plano' : 'fora do plano'}</Badge>
                 </div>
 
                 <p className={styles.originText}>
-                  Origem: {row.source === 'override' ? 'Override manual' : 'Plano'}
-                  {row.blockedReason ? ' · Bloqueado por assinatura' : ''}
+                  Origem: {sourceLabel(row.source)}
+                  {row.blockedReason ? ` · ${row.blockedReason}` : ''}
                 </p>
+
+                {moduleErrors[row.key] ? <p className={styles.moduleError}>{moduleErrors[row.key]}</p> : null}
 
                 <div className={styles.actionRow}>
                   <Button
@@ -193,12 +204,6 @@ export default function DeveloperCompanyModulesPage() {
                   >
                     {saving ? 'Salvando...' : row.effectiveEnabled ? 'Desabilitar' : 'Habilitar'}
                   </Button>
-
-                  {row.overrideEnabled !== null ? (
-                    <Button onClick={() => void handleClearOverride(row.key, row.includedInPlan)} disabled={saving || !canEdit}>
-                      Limpar override
-                    </Button>
-                  ) : null}
                 </div>
               </Card>
             );
