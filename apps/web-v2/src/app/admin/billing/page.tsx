@@ -146,8 +146,8 @@ export default function AdminBillingPage() {
                   <div>
                     <strong>{moduleItem.name}</strong>
                     <p className={styles.subtle}>
-                      {moduleItem.includedInPlan ? 'Incluido no plano' : 'Fora do plano'} · source: {moduleItem.source}
-                      {moduleItem.overrideEnabled !== null ? ' · override developer' : ''}
+                      {moduleItem.includedInPlan ? 'Incluido no plano' : 'Fora do plano'} | source: {moduleItem.source}
+                      {moduleItem.overrideEnabled !== null ? ' | override developer' : ''}
                     </p>
                   </div>
                   <Badge tone={moduleItem.enabled ? 'success' : 'warning'}>
@@ -190,7 +190,7 @@ export default function AdminBillingPage() {
                 <div>
                   <strong>{invoice.id}</strong>
                   <p className={styles.subtle}>
-                    Vencimento: {formatDate(invoice.dueDate)} · Criada: {formatDate(invoice.createdAt)}
+                    Vencimento: {formatDate(invoice.dueDate)} | Criada: {formatDate(invoice.createdAt)}
                   </p>
                 </div>
                 <div className={styles.right}>
