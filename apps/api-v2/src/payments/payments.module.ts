@@ -5,6 +5,7 @@ import { PaymentsService } from './payments.service';
 import { MercadoPagoPixProvider } from './providers/mercado-pago-pix.provider';
 import { MockPixPaymentProvider } from './providers/mock-pix-payment.provider';
 import { PAYMENT_PROVIDER_TOKEN } from './providers/payment-provider.tokens';
+import { PrismaService } from '../database/prisma.service';
 
 export function resolvePaymentProviderFromEnv(): 'mock' | 'mercadopago' {
   const provider = (process.env.PAYMENT_PROVIDER ?? 'mock').trim().toLowerCase();
@@ -16,6 +17,7 @@ export function resolvePaymentProviderFromEnv(): 'mock' | 'mercadopago' {
   controllers: [PaymentsController],
   providers: [
     PaymentsService,
+    PrismaService,
     MockPixPaymentProvider,
     MercadoPagoPixProvider,
     {
