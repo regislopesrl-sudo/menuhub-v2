@@ -11,6 +11,7 @@ describe('AuthGuardV2', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.ALLOW_HEADER_CONTEXT_FALLBACK;
+    delete process.env.APP_ENV;
     process.env.NODE_ENV = 'test';
   });
 
@@ -36,6 +37,16 @@ describe('AuthGuardV2', () => {
   });
 
   it('nao aceita role falsificada por header quando fallback desabilitado', () => {
+    const guard = new AuthGuardV2(reflector, jwtService as any);
+
+    expect(() =>
+      guard.canActivate(makeContext({ 'x-company-id': 'company_a', 'x-user-role': 'developer' })),
+    ).toThrow(UnauthorizedException);
+  });
+
+  it('ignora fallback de header em ambiente production-like', () => {
+    process.env.ALLOW_HEADER_CONTEXT_FALLBACK = 'true';
+    process.env.APP_ENV = 'prd';
     const guard = new AuthGuardV2(reflector, jwtService as any);
 
     expect(() =>

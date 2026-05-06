@@ -1,8 +1,14 @@
-﻿import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtServiceV2 } from '../auth/jwt.service';
-import { buildRequestContextFromClaims, buildRequestContextFromHeaders, readAuthorizationBearer, type RequestContext } from './request-context';
+import {
+  buildRequestContextFromClaims,
+  buildRequestContextFromHeaders,
+  readAuthorizationBearer,
+  type RequestContext,
+} from './request-context';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { allowHeaderContextFallback } from './runtime-env';
 
 type HttpRequest = {
   headers: Record<string, string | string[] | undefined>;
@@ -34,19 +40,19 @@ export class AuthGuardV2 implements CanActivate {
       return true;
     }
 
+    const allowFallback = allowHeaderContextFallback();
+
     if (isPublic) {
-      const allowFallback = process.env.ALLOW_HEADER_CONTEXT_FALLBACK === 'true' && process.env.NODE_ENV !== 'production';
       if (allowFallback) {
-        // Transitional fallback for local/HML only; production must use JWT.
-        console.warn('[AuthGuardV2] Header context fallback ativo para rota publica. Use Authorization Bearer token.');
+        console.warn(
+          '[AuthGuardV2] Header context fallback ativo para rota publica. Use Authorization Bearer token.',
+        );
         request.context = buildRequestContextFromHeaders(request.headers);
       }
       return true;
     }
 
-    const allowFallback = process.env.ALLOW_HEADER_CONTEXT_FALLBACK === 'true' && process.env.NODE_ENV !== 'production';
     if (allowFallback) {
-      // Transitional fallback for local/HML only; production must use JWT.
       console.warn('[AuthGuardV2] Header context fallback ativo. Use Authorization Bearer token.');
       request.context = buildRequestContextFromHeaders(request.headers);
       return true;

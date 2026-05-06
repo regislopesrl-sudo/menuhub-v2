@@ -32,6 +32,9 @@ describe('AdminUsersService', () => {
       companyRole: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      companyUserRole: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       userCompanyMembership: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -247,15 +250,98 @@ describe('AdminUsersService', () => {
 
     await service.deleteUser('user_1', ctx);
 
-    expect(prisma.user.update).toHaveBeenCalledWith(
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.userCompanyMembership.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'user_1' },
+        where: { userId: 'user_1', companyId: 'company_a' },
         data: expect.objectContaining({
           isActive: false,
-          email: null,
-          phone: null,
         }),
       }),
     );
+    expect(prisma.userBranchAccess.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'user_1',
+        }),
+      }),
+    );
+    expect(prisma.companyUserRole.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: 'user_1',
+          companyId: 'company_a',
+        },
+      }),
+    );
+  });
+
+  it('assignBranches remove acessos apenas da empresa atual', async () => {
+    const prisma = prismaMock();
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'user_1',
+      name: 'Ana',
+      email: 'ana@menuhub.local',
+      phone: null,
+      isActive: true,
+      lastLoginAt: null,
+      createdAt: new Date('2026-05-02T10:00:00.000Z'),
+      updatedAt: new Date('2026-05-02T10:00:00.000Z'),
+      roles: [],
+      companyUserRoles: [],
+      memberships: [{ companyId: 'company_a', roleKey: 'manager', isActive: true }],
+      branchAccesses: [
+        {
+          branchId: 'branch_a',
+          isDefault: true,
+          branch: { id: 'branch_a', companyId: 'company_a', name: 'Loja Centro', code: 'CTR' },
+        },
+      ],
+    });
+    const service = new AdminUsersService(prisma, rbacMock());
+
+    await service.assignBranches('user_1', ctx, {
+      branchIds: ['branch_a'],
+      defaultBranchId: 'branch_a',
+    });
+
+    expect(prisma.userBranchAccess.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'user_1',
+        }),
+      }),
+    );
+    expect(prisma.userBranchAccess.createMany).toHaveBeenCalled();
+  });
+
+  it('updateUserStatus altera membership da empresa atual sem alterar usuario global', async () => {
+    const prisma = prismaMock();
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'user_1',
+      name: 'Ana',
+      email: 'ana@menuhub.local',
+      phone: null,
+      isActive: true,
+      lastLoginAt: null,
+      createdAt: new Date('2026-05-02T10:00:00.000Z'),
+      updatedAt: new Date('2026-05-02T10:00:00.000Z'),
+      roles: [],
+      companyUserRoles: [],
+      memberships: [{ companyId: 'company_a', roleKey: 'manager', isActive: true }],
+      branchAccesses: [
+        {
+          branchId: 'branch_a',
+          isDefault: true,
+          branch: { id: 'branch_a', companyId: 'company_a', name: 'Loja Centro', code: 'CTR' },
+        },
+      ],
+    });
+    const service = new AdminUsersService(prisma, rbacMock());
+
+    await service.updateUserStatus('user_1', ctx, false);
+
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

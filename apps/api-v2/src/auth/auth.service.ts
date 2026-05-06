@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { JwtServiceV2 } from './jwt.service';
 import type { AppUserRole, AuthTokenClaims, AuthTokens } from './auth.types';
 import type { RequestContext } from '../common/request-context';
+import { isProductionLike } from '../common/runtime-env';
 
 @Injectable()
 export class AuthServiceV2 {
@@ -118,6 +119,10 @@ export class AuthServiceV2 {
   }
 
   async loginWithDeveloperCode(input: { code: string }): Promise<AuthTokens> {
+    if (isProductionLike()) {
+      throw new UnauthorizedException('Login com codigo legado desabilitado em ambiente de producao.');
+    }
+
     const provided = String(input.code ?? '').trim();
     const expected = String(process.env.DEVELOPER_ACCESS_CODE ?? '').trim();
     if (!provided || !expected || provided !== expected) {

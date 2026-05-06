@@ -7,6 +7,7 @@ import {
 import type { RequestContext } from '../common/request-context';
 import { CompanyRbacRepository } from './company-rbac.repository';
 import type { CreateCompanyRoleDto, UpdateCompanyRoleDto } from './dto/admin-users.dto';
+import { isPlatformContext } from '../common/platform-access';
 
 @Injectable()
 export class CompanyRbacService {
@@ -209,6 +210,9 @@ export class CompanyRbacService {
     assignment: { globalRoleIds: string[]; companyRoleIds: string[] },
   ) {
     this.assertAdminRole(ctx);
+    if (assignment.globalRoleIds.length > 0 && !isPlatformContext(ctx)) {
+      throw new ForbiddenException('Atribuicao de role global exige contexto de plataforma.');
+    }
     await this.repository.replaceUserRoles({
       userId,
       companyId: ctx.companyId,
