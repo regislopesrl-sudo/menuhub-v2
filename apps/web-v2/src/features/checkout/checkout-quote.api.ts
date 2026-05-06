@@ -45,7 +45,6 @@ export async function postCheckoutQuote(input: {
       'Content-Type': 'application/json',
       'x-company-id': input.companyId,
       ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
-      'x-user-role': 'user',
       'x-channel': 'delivery',
     },
     body: JSON.stringify({
@@ -82,3 +81,4 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
+

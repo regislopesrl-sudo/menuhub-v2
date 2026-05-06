@@ -161,56 +161,6 @@
   color: #78350f;
 }
 
-.saasGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.saasCard {
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.92);
-  display: grid;
-  gap: 10px;
-}
-
-.saasLabel {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.saasTitle {
-  margin: 0;
-  color: var(--text);
-  font-size: 24px;
-  letter-spacing: -0.04em;
-}
-
-.saasText {
-  margin: 0;
-  color: var(--muted);
-}
-
-.saasLink {
-  color: #1d4ed8;
-  text-decoration: none;
-  font-weight: 800;
-}
-
-.alertList {
-  margin: 0;
-  padding-left: 18px;
-  color: #7f1d1d;
-  display: grid;
-  gap: 6px;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -285,8 +235,7 @@
 
   .grid,
   .kpiGrid,
-  .quickActions,
-  .saasGrid {
+  .quickActions {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -303,8 +252,7 @@
 @media (max-width: 640px) {
   .grid,
   .kpiGrid,
-  .quickActions,
-  .saasGrid {
+  .quickActions {
     grid-template-columns: 1fr;
   }
 }
