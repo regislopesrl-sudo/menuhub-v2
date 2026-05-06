@@ -26,7 +26,9 @@ describe('PaymentsService webhook', () => {
     const prisma = overrides?.prisma ?? {
       billingWebhookEvent: {
         create: jest.fn().mockResolvedValue({ id: 'evt_db_1' }),
+        findUnique: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     return {
@@ -119,7 +121,9 @@ describe('PaymentsService webhook', () => {
       prisma: {
         billingWebhookEvent: {
           create: createMock,
+          findUnique: jest.fn().mockResolvedValue({ processedAt: new Date('2026-01-01T00:00:00.000Z') }),
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
       },
     });
@@ -140,6 +144,110 @@ describe('PaymentsService webhook', () => {
     expect(second.reason).toBe('DUPLICATE_EVENT');
     expect(provider.handleWebhook).toHaveBeenCalledTimes(1);
     expect(prisma.billingWebhookEvent.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('marca processedAt apenas apos sucesso', async () => {
+    const provider = {
+      providerName: 'mock',
+      createPixPayment: jest.fn(),
+      getPaymentStatus: jest.fn(),
+      handleWebhook: jest.fn().mockResolvedValue({
+        provider: 'mock',
+        providerPaymentId: 'pay_ok',
+        eventId: 'evt_ok',
+        status: 'PENDING',
+        processed: true,
+      }),
+    };
+    const prisma = {
+      billingWebhookEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'evt_db_1' }),
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const { service } = build({ provider, prisma });
+
+    await service.handleWebhook('mock', {
+      eventId: 'evt_ok',
+      providerPaymentId: 'pay_ok',
+      status: 'PENDING',
+    });
+
+    expect(provider.handleWebhook).toHaveBeenCalledTimes(1);
+    expect(prisma.billingWebhookEvent.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { provider: 'mock', eventId: 'evt_ok', processedAt: null },
+      }),
+    );
+  });
+
+  it('falha do provider nao queima evento e libera retry', async () => {
+    const provider = {
+      providerName: 'mock',
+      createPixPayment: jest.fn(),
+      getPaymentStatus: jest.fn(),
+      handleWebhook: jest.fn().mockRejectedValue(new Error('temporary failure')),
+    };
+    const prisma = {
+      billingWebhookEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'evt_db_1' }),
+        findUnique: jest.fn(),
+        updateMany: jest.fn(),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const { service } = build({ provider, prisma });
+
+    await expect(
+      service.handleWebhook('mock', {
+        eventId: 'evt_fail',
+        providerPaymentId: 'pay_fail',
+        status: 'PENDING',
+      }),
+    ).rejects.toThrow('temporary failure');
+
+    expect(prisma.billingWebhookEvent.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { provider: 'mock', eventId: 'evt_fail', processedAt: null },
+      }),
+    );
+    expect(prisma.billingWebhookEvent.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('evento existente sem processedAt tenta reprocessar', async () => {
+    const createMock = jest.fn().mockRejectedValue({ code: 'P2002' });
+    const provider = {
+      providerName: 'mock',
+      createPixPayment: jest.fn(),
+      getPaymentStatus: jest.fn(),
+      handleWebhook: jest.fn().mockResolvedValue({
+        provider: 'mock',
+        providerPaymentId: 'pay_retry',
+        eventId: 'evt_retry',
+        status: 'PENDING',
+        processed: true,
+      }),
+    };
+    const prisma = {
+      billingWebhookEvent: {
+        create: createMock,
+        findUnique: jest.fn().mockResolvedValue({ processedAt: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+    const { service } = build({ provider, prisma });
+
+    const result = await service.handleWebhook('mock', {
+      eventId: 'evt_retry',
+      providerPaymentId: 'pay_retry',
+      status: 'PENDING',
+    });
+
+    expect(result.processed).toBe(true);
+    expect(provider.handleWebhook).toHaveBeenCalledTimes(1);
   });
 
   it('webhook APPROVED atualiza pedido e emite evento', async () => {
