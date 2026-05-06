@@ -10,13 +10,19 @@ function loadEnvFromApiV2() {
   const envPath = resolve(__dirname, '../.env');
   if (!existsSync(envPath)) return;
   const content = readFileSync(envPath, 'utf8');
-  for (const rawLine of content.split(/\\r?\\n/)) {
+  for (const rawLine of content.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
     const equalIndex = line.indexOf('=');
     if (equalIndex <= 0) continue;
     const key = line.slice(0, equalIndex).trim();
-    const value = line.slice(equalIndex + 1).trim();
+    let value = line.slice(equalIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
     if (!process.env[key]) {
       process.env[key] = value;
     }
@@ -25,7 +31,7 @@ function loadEnvFromApiV2() {
 
 loadEnvFromApiV2();
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/menuhub_v2?schema=public';
+  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/menuhub_local?schema=public';
 }
 const { PrismaClient } = await import('@prisma/client');
 const prisma = new PrismaClient();
@@ -38,8 +44,10 @@ const ADMIN_EMAIL = 'admin@menuhub.local';
 const ADMIN_PASSWORD = 'admin123';
 const ADMIN_NAME = 'Admin MenuHub';
 const MEMBERSHIP_ROLE = 'owner';
-const PLAN_KEY = 'basic';
-const PLAN_NAME = 'Basic';
+const PLANS = [
+  { key: 'basic', name: 'Basic', description: 'Plano local basico para bootstrap MenuHub V2' },
+  { key: 'pro', name: 'Pro', description: 'Plano local pro para bootstrap MenuHub V2' },
+];
 const BASIC_MODULES = ['orders', 'menu', 'delivery', 'pdv', 'kds', 'payments', 'admin_panel'];
 
 function hashPassword(password) {
@@ -52,13 +60,20 @@ async function ensureCompany() {
   return prisma.company.upsert({
     where: { id: COMPANY_ID },
     update: {
+      name: COMPANY_NAME,
       legalName: COMPANY_NAME,
       tradeName: COMPANY_NAME,
+      slug: 'company-demo',
+      status: 'ACTIVE',
+      email: ADMIN_EMAIL,
     },
     create: {
       id: COMPANY_ID,
+      name: COMPANY_NAME,
       legalName: COMPANY_NAME,
       tradeName: COMPANY_NAME,
+      slug: 'company-demo',
+      status: 'ACTIVE',
       email: ADMIN_EMAIL,
     },
   });
@@ -83,61 +98,106 @@ async function ensureBranch() {
   });
 }
 
-async function ensurePlanAndSubscription() {
-  const plan = await prisma.plan.upsert({
-    where: { key: PLAN_KEY },
-    update: {
-      name: PLAN_NAME,
-      isActive: true,
-      description: 'Plano local para bootstrap MenuHub V2',
-    },
-    create: {
-      key: PLAN_KEY,
-      name: PLAN_NAME,
-      description: 'Plano local para bootstrap MenuHub V2',
-      isActive: true,
-    },
+async function ensurePlansAndSubscription() {
+  const plans = [];
+  for (const planDef of PLANS) {
+    const plan = await prisma.plan.upsert({
+      where: { key: planDef.key },
+      update: {
+        name: planDef.name,
+        isActive: true,
+        description: planDef.description,
+      },
+      create: {
+        key: planDef.key,
+        name: planDef.name,
+        description: planDef.description,
+        isActive: true,
+      },
+    });
+    plans.push(plan);
+
+    for (const moduleKey of BASIC_MODULES) {
+      await prisma.planModule.upsert({
+        where: {
+          planId_moduleKey: {
+            planId: plan.id,
+            moduleKey,
+          },
+        },
+        update: {
+          enabled: true,
+          adminOnly: moduleKey === 'pdv' || moduleKey === 'kds' || moduleKey === 'admin_panel',
+        },
+        create: {
+          planId: plan.id,
+          moduleKey,
+          enabled: true,
+          adminOnly: moduleKey === 'pdv' || moduleKey === 'kds' || moduleKey === 'admin_panel',
+        },
+      });
+    }
+  }
+
+  const basicPlan = plans.find((p) => p.key === 'basic');
+  if (!basicPlan) {
+    throw new Error('Plano basic nao encontrado no bootstrap local.');
+  }
+
+  const existingSubscription = await prisma.companySubscription.findFirst({
+    where: { companyId: COMPANY_ID },
+    orderBy: [{ startsAt: 'desc' }],
   });
 
-  await prisma.planModule.deleteMany({ where: { planId: plan.id } });
-  await prisma.planModule.createMany({
-    data: BASIC_MODULES.map((moduleKey) => ({
-      planId: plan.id,
-      moduleKey,
-      enabled: true,
-      adminOnly: moduleKey === 'pdv' || moduleKey === 'kds' || moduleKey === 'admin_panel',
-    })),
-  });
-
-  await prisma.companySubscription.upsert({
-    where: {
-      id: `${COMPANY_ID}::${PLAN_KEY}`,
-    },
-    update: {
-      companyId: COMPANY_ID,
-      planId: plan.id,
-      status: 'ACTIVE',
-      endedAt: null,
-    },
-    create: {
-      id: `${COMPANY_ID}::${PLAN_KEY}`,
-      companyId: COMPANY_ID,
-      planId: plan.id,
-      status: 'ACTIVE',
-    },
-  });
+  if (!existingSubscription) {
+    await prisma.companySubscription.create({
+      data: {
+        companyId: COMPANY_ID,
+        planId: basicPlan.id,
+        status: 'ACTIVE',
+      },
+    });
+  } else {
+    await prisma.companySubscription.update({
+      where: { id: existingSubscription.id },
+      data: {
+        planId: basicPlan.id,
+        status: 'ACTIVE',
+        endsAt: null,
+      },
+    });
+  }
 
   await prisma.companySubscription.updateMany({
     where: {
       companyId: COMPANY_ID,
-      id: { not: `${COMPANY_ID}::${PLAN_KEY}` },
-      status: 'ACTIVE',
+      id: { not: existingSubscription?.id ?? '' },
+      status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] },
     },
     data: {
-      status: 'INACTIVE',
-      endedAt: new Date(),
+      status: 'CANCELED',
+      endsAt: new Date(),
     },
   });
+
+  for (const moduleKey of BASIC_MODULES) {
+    await prisma.companyModuleOverride.upsert({
+      where: {
+        companyId_moduleKey: {
+          companyId: COMPANY_ID,
+          moduleKey,
+        },
+      },
+      update: {
+        enabled: true,
+      },
+      create: {
+        companyId: COMPANY_ID,
+        moduleKey,
+        enabled: true,
+      },
+    });
+  }
 }
 
 async function ensureAdminUser() {
@@ -213,7 +273,7 @@ async function ensureAdminUser() {
 async function main() {
   await ensureCompany();
   await ensureBranch();
-  await ensurePlanAndSubscription();
+  await ensurePlansAndSubscription();
   const user = await ensureAdminUser();
 
   console.log('Seed local concluido com sucesso.');
