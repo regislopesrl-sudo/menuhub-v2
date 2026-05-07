@@ -315,6 +315,25 @@ describe('AdminUsersService', () => {
     expect(prisma.userBranchAccess.createMany).toHaveBeenCalled();
   });
 
+  it('assignRoles exige roleIds nao vazio', async () => {
+    const service = new AdminUsersService(prismaMock(), rbacMock());
+    await expect(service.assignRoles('user_1', ctx, { roleIds: [] })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('assignBranches exige branchIds nao vazio', async () => {
+    const service = new AdminUsersService(prismaMock(), rbacMock());
+    await expect(
+      service.assignBranches('user_1', ctx, { branchIds: [], defaultBranchId: null }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('assignBranches bloqueia defaultBranchId fora da lista', async () => {
+    const service = new AdminUsersService(prismaMock(), rbacMock());
+    await expect(
+      service.assignBranches('user_1', ctx, { branchIds: ['branch_a'], defaultBranchId: 'branch_b' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('updateUserStatus altera membership da empresa atual sem alterar usuario global', async () => {
     const prisma = prismaMock();
     prisma.user.findFirst.mockResolvedValue({
