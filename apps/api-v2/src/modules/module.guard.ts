@@ -5,6 +5,7 @@ import { ModulesService } from './modules.service';
 import { buildRequestContextFromHeaders } from '../common/request-context';
 import type { RequestContext } from '../common/request-context';
 import { allowHeaderContextFallback } from '../common/runtime-env';
+import { isPlatformContext } from '../common/platform-access';
 
 type AuthLikeRequest = {
   headers: Record<string, string | string[] | undefined>;
@@ -31,6 +32,11 @@ export class ModuleGuard implements CanActivate {
       ctx = buildRequestContextFromHeaders(request.headers);
       request.context = ctx;
     }
+
+    if (isPlatformContext(ctx)) {
+      return true;
+    }
+
     const isAdmin =
       ctx.userRole === 'admin' ||
       ctx.userRole === 'master' ||

@@ -15,6 +15,13 @@ type HttpRequest = {
   context?: RequestContext;
 };
 
+function hasCompanyHeader(headers: Record<string, string | string[] | undefined>): boolean {
+  const raw = headers['x-company-id'];
+  if (typeof raw === 'string') return raw.trim().length > 0;
+  if (Array.isArray(raw)) return Boolean(raw[0]?.trim());
+  return false;
+}
+
 @Injectable()
 export class AuthGuardV2 implements CanActivate {
   constructor(
@@ -44,10 +51,12 @@ export class AuthGuardV2 implements CanActivate {
 
     if (isPublic) {
       if (allowFallback) {
-        console.warn(
-          '[AuthGuardV2] Header context fallback ativo para rota publica. Use Authorization Bearer token.',
-        );
-        request.context = buildRequestContextFromHeaders(request.headers);
+        if (hasCompanyHeader(request.headers)) {
+          console.warn(
+            '[AuthGuardV2] Header context fallback ativo para rota publica. Use Authorization Bearer token.',
+          );
+          request.context = buildRequestContextFromHeaders(request.headers);
+        }
       }
       return true;
     }

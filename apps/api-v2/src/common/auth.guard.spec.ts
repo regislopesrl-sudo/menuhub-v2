@@ -65,4 +65,12 @@ describe('AuthGuardV2', () => {
     expect(ctx.__request.context.userRole).toBe('user');
     expect(ctx.__request.context.source).toBe('header-fallback');
   });
+
+  it('rota publica sem x-company-id nao falha com fallback ativo', () => {
+    process.env.ALLOW_HEADER_CONTEXT_FALLBACK = 'true';
+    (reflector.getAllAndOverride as jest.Mock).mockReturnValueOnce(true);
+    const guard = new AuthGuardV2(reflector, jwtService as any);
+
+    expect(guard.canActivate(makeContext({}))).toBe(true);
+  });
 });
