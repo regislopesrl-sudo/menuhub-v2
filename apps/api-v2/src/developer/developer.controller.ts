@@ -7,9 +7,22 @@ import { AuthServiceV2 } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
-import { assertCompanyScope, assertPlatformAdmin } from '../common/platform-access';
+import { assertCompanyScope } from '../common/platform-access';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { PLATFORM_PERMISSIONS } from '../common/rbac';
+import { assertCanPerformPlatformAction } from './developer-platform.policy';
+import {
+  assertCanPerformPlatformBillingAction,
+  assertValidSubscriptionTransition,
+} from '../billing/billing-platform.policy';
+import {
+  assertNonEmptyPayload,
+  assertRequiredModuleKey,
+  assertRequiredString,
+  assertValidCompanyStatus,
+  assertValidDateString,
+  assertValidSubscriptionStatus,
+} from './developer-validation';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -29,7 +42,7 @@ export class DeveloperController {
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
   listPlans(@CurrentContext() ctx: RequestContext) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.listPlans();
   }
 
@@ -47,7 +60,7 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.createPlan(body);
   }
 
@@ -66,7 +79,7 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.updatePlan(id, body);
   }
 
@@ -74,7 +87,7 @@ export class DeveloperController {
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.COMPANIES_READ)
   async listCompanies(@CurrentContext() ctx: RequestContext) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'companies:read');
     const rows = await this.prisma.company.findMany({
       orderBy: [{ createdAt: 'desc' }],
       select: {
@@ -136,17 +149,11 @@ export class DeveloperController {
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
   ) {
-    assertPlatformAdmin(ctx);
-    const name = String(body?.name ?? '').trim();
-    const legalName = String(body?.legalName ?? '').trim();
+    assertCanPerformPlatformAction(ctx, 'companies:create');
+    const name = assertRequiredString(body?.name, 'name');
+    const legalName = assertRequiredString(body?.legalName, 'legalName');
     const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
-
-    if (!name) {
-      throw new BadRequestException('name obrigatorio.');
-    }
-    if (!legalName) {
-      throw new BadRequestException('legalName obrigatorio.');
-    }
+    assertValidCompanyStatus(body?.status);
 
     const created = await this.prisma.company.create({
       data: {
@@ -194,7 +201,13 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
-    assertPlatformAdmin(ctx);
+    assertNonEmptyPayload(
+      body,
+      ['name', 'legalName', 'document', 'slug', 'email', 'phone', 'status'],
+      'payload vazio para update company.',
+    );
+
+    assertCanPerformPlatformAction(ctx, 'companies:update');
     const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
     const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
     if (body.name !== undefined && !nextName) {
@@ -203,6 +216,7 @@ export class DeveloperController {
     if (body.legalName !== undefined && !nextLegalName) {
       throw new BadRequestException('legalName nao pode ser vazio.');
     }
+    assertValidCompanyStatus(body.status);
 
     const updated = await this.prisma.company.update({
       where: { id: companyId },
@@ -251,6 +265,7 @@ export class DeveloperController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:read');
     assertCompanyScope(ctx, companyId);
     const subscription = await this.prisma.companySubscription.findFirst({
       where: { companyId },
@@ -280,11 +295,13 @@ export class DeveloperController {
       trialEndsAt?: string;
     },
   ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
-    const planId = String(body?.planId ?? '').trim();
-    if (!planId) {
-      throw new BadRequestException('planId obrigatorio.');
-    }
+    const planId = assertRequiredString(body?.planId, 'planId');
+    assertValidSubscriptionStatus(body.status);
+    assertValidDateString(body.startsAt, 'startsAt');
+    assertValidDateString(body.endsAt, 'endsAt');
+    assertValidDateString(body.trialEndsAt, 'trialEndsAt');
 
     const created = await this.prisma.companySubscription.create({
       data: {
@@ -315,6 +332,13 @@ export class DeveloperController {
       trialEndsAt: string | null;
     }>,
   ) {
+    assertNonEmptyPayload(
+      body,
+      ['status', 'endsAt', 'trialEndsAt'],
+      'payload vazio para patch subscription.',
+    );
+
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
     const current = await this.prisma.companySubscription.findUnique({
       where: { id: subscriptionId },
@@ -323,6 +347,12 @@ export class DeveloperController {
     if (!current || current.companyId !== companyId) {
       throw new BadRequestException('Assinatura nao encontrada para a empresa.');
     }
+    if (body.status !== undefined) {
+      assertValidSubscriptionStatus(body.status);
+      assertValidSubscriptionTransition(current.status, body.status);
+    }
+    assertValidDateString(body.endsAt, 'endsAt');
+    assertValidDateString(body.trialEndsAt, 'trialEndsAt');
 
     const updated = await this.prisma.companySubscription.update({
       where: { id: subscriptionId },
@@ -348,6 +378,7 @@ export class DeveloperController {
     @CurrentContext() ctx: RequestContext,
     @Body() body: { enabled: boolean },
   ) {
+    assertRequiredModuleKey(moduleKey);
     assertCompanyScope(ctx, companyId);
     return this.modulesService.updateCompanyModuleOverride({
       companyId,
