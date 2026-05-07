@@ -189,47 +189,58 @@ export class DeveloperController {
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
   ) {
-    assertCanPerformPlatformAction(ctx, 'companies:create');
-    const name = assertRequiredString(body?.name, 'name');
-    const legalName = assertRequiredString(body?.legalName, 'legalName');
-    const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
-    assertValidCompanyStatus(body?.status);
+    try {
+      assertCanPerformPlatformAction(ctx, 'companies:create');
+      const name = assertRequiredString(body?.name, 'name');
+      const legalName = assertRequiredString(body?.legalName, 'legalName');
+      const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
+      assertValidCompanyStatus(body?.status);
 
-    const created = await this.prisma.company.create({
-      data: {
-        name,
-        tradeName: name,
-        legalName,
-        document: String(body?.document ?? '').trim() || null,
-        slug,
-        email: String(body?.email ?? '').trim() || null,
-        phone: String(body?.phone ?? '').trim() || null,
-        status: body?.status ?? 'ACTIVE',
-      },
-      select: {
-        id: true,
-        name: true,
-        legalName: true,
-        document: true,
-        slug: true,
-        email: true,
-        phone: true,
-        status: true,
-      },
-    });
+      const created = await this.prisma.company.create({
+        data: {
+          name,
+          tradeName: name,
+          legalName,
+          document: String(body?.document ?? '').trim() || null,
+          slug,
+          email: String(body?.email ?? '').trim() || null,
+          phone: String(body?.phone ?? '').trim() || null,
+          status: body?.status ?? 'ACTIVE',
+        },
+        select: {
+          id: true,
+          name: true,
+          legalName: true,
+          document: true,
+          slug: true,
+          email: true,
+          phone: true,
+          status: true,
+        },
+      });
 
-    const result = {
-      ...created,
-      status: created.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
-    };
-    recordAuditFromContext({
-      action: AUDIT_ACTIONS.COMPANY_CREATE,
-      outcome: 'success',
-      ctx,
-      target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
-      metadata: { companyId: result.id, status: result.status },
-    });
-    return result;
+      const result = {
+        ...created,
+        status: created.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
+      };
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.COMPANY_CREATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
+        metadata: { companyId: result.id, status: result.status },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.COMPANY_CREATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'company' },
+        metadata: { status: body?.status ?? null, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Patch('companies/:companyId')
@@ -249,58 +260,69 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
-    assertNonEmptyPayload(
-      body,
-      ['name', 'legalName', 'document', 'slug', 'email', 'phone', 'status'],
-      'payload vazio para update company.',
-    );
+    try {
+      assertNonEmptyPayload(
+        body,
+        ['name', 'legalName', 'document', 'slug', 'email', 'phone', 'status'],
+        'payload vazio para update company.',
+      );
 
-    assertCanPerformPlatformAction(ctx, 'companies:update');
-    const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
-    const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
-    if (body.name !== undefined && !nextName) {
-      throw new BadRequestException('name nao pode ser vazio.');
+      assertCanPerformPlatformAction(ctx, 'companies:update');
+      const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
+      const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
+      if (body.name !== undefined && !nextName) {
+        throw new BadRequestException('name nao pode ser vazio.');
+      }
+      if (body.legalName !== undefined && !nextLegalName) {
+        throw new BadRequestException('legalName nao pode ser vazio.');
+      }
+      assertValidCompanyStatus(body.status);
+
+      const updated = await this.prisma.company.update({
+        where: { id: companyId },
+        data: {
+          ...(nextName !== undefined ? { name: nextName } : {}),
+          ...(nextLegalName !== undefined ? { legalName: nextLegalName } : {}),
+          ...(body.document !== undefined ? { document: String(body.document ?? '').trim() || null } : {}),
+          ...(body.slug !== undefined ? { slug: String(body.slug ?? '').trim().toLowerCase() || null } : {}),
+          ...(body.email !== undefined ? { email: String(body.email ?? '').trim() || null } : {}),
+          ...(body.phone !== undefined ? { phone: String(body.phone ?? '').trim() || null } : {}),
+          ...(body.status !== undefined ? { status: body.status } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          legalName: true,
+          document: true,
+          slug: true,
+          email: true,
+          phone: true,
+          status: true,
+        },
+      });
+
+      const result = {
+        ...updated,
+        status: updated.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
+      };
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.COMPANY_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
+        metadata: { companyId: result.id, status: result.status },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.COMPANY_UPDATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'company', id: companyId },
+        metadata: { companyId, status: body?.status ?? null, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
     }
-    if (body.legalName !== undefined && !nextLegalName) {
-      throw new BadRequestException('legalName nao pode ser vazio.');
-    }
-    assertValidCompanyStatus(body.status);
-
-    const updated = await this.prisma.company.update({
-      where: { id: companyId },
-      data: {
-        ...(nextName !== undefined ? { name: nextName } : {}),
-        ...(nextLegalName !== undefined ? { legalName: nextLegalName } : {}),
-        ...(body.document !== undefined ? { document: String(body.document ?? '').trim() || null } : {}),
-        ...(body.slug !== undefined ? { slug: String(body.slug ?? '').trim().toLowerCase() || null } : {}),
-        ...(body.email !== undefined ? { email: String(body.email ?? '').trim() || null } : {}),
-        ...(body.phone !== undefined ? { phone: String(body.phone ?? '').trim() || null } : {}),
-        ...(body.status !== undefined ? { status: body.status } : {}),
-      },
-      select: {
-        id: true,
-        name: true,
-        legalName: true,
-        document: true,
-        slug: true,
-        email: true,
-        phone: true,
-        status: true,
-      },
-    });
-
-    const result = {
-      ...updated,
-      status: updated.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
-    };
-    recordAuditFromContext({
-      action: AUDIT_ACTIONS.COMPANY_UPDATE,
-      outcome: 'success',
-      ctx,
-      target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
-      metadata: { companyId: result.id, status: result.status },
-    });
-    return result;
   }
 
   @Get('companies/:companyId/modules')
