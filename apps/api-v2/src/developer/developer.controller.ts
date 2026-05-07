@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { Public } from '../common/public.decorator';
 import { RequireDeveloperGuard } from '../common/require-developer.guard';
@@ -62,8 +62,8 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertCanPerformPlatformAction(ctx, 'plans:manage');
     try {
+      assertCanPerformPlatformAction(ctx, 'plans:manage');
       const created = await this.modulesService.createPlan(body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.PLAN_CREATE,
@@ -76,7 +76,7 @@ export class DeveloperController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.PLAN_CREATE,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'plan' },
         metadata: { key: body?.key, error: error instanceof Error ? error.message : String(error) },
@@ -100,8 +100,8 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertCanPerformPlatformAction(ctx, 'plans:manage');
     try {
+      assertCanPerformPlatformAction(ctx, 'plans:manage');
       const updated = await this.modulesService.updatePlan(id, body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.PLAN_UPDATE,
@@ -114,7 +114,7 @@ export class DeveloperController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.PLAN_UPDATE,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'plan', id },
         metadata: { error: error instanceof Error ? error.message : String(error) },

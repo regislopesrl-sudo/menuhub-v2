@@ -141,6 +141,12 @@ describe('BillingController', () => {
         permissions: ['platform:billing:read'],
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.billing.mock_payment',
+        outcome: 'blocked',
+      }),
+    );
   });
 
   it('platform:billing:manage executa mock payment', async () => {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Put } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
@@ -36,9 +36,9 @@ export class BillingController {
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
     @CurrentContext() ctx: RequestContext,
   ) {
-    const billingEmail = assertRequiredBillingEmail(body?.billingEmail);
-    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
     try {
+      const billingEmail = assertRequiredBillingEmail(body?.billingEmail);
+      assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
       const result = await this.billingService.upsertBillingAccount(companyId, { ...body, billingEmail });
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_ACCOUNT_UPSERT,
@@ -51,7 +51,7 @@ export class BillingController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_ACCOUNT_UPSERT,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'billing_account', id: companyId },
         metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
@@ -81,8 +81,8 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:mock_payment');
     try {
+      assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:mock_payment');
       const result = await this.billingService.createMockInvoice(companyId);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
@@ -95,7 +95,7 @@ export class BillingController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'invoice' },
         metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
@@ -110,8 +110,8 @@ export class BillingController {
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:mock_payment');
     try {
+      assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:mock_payment');
       const result = await this.billingService.payMockInvoice(invoiceId, ctx.companyId);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
@@ -124,7 +124,7 @@ export class BillingController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'invoice', id: invoiceId },
         metadata: { companyId: ctx.companyId, invoiceId, error: error instanceof Error ? error.message : String(error) },
@@ -139,8 +139,8 @@ export class BillingController {
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:manage');
     try {
+      assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:manage');
       const result = await this.billingService.createPaymentLink(invoiceId, ctx.companyId);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_PAYMENT_LINK_CREATE,
@@ -153,7 +153,7 @@ export class BillingController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_PAYMENT_LINK_CREATE,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'invoice', id: invoiceId },
         metadata: { companyId: ctx.companyId, invoiceId, error: error instanceof Error ? error.message : String(error) },
@@ -169,8 +169,8 @@ export class BillingController {
     @Body() body: { referenceDate?: string },
     @CurrentContext() ctx: RequestContext,
   ) {
-    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:run_cycle');
     try {
+      assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:run_cycle');
       const result = await this.billingService.runBillingCycle(companyId, body?.referenceDate);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_RUN_CYCLE,
@@ -183,7 +183,7 @@ export class BillingController {
     } catch (error) {
       recordAuditFromContext({
         action: AUDIT_ACTIONS.BILLING_RUN_CYCLE,
-        outcome: 'failure',
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
         ctx,
         target: { type: 'company', id: companyId },
         metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
