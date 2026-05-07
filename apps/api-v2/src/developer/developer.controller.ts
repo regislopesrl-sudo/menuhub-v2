@@ -11,6 +11,10 @@ import { assertCompanyScope } from '../common/platform-access';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { PLATFORM_PERMISSIONS } from '../common/rbac';
 import { assertCanPerformPlatformAction } from './developer-platform.policy';
+import {
+  assertCanPerformPlatformBillingAction,
+  assertValidSubscriptionTransition,
+} from '../billing/billing-platform.policy';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -252,6 +256,7 @@ export class DeveloperController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:read');
     assertCompanyScope(ctx, companyId);
     const subscription = await this.prisma.companySubscription.findFirst({
       where: { companyId },
@@ -281,6 +286,7 @@ export class DeveloperController {
       trialEndsAt?: string;
     },
   ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
     const planId = String(body?.planId ?? '').trim();
     if (!planId) {
@@ -316,6 +322,7 @@ export class DeveloperController {
       trialEndsAt: string | null;
     }>,
   ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
     const current = await this.prisma.companySubscription.findUnique({
       where: { id: subscriptionId },
@@ -323,6 +330,9 @@ export class DeveloperController {
 
     if (!current || current.companyId !== companyId) {
       throw new BadRequestException('Assinatura nao encontrada para a empresa.');
+    }
+    if (body.status !== undefined) {
+      assertValidSubscriptionTransition(current.status, body.status);
     }
 
     const updated = await this.prisma.companySubscription.update({

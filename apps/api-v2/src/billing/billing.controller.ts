@@ -2,11 +2,10 @@ import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
-import { requireDeveloperOrAdmin } from '../common/developer-role';
-import { assertCompanyScope } from '../common/platform-access';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { PLATFORM_PERMISSIONS, TENANT_PERMISSIONS } from '../common/rbac';
 import { BillingService } from './billing.service';
+import { assertCanAccessCompanyBillingAction } from './billing-platform.policy';
 
 @Controller('v2/developer')
 export class BillingController {
@@ -23,8 +22,7 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
-    assertCompanyScope(ctx, companyId);
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:read');
     return this.billingService.getCompanyBilling(companyId);
   }
 
@@ -35,8 +33,7 @@ export class BillingController {
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
-    assertCompanyScope(ctx, companyId);
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
     return this.billingService.upsertBillingAccount(companyId, body);
   }
 
@@ -51,8 +48,7 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
-    assertCompanyScope(ctx, companyId);
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:read');
     return this.billingService.listInvoices(companyId);
   }
 
@@ -62,8 +58,7 @@ export class BillingController {
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
-    assertCompanyScope(ctx, companyId);
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:mock_payment');
     return this.billingService.createMockInvoice(companyId);
   }
 
@@ -73,7 +68,7 @@ export class BillingController {
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:mock_payment');
     return this.billingService.payMockInvoice(invoiceId, ctx.companyId);
   }
 
@@ -83,7 +78,7 @@ export class BillingController {
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
+    assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:manage');
     return this.billingService.createPaymentLink(invoiceId, ctx.companyId);
   }
 
@@ -94,8 +89,7 @@ export class BillingController {
     @Body() body: { referenceDate?: string },
     @CurrentContext() ctx: RequestContext,
   ) {
-    requireDeveloperOrAdmin(ctx);
-    assertCompanyScope(ctx, companyId);
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:run_cycle');
     return this.billingService.runBillingCycle(companyId, body?.referenceDate);
   }
 }
