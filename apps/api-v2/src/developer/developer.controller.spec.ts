@@ -1,5 +1,6 @@
 import { DeveloperController } from './developer.controller';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import type { ModuleKey } from '@delivery-futuro/shared-types';
 
 describe('DeveloperController', () => {
   const modulesService = {
@@ -103,5 +104,214 @@ describe('DeveloperController', () => {
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('createCompany sem name retorna erro', async () => {
+    await expect(
+      controller.createCompany(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:create'],
+        },
+        {
+          name: '   ',
+          legalName: 'Empresa Teste LTDA',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('updateCompany com payload vazio retorna erro', async () => {
+    await expect(
+      controller.updateCompany(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:update'],
+        },
+        'c1',
+        {},
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('companies permissions ficam separadas por acao', async () => {
+    await expect(
+      controller.createCompany(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:read'],
+        },
+        {
+          name: 'Empresa Teste',
+          legalName: 'Empresa Teste LTDA',
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    await expect(
+      controller.updateCompany(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:create'],
+        },
+        'c1',
+        { name: 'Novo nome' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('createPlan sem name falha no service e preserva contrato', async () => {
+    modulesService.createPlan.mockRejectedValueOnce(new BadRequestException('key e name sao obrigatorios.'));
+    await expect(
+      controller.createPlan(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:plans:manage'],
+        },
+        { key: 'pro', name: '' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('updatePlan inexistente retorna erro esperado do service', async () => {
+    modulesService.updatePlan.mockRejectedValueOnce(new NotFoundException("Plano 'x' nao encontrado."));
+    await expect(
+      controller.updatePlan(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:plans:manage'],
+        },
+        'x',
+        { name: 'Pro' },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('create subscription sem planId bloqueia', async () => {
+    await expect(
+      controller.createCompanySubscription(
+        'c1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        {
+          planId: '',
+          status: 'ACTIVE',
+          startsAt: '2026-01-01T00:00:00.000Z',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('patch subscription com payload vazio bloqueia', async () => {
+    await expect(
+      controller.patchCompanySubscription(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        {},
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('platform:billing:manage permite patch subscription valido', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      status: 'ACTIVE',
+    });
+    prisma.companySubscription.update.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      planId: 'plan_1',
+      status: 'PAST_DUE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+      trialEndsAt: null,
+      plan: { id: 'plan_1', key: 'basic', name: 'Basic' },
+    });
+
+    const result = await controller.patchCompanySubscription(
+      'c1',
+      'sub1',
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'jwt',
+        requestId: 'r1',
+        permissions: ['platform:billing:manage'],
+      },
+      { status: 'PAST_DUE' },
+    );
+
+    expect(result).toMatchObject({ id: 'sub1', status: 'PAST_DUE' });
+  });
+
+  it('bloqueia transicao invalida de assinatura', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      status: 'EXPIRED',
+    });
+
+    await expect(
+      controller.patchCompanySubscription(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { status: 'TRIAL' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('module override com moduleKey ausente bloqueia', async () => {
+    expect(() =>
+      controller.updateCompanyModule(
+        'c1',
+        '' as ModuleKey,
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:modules:manage'],
+        },
+        { enabled: true },
+      ),
+    ).toThrow(BadRequestException);
   });
 });

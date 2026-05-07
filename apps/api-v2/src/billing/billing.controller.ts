@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
@@ -33,8 +34,12 @@ export class BillingController {
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
     @CurrentContext() ctx: RequestContext,
   ) {
+    const billingEmail = String(body?.billingEmail ?? '').trim();
+    if (!billingEmail) {
+      throw new BadRequestException('billingEmail obrigatorio.');
+    }
     assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
-    return this.billingService.upsertBillingAccount(companyId, body);
+    return this.billingService.upsertBillingAccount(companyId, { ...body, billingEmail });
   }
 
   @Get('companies/:companyId/invoices')
