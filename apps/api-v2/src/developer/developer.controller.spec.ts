@@ -47,4 +47,17 @@ describe('DeveloperController', () => {
     expect(modulesService.listPlans).toHaveBeenCalled();
     expect(result).toEqual([{ key: 'pro' }]);
   });
+
+  it('listPlans permite platform:admin para acoes de plataforma', () => {
+    modulesService.listPlans.mockReturnValueOnce([{ key: 'pro-admin' }]);
+    const result = controller.listPlans({
+      companyId: 'c1',
+      userRole: 'developer',
+      source: 'jwt',
+      requestId: 'r1',
+      permissions: ['platform:admin'],
+    });
+    expect(modulesService.listPlans).toHaveBeenCalled();
+    expect(result).toEqual([{ key: 'pro-admin' }]);
+  });
 });
