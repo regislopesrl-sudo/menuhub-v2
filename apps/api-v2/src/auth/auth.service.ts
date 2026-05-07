@@ -362,8 +362,8 @@ export class AuthServiceV2 {
   private buildPermissions(role: AppUserRole): string[] {
     const matrix: Record<string, string[]> = {
       developer: ['*'],
-      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
-      manager: ['admin.users.read', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'billing.read'],
+      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      manager: ['admin.users.read', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'catalog.read', 'catalog.manage', 'billing.read'],
       cashier: ['orders.manage', 'pdv.operate'],
       kitchen: ['kds.operate', 'orders.read'],
       waiter: ['orders.read', 'waiter.operate'],
@@ -371,8 +371,8 @@ export class AuthServiceV2 {
       finance: ['orders.read', 'settings.read', 'billing.read', 'billing.manage'],
       inventory: ['orders.read'],
       support: ['orders.read'],
-      admin: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
-      master: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
+      admin: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      master: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
       user: ['orders.read'],
     };
     return matrix[role] ?? ['orders.read'];

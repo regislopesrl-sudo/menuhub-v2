@@ -8,6 +8,8 @@ import { PrismaService } from '../database/prisma.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { assertCompanyScope, assertPlatformAdmin } from '../common/platform-access';
+import { RequirePermissions } from '../common/permissions.decorator';
+import { PLATFORM_PERMISSIONS } from '../common/rbac';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -25,6 +27,7 @@ export class DeveloperController {
 
   @Get('plans')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
   listPlans(@CurrentContext() ctx: RequestContext) {
     assertPlatformAdmin(ctx);
     return this.modulesService.listPlans();
@@ -32,6 +35,7 @@ export class DeveloperController {
 
   @Post('plans')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
   createPlan(
     @CurrentContext() ctx: RequestContext,
     @Body()
@@ -49,6 +53,7 @@ export class DeveloperController {
 
   @Patch('plans/:id')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
   updatePlan(
     @CurrentContext() ctx: RequestContext,
     @Param('id') id: string,
@@ -67,6 +72,7 @@ export class DeveloperController {
 
   @Get('companies')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.COMPANIES_READ)
   async listCompanies(@CurrentContext() ctx: RequestContext) {
     assertPlatformAdmin(ctx);
     const rows = await this.prisma.company.findMany({
@@ -116,6 +122,7 @@ export class DeveloperController {
 
   @Post('companies')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.COMPANIES_CREATE)
   async createCompany(
     @CurrentContext() ctx: RequestContext,
     @Body()
@@ -172,6 +179,7 @@ export class DeveloperController {
 
   @Patch('companies/:companyId')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.COMPANIES_UPDATE)
   async updateCompany(
     @CurrentContext() ctx: RequestContext,
     @Param('companyId') companyId: string,
@@ -227,6 +235,7 @@ export class DeveloperController {
 
   @Get('companies/:companyId/modules')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.MODULES_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_READ)
   getCompanyModules(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -237,6 +246,7 @@ export class DeveloperController {
 
   @Get('companies/:companyId/subscription')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.BILLING_READ, PLATFORM_PERMISSIONS.COMPANIES_READ)
   async getCompanySubscription(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -257,6 +267,7 @@ export class DeveloperController {
 
   @Post('companies/:companyId/subscription')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_UPDATE)
   async createCompanySubscription(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -292,6 +303,7 @@ export class DeveloperController {
 
   @Patch('companies/:companyId/subscription/:subscriptionId')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_UPDATE)
   async patchCompanySubscription(
     @Param('companyId') companyId: string,
     @Param('subscriptionId') subscriptionId: string,
@@ -329,6 +341,7 @@ export class DeveloperController {
 
   @Patch('companies/:companyId/modules/:moduleKey')
   @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.MODULES_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_UPDATE)
   updateCompanyModule(
     @Param('companyId') companyId: string,
     @Param('moduleKey') moduleKey: ModuleKey,

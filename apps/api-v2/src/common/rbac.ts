@@ -45,6 +45,8 @@ export const TENANT_PERMISSIONS = {
   ORDERS_MANAGE: 'orders.manage',
   MODULES_READ: 'modules.read',
   MODULES_MANAGE: 'modules.manage',
+  CATALOG_READ: 'catalog.read',
+  CATALOG_MANAGE: 'catalog.manage',
   PDV_OPERATE: 'pdv.operate',
   KDS_OPERATE: 'kds.operate',
   WAITER_OPERATE: 'waiter.operate',

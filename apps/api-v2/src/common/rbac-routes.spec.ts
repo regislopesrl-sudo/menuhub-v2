@@ -12,6 +12,10 @@ import { ModulesController } from '../modules/modules.controller';
 import { DeliveryController } from '../delivery/delivery.controller';
 import { PaymentsController } from '../payments/payments.controller';
 import { BillingWebhookController } from '../billing/billing.webhook.controller';
+import { AdminMenuController, AdminMenuUtilityController } from '../admin-menu/admin-menu.controller';
+import { ChannelsController } from '../channels/channels.controller';
+import { DeveloperController } from '../developer/developer.controller';
+import { PLATFORM_PERMISSIONS } from './rbac';
 
 function methodPermissions(target: object, methodName: string): string[] {
   const method = (target as Record<string, unknown>)[methodName] as Function;
@@ -97,5 +101,41 @@ describe('RBAC route permissions metadata', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController.prototype.paymentStatus)).toBe(true);
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController.prototype.webhook)).toBe(true);
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, BillingWebhookController.prototype.handleWebhook)).toBe(true);
+  });
+
+  it('admin-menu exige catalog.read/manage para leitura e catalog.manage para escrita', () => {
+    expect(methodPermissions(AdminMenuController.prototype, 'list')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_READ,
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'create')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'listCategories')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_READ,
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'createCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+  });
+
+  it('channels pdv checkout exige pdv.operate', () => {
+    expect(methodPermissions(ChannelsController.prototype, 'pdvCheckout')).toEqual([
+      TENANT_PERMISSIONS.PDV_OPERATE,
+    ]);
+  });
+
+  it('developer exige permissoes de plataforma explicitas', () => {
+    expect(methodPermissions(DeveloperController.prototype, 'listPlans')).toEqual([
+      PLATFORM_PERMISSIONS.PLANS_MANAGE,
+    ]);
+    expect(methodPermissions(DeveloperController.prototype, 'listCompanies')).toEqual([
+      PLATFORM_PERMISSIONS.COMPANIES_READ,
+    ]);
+    expect(methodPermissions(DeveloperController.prototype, 'updateCompanyModule')).toEqual([
+      PLATFORM_PERMISSIONS.MODULES_MANAGE,
+      PLATFORM_PERMISSIONS.COMPANIES_UPDATE,
+    ]);
   });
 });
