@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { Public } from '../common/public.decorator';
 import { RequireDeveloperGuard } from '../common/require-developer.guard';
@@ -15,6 +15,8 @@ import {
   assertCanPerformPlatformBillingAction,
   assertValidSubscriptionTransition,
 } from '../billing/billing-platform.policy';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
+import { AUDIT_ACTIONS } from '../common/audit-log';
 import {
   assertNonEmptyPayload,
   assertRequiredModuleKey,
@@ -49,7 +51,7 @@ export class DeveloperController {
   @Post('plans')
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
-  createPlan(
+  async createPlan(
     @CurrentContext() ctx: RequestContext,
     @Body()
     body: {
@@ -60,14 +62,33 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertCanPerformPlatformAction(ctx, 'plans:manage');
-    return this.modulesService.createPlan(body);
+    try {
+      assertCanPerformPlatformAction(ctx, 'plans:manage');
+      const created = await this.modulesService.createPlan(body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PLAN_CREATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'plan', id: created.id, label: created.key },
+        metadata: { key: body.key, name: body.name },
+      });
+      return created;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PLAN_CREATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'plan' },
+        metadata: { key: body?.key, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Patch('plans/:id')
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
-  updatePlan(
+  async updatePlan(
     @CurrentContext() ctx: RequestContext,
     @Param('id') id: string,
     @Body()
@@ -79,8 +100,27 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertCanPerformPlatformAction(ctx, 'plans:manage');
-    return this.modulesService.updatePlan(id, body);
+    try {
+      assertCanPerformPlatformAction(ctx, 'plans:manage');
+      const updated = await this.modulesService.updatePlan(id, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PLAN_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'plan', id: updated.id, label: updated.key },
+        metadata: { id },
+      });
+      return updated;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PLAN_UPDATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'plan', id },
+        metadata: { error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('companies')
@@ -178,10 +218,18 @@ export class DeveloperController {
       },
     });
 
-    return {
+    const result = {
       ...created,
       status: created.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
     };
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.COMPANY_CREATE,
+      outcome: 'success',
+      ctx,
+      target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
+      metadata: { companyId: result.id, status: result.status },
+    });
+    return result;
   }
 
   @Patch('companies/:companyId')
@@ -241,10 +289,18 @@ export class DeveloperController {
       },
     });
 
-    return {
+    const result = {
       ...updated,
       status: updated.status as 'ACTIVE' | 'INACTIVE' | 'SUSPENDED',
     };
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.COMPANY_UPDATE,
+      outcome: 'success',
+      ctx,
+      target: { type: 'company', id: result.id, label: result.slug ?? result.name ?? result.legalName },
+      metadata: { companyId: result.id, status: result.status },
+    });
+    return result;
   }
 
   @Get('companies/:companyId/modules')
@@ -315,7 +371,15 @@ export class DeveloperController {
       include: { plan: true },
     });
 
-    return this.mapSubscription(created);
+    const mapped = this.mapSubscription(created);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.SUBSCRIPTION_CREATE,
+      outcome: 'success',
+      ctx,
+      target: { type: 'subscription', id: mapped.id, label: mapped.plan.key },
+      metadata: { companyId, subscriptionId: mapped.id, status: mapped.status, planId: mapped.planId },
+    });
+    return mapped;
   }
 
   @Patch('companies/:companyId/subscription/:subscriptionId')
@@ -366,7 +430,15 @@ export class DeveloperController {
       include: { plan: true },
     });
 
-    return this.mapSubscription(updated);
+    const mapped = this.mapSubscription(updated);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.SUBSCRIPTION_PATCH,
+      outcome: 'success',
+      ctx,
+      target: { type: 'subscription', id: mapped.id, label: mapped.plan.key },
+      metadata: { companyId, subscriptionId: mapped.id, status: mapped.status },
+    });
+    return mapped;
   }
 
   @Patch('companies/:companyId/modules/:moduleKey')
@@ -384,6 +456,15 @@ export class DeveloperController {
       companyId,
       moduleKey,
       enabled: Boolean(body?.enabled),
+    }).then((result) => {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.MODULE_OVERRIDE_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'company_module_override', id: `${companyId}:${moduleKey}`, label: moduleKey },
+        metadata: { companyId, moduleKey, enabled: result.enabled },
+      });
+      return result;
     });
   }
 

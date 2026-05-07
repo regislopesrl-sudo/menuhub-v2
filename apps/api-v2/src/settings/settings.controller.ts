@@ -11,6 +11,8 @@ import { SettingsService } from './settings.service';
 import { RequireAdminGuard } from '../common/require-admin.guard';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
+import { AUDIT_ACTIONS } from '../common/audit-log';
 
 @Controller('v2/settings')
 @UseGuards(RequireAdminGuard)
@@ -26,7 +28,26 @@ export class SettingsController {
   @Patch('company')
   @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
   async patchCompany(@CurrentContext() ctx: RequestContext, @Body() body: CompanySettingsDto) {
-    return this.settingsService.patchCompany(ctx, body);
+    try {
+      const updated = await this.settingsService.patchCompany(ctx, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'settings', id: 'company', label: 'company' },
+        metadata: { companyId: ctx.companyId, section: 'company' },
+      });
+      return updated;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'settings', id: 'company', label: 'company' },
+        metadata: { companyId: ctx.companyId, section: 'company', error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('branch')
@@ -38,7 +59,26 @@ export class SettingsController {
   @Patch('branch')
   @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
   async patchBranch(@CurrentContext() ctx: RequestContext, @Body() body: BranchSettingsDto) {
-    return this.settingsService.patchBranch(ctx, body);
+    try {
+      const updated = await this.settingsService.patchBranch(ctx, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'settings', id: 'branch', label: 'branch' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'branch' },
+      });
+      return updated;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'settings', id: 'branch', label: 'branch' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'branch', error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('operation')
@@ -50,7 +90,26 @@ export class SettingsController {
   @Patch('operation')
   @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
   async patchOperation(@CurrentContext() ctx: RequestContext, @Body() body: OperationSettingsDto) {
-    return this.settingsService.patchOperation(ctx, body);
+    try {
+      const updated = await this.settingsService.patchOperation(ctx, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'settings', id: 'operation', label: 'operation' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'operation' },
+      });
+      return updated;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'settings', id: 'operation', label: 'operation' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'operation', error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('payments')
@@ -62,7 +121,26 @@ export class SettingsController {
   @Patch('payments')
   @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
   async patchPayments(@CurrentContext() ctx: RequestContext, @Body() body: PaymentSettingsDto) {
-    return this.settingsService.patchPayments(ctx, body);
+    try {
+      const updated = await this.settingsService.patchPayments(ctx, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'settings', id: 'payments', label: 'payments' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'payments' },
+      });
+      return updated;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'settings', id: 'payments', label: 'payments' },
+        metadata: { companyId: ctx.companyId, branchId: ctx.branchId ?? null, section: 'payments', error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('runtime')
