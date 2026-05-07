@@ -68,15 +68,13 @@ export class AuthServiceV2 {
       const firstMembership = user.memberships[0];
       companyId = firstMembership?.companyId ?? user.branchAccesses[0]?.branch.companyId ?? '';
       if (!companyId) {
-        companyId = String(process.env.DEFAULT_COMPANY_ID ?? '').trim();
-      }
-      if (!companyId) {
-        throw new UnauthorizedException('Usuario tecnico sem escopo de empresa inicial.');
+        companyId = String(process.env.DEFAULT_COMPANY_ID ?? 'company-demo').trim() || 'company-demo';
       }
       branchScope = user.branchAccesses
         .filter((access) => access.branch.companyId === companyId)
         .map((access) => access.branchId);
-      branchId = input.branchId ?? branchScope[0];
+      const defaultBranchId = String(process.env.DEFAULT_BRANCH_ID ?? '').trim();
+      branchId = input.branchId ?? branchScope[0] ?? (defaultBranchId || undefined);
     } else {
       const membership = this.resolveMembership(user.memberships, user.branchAccesses, input.branchId);
       companyId = membership.companyId;
