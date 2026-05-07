@@ -52,4 +52,25 @@ describe('ModuleGuard', () => {
       ),
     ).rejects.toThrow(ForbiddenException);
   });
+
+  it('contexto platform ignora bloqueio de modulo', async () => {
+    const service = {
+      checkAccess: jest.fn(),
+    } as any;
+    const guard = new ModuleGuard(service);
+    await expect(
+      guard.canActivate(
+        makeContext({
+          moduleKey: 'whatsapp',
+          context: {
+            companyId: 'company_a',
+            userRole: 'developer',
+            source: 'technical-admin',
+            permissions: ['*'],
+          },
+        }),
+      ),
+    ).resolves.toBe(true);
+    expect(service.checkAccess).not.toHaveBeenCalled();
+  });
 });

@@ -144,4 +144,26 @@ describe('AuthServiceV2', () => {
       expect.objectContaining({ role: 'developer', permissions: ['*'] }),
     );
   });
+
+  it('login tecnico sem membership usa fallback local de company', async () => {
+    delete process.env.DEFAULT_COMPANY_ID;
+    const prismaMock = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...baseUser,
+          roles: [{ role: { name: 'TECHNICAL_ADMIN', permissions: [] } }],
+          memberships: [],
+          branchAccesses: [],
+        }),
+      },
+      refreshToken: { create: jest.fn() },
+    } as any;
+    const service = new AuthServiceV2(prismaMock, jwtMock as any);
+
+    await service.login({ email: 'tecnico@menuhub.local', password: '123456' });
+
+    expect(jwtMock.signAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: 'company-demo', role: 'developer', permissions: ['*'] }),
+    );
+  });
 });
