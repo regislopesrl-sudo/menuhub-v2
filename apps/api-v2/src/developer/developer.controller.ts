@@ -18,6 +18,15 @@ import {
 
 @Controller('v2/developer')
 export class DeveloperController {
+  private static readonly ALLOWED_COMPANY_STATUSES = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED']);
+  private static readonly ALLOWED_SUBSCRIPTION_STATUSES = new Set([
+    'ACTIVE',
+    'TRIAL',
+    'PAST_DUE',
+    'CANCELED',
+    'EXPIRED',
+  ]);
+
   constructor(
     private readonly modulesService: ModulesService,
     private readonly authService: AuthServiceV2,
@@ -152,6 +161,9 @@ export class DeveloperController {
     if (!legalName) {
       throw new BadRequestException('legalName obrigatorio.');
     }
+    if (body?.status && !DeveloperController.ALLOWED_COMPANY_STATUSES.has(body.status)) {
+      throw new BadRequestException('status de company invalido.');
+    }
 
     const created = await this.prisma.company.create({
       data: {
@@ -199,6 +211,18 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
+    if (
+      body.name === undefined &&
+      body.legalName === undefined &&
+      body.document === undefined &&
+      body.slug === undefined &&
+      body.email === undefined &&
+      body.phone === undefined &&
+      body.status === undefined
+    ) {
+      throw new BadRequestException('payload vazio para update company.');
+    }
+
     assertCanPerformPlatformAction(ctx, 'companies:update');
     const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
     const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
@@ -207,6 +231,13 @@ export class DeveloperController {
     }
     if (body.legalName !== undefined && !nextLegalName) {
       throw new BadRequestException('legalName nao pode ser vazio.');
+    }
+    if (
+      body.status !== undefined &&
+      body.status !== null &&
+      !DeveloperController.ALLOWED_COMPANY_STATUSES.has(body.status)
+    ) {
+      throw new BadRequestException('status de company invalido.');
     }
 
     const updated = await this.prisma.company.update({
@@ -292,6 +323,18 @@ export class DeveloperController {
     if (!planId) {
       throw new BadRequestException('planId obrigatorio.');
     }
+    if (!DeveloperController.ALLOWED_SUBSCRIPTION_STATUSES.has(body.status)) {
+      throw new BadRequestException('status de assinatura invalido.');
+    }
+    if (Number.isNaN(new Date(body.startsAt).getTime())) {
+      throw new BadRequestException('startsAt invalido.');
+    }
+    if (body.endsAt && Number.isNaN(new Date(body.endsAt).getTime())) {
+      throw new BadRequestException('endsAt invalido.');
+    }
+    if (body.trialEndsAt && Number.isNaN(new Date(body.trialEndsAt).getTime())) {
+      throw new BadRequestException('trialEndsAt invalido.');
+    }
 
     const created = await this.prisma.companySubscription.create({
       data: {
@@ -322,6 +365,14 @@ export class DeveloperController {
       trialEndsAt: string | null;
     }>,
   ) {
+    if (
+      body.status === undefined &&
+      body.endsAt === undefined &&
+      body.trialEndsAt === undefined
+    ) {
+      throw new BadRequestException('payload vazio para patch subscription.');
+    }
+
     assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
     const current = await this.prisma.companySubscription.findUnique({
@@ -332,7 +383,20 @@ export class DeveloperController {
       throw new BadRequestException('Assinatura nao encontrada para a empresa.');
     }
     if (body.status !== undefined) {
+      if (!DeveloperController.ALLOWED_SUBSCRIPTION_STATUSES.has(body.status)) {
+        throw new BadRequestException('status de assinatura invalido.');
+      }
       assertValidSubscriptionTransition(current.status, body.status);
+    }
+    if (body.endsAt !== undefined && body.endsAt !== null && Number.isNaN(new Date(body.endsAt).getTime())) {
+      throw new BadRequestException('endsAt invalido.');
+    }
+    if (
+      body.trialEndsAt !== undefined &&
+      body.trialEndsAt !== null &&
+      Number.isNaN(new Date(body.trialEndsAt).getTime())
+    ) {
+      throw new BadRequestException('trialEndsAt invalido.');
     }
 
     const updated = await this.prisma.companySubscription.update({
@@ -359,6 +423,9 @@ export class DeveloperController {
     @CurrentContext() ctx: RequestContext,
     @Body() body: { enabled: boolean },
   ) {
+    if (!String(moduleKey ?? '').trim()) {
+      throw new BadRequestException('moduleKey obrigatorio.');
+    }
     assertCompanyScope(ctx, companyId);
     return this.modulesService.updateCompanyModuleOverride({
       companyId,

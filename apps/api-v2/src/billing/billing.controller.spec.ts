@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BillingController } from './billing.controller';
 
 describe('BillingController', () => {
@@ -87,5 +87,59 @@ describe('BillingController', () => {
         },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('billing account update com payload vazio bloqueia', async () => {
+    await expect(
+      controller.upsertBillingAccount(
+        'c1',
+        // @ts-expect-error edge-case runtime validation
+        {},
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['billing.manage'],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('mock payment de invoice inexistente propaga erro esperado', async () => {
+    service.payMockInvoice.mockRejectedValueOnce(new BadRequestException('Fatura nao encontrada.'));
+    await expect(
+      controller.payMockInvoice('inv_missing', {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'jwt',
+        requestId: 'r1',
+        permissions: ['billing.manage'],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('platform:billing:read nao executa mock payment', async () => {
+    await expect(
+      controller.payMockInvoice('inv_1', {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'jwt',
+        requestId: 'r1',
+        permissions: ['platform:billing:read'],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('platform:billing:manage executa mock payment', async () => {
+    service.payMockInvoice.mockResolvedValueOnce({ id: 'inv_1', status: 'PAID' });
+    await controller.payMockInvoice('inv_1', {
+      companyId: 'c1',
+      userRole: 'developer',
+      source: 'jwt',
+      requestId: 'r1',
+      permissions: ['platform:billing:manage'],
+    });
+    expect(service.payMockInvoice).toHaveBeenCalledWith('inv_1', 'c1');
   });
 });
