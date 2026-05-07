@@ -194,6 +194,9 @@ export class AdminUsersService {
 
   async assignRoles(userId: string, ctx: RequestContext, input: AssignAdminUserRolesDto) {
     this.assertAdminRole(ctx);
+    if (!input?.roleIds?.length) {
+      throw new BadRequestException('roleIds obrigatorio para atribuicao de roles.');
+    }
     await this.findCompanyUserOrThrow(userId, ctx);
     const roleAssignment = await this.companyRbacService.resolveRoleAssignment(ctx, input.roleIds ?? []);
     const membershipRoleKey = await this.resolveMembershipRoleKey(ctx.companyId, input.roleIds ?? []);
@@ -208,6 +211,12 @@ export class AdminUsersService {
 
   async assignBranches(userId: string, ctx: RequestContext, input: AssignAdminUserBranchesDto) {
     this.assertAdminRole(ctx);
+    if (!input?.branchIds?.length) {
+      throw new BadRequestException('branchIds obrigatorio para atribuicao de filiais.');
+    }
+    if (input.defaultBranchId && !input.branchIds.includes(input.defaultBranchId)) {
+      throw new BadRequestException('defaultBranchId deve pertencer a branchIds.');
+    }
     await this.findCompanyUserOrThrow(userId, ctx);
 
     const branches = await this.resolveBranchesForCompany(

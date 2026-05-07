@@ -1,10 +1,12 @@
 import { AdminUsersController } from './admin-users.controller';
+import { ForbiddenException } from '@nestjs/common';
 import * as auditRecorder from '../common/audit-log-recorder';
 
 describe('AdminUsersController', () => {
   const service = {
     createUser: jest.fn(),
     updateUser: jest.fn(),
+    assignRoles: jest.fn(),
   };
 
   const controller = new AdminUsersController(service as never);
@@ -43,6 +45,24 @@ describe('AdminUsersController', () => {
       expect.objectContaining({
         action: 'admin.user.update',
         outcome: 'success',
+      }),
+    );
+  });
+
+  it('createUser registra blocked quando service bloqueia', async () => {
+    service.createUser.mockRejectedValueOnce(new ForbiddenException('blocked'));
+
+    await expect(
+      controller.createUser(
+        { companyId: 'c1', userRole: 'admin', requestId: 'r1', permissions: ['admin.users.write'] },
+        { name: 'User 1', email: 'user@menuhub.local', password: 'secret123' } as never,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'admin.user.create',
+        outcome: 'blocked',
       }),
     );
   });

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { AdminUsersService } from './admin-users.service';
@@ -36,8 +36,9 @@ export class AdminUsersController {
 
   @Post('users')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  createUser(@CurrentContext() ctx: RequestContext, @Body() body: CreateAdminUserDto) {
-    return this.adminUsersService.createUser(ctx, body).then((result) => {
+  async createUser(@CurrentContext() ctx: RequestContext, @Body() body: CreateAdminUserDto) {
+    try {
+      const result = await this.adminUsersService.createUser(ctx, body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_CREATE,
         outcome: 'success',
@@ -46,7 +47,16 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_CREATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user' },
+        metadata: { companyId: ctx.companyId, email: body?.email ?? null, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Post('users/invite')
@@ -66,12 +76,13 @@ export class AdminUsersController {
 
   @Patch('users/:id')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  updateUser(
+  async updateUser(
     @Param('id') id: string,
     @CurrentContext() ctx: RequestContext,
     @Body() body: UpdateAdminUserDto,
   ) {
-    return this.adminUsersService.updateUser(id, ctx, body).then((result) => {
+    try {
+      const result = await this.adminUsersService.updateUser(id, ctx, body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
         outcome: 'success',
@@ -80,17 +91,27 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Patch('users/:id/status')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  updateUserStatus(
+  async updateUserStatus(
     @Param('id') id: string,
     @CurrentContext() ctx: RequestContext,
     @Body() body: UpdateAdminUserStatusDto,
   ) {
-    return this.adminUsersService.updateUserStatus(id, ctx, body.isActive).then((result) => {
+    try {
+      const result = await this.adminUsersService.updateUserStatus(id, ctx, body.isActive);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
         outcome: 'success',
@@ -99,18 +120,28 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id, isActive: body.isActive },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, isActive: body?.isActive, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Patch('users/:id/role')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  updateUserPrimaryRole(
+  async updateUserPrimaryRole(
     @Param('id') id: string,
     @CurrentContext() ctx: RequestContext,
     @Body() body: { roleId?: string; roleIds?: string[] },
   ) {
     const roleIds = body.roleIds?.length ? body.roleIds : body.roleId ? [body.roleId] : [];
-    return this.adminUsersService.assignRoles(id, ctx, { roleIds }).then((result) => {
+    try {
+      const result = await this.adminUsersService.assignRoles(id, ctx, { roleIds });
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
         outcome: 'success',
@@ -119,17 +150,27 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id, roleIds },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, roleIds, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Put('users/:id/roles')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  assignRoles(
+  async assignRoles(
     @Param('id') id: string,
     @CurrentContext() ctx: RequestContext,
     @Body() body: AssignAdminUserRolesDto,
   ) {
-    return this.adminUsersService.assignRoles(id, ctx, body).then((result) => {
+    try {
+      const result = await this.adminUsersService.assignRoles(id, ctx, body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
         outcome: 'success',
@@ -138,17 +179,27 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id, roleIds: body.roleIds },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, roleIds: body?.roleIds ?? [], error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Put('users/:id/branches')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  assignBranches(
+  async assignBranches(
     @Param('id') id: string,
     @CurrentContext() ctx: RequestContext,
     @Body() body: AssignAdminUserBranchesDto,
   ) {
-    return this.adminUsersService.assignBranches(id, ctx, body).then((result) => {
+    try {
+      const result = await this.adminUsersService.assignBranches(id, ctx, body);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
         outcome: 'success',
@@ -157,13 +208,23 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.id, branchIds: body.branchIds },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_ROLE_ASSIGN,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, branchIds: body?.branchIds ?? [], error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Delete('users/:id')
   @RequirePermissions(TENANT_PERMISSIONS.ADMIN_USERS_WRITE)
-  deleteUser(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
-    return this.adminUsersService.deleteUser(id, ctx).then((result) => {
+  async deleteUser(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    try {
+      const result = await this.adminUsersService.deleteUser(id, ctx);
       recordAuditFromContext({
         action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
         outcome: 'success',
@@ -172,7 +233,16 @@ export class AdminUsersController {
         metadata: { companyId: ctx.companyId, userId: result.userId, deleted: true },
       });
       return result;
-    });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'admin_user', id },
+        metadata: { companyId: ctx.companyId, userId: id, deleted: true, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('roles')
