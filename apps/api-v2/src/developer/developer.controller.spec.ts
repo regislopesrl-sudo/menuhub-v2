@@ -198,6 +198,46 @@ describe('DeveloperController', () => {
         { name: 'Novo nome' },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.company.create',
+        outcome: 'blocked',
+      }),
+    );
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.company.update',
+        outcome: 'blocked',
+      }),
+    );
+  });
+
+  it('createCompany falha de persistencia registra outcome failure', async () => {
+    prisma.company.create.mockRejectedValueOnce(new BadRequestException('slug duplicado'));
+    await expect(
+      controller.createCompany(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:create'],
+        },
+        {
+          name: 'Empresa Teste',
+          legalName: 'Empresa Teste LTDA',
+          slug: 'empresa-teste',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.company.create',
+        outcome: 'failure',
+      }),
+    );
   });
 
   it('createPlan sem name falha no service e preserva contrato', async () => {
