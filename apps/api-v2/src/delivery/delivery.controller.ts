@@ -3,6 +3,8 @@ import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { ModuleAccess } from '../modules/module-access.decorator';
 import { ModuleGuard } from '../modules/module.guard';
+import { RequirePermissions } from '../common/permissions.decorator';
+import { TENANT_PERMISSIONS } from '../common/rbac';
 import { DeliveryService } from './delivery.service';
 import type { DeliveryFeeRule } from './delivery-fee-config.service';
 import { CepGeocodingService } from './cep-geocoding.service';
@@ -54,6 +56,7 @@ export class DeliveryController {
   @Get('fees')
   @UseGuards(ModuleGuard)
   @ModuleAccess('admin_panel')
+  @RequirePermissions(TENANT_PERMISSIONS.DELIVERY_OPERATE, TENANT_PERMISSIONS.SETTINGS_WRITE)
   listFees(@CurrentContext() ctx: RequestContext) {
     return {
       companyId: ctx.companyId,
@@ -65,6 +68,7 @@ export class DeliveryController {
   @Put('fees')
   @UseGuards(ModuleGuard)
   @ModuleAccess('admin_panel')
+  @RequirePermissions(TENANT_PERMISSIONS.DELIVERY_OPERATE, TENANT_PERMISSIONS.SETTINGS_WRITE)
   updateFees(
     @CurrentContext() ctx: RequestContext,
     @Body() body: { fees: DeliveryFeeRule[] },

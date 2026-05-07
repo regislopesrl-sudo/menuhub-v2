@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
+import { RequirePermissions } from '../common/permissions.decorator';
+import { TENANT_PERMISSIONS } from '../common/rbac';
 import { KdsService } from './kds.service';
 import { ModuleAccess } from '../modules/module-access.decorator';
 import { ModuleGuard } from '../modules/module.guard';
@@ -8,6 +10,7 @@ import { ModuleGuard } from '../modules/module.guard';
 @Controller('v2/kds')
 @UseGuards(ModuleGuard)
 @ModuleAccess('kds' as any)
+@RequirePermissions(TENANT_PERMISSIONS.KDS_OPERATE)
 export class KdsController {
   constructor(private readonly kdsService: KdsService) {}
 

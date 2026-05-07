@@ -362,17 +362,17 @@ export class AuthServiceV2 {
   private buildPermissions(role: AppUserRole): string[] {
     const matrix: Record<string, string[]> = {
       developer: ['*'],
-      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read'],
-      manager: ['admin.users.read', 'settings.read', 'orders.manage', 'modules.read'],
+      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
+      manager: ['admin.users.read', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'billing.read'],
       cashier: ['orders.manage', 'pdv.operate'],
-      kitchen: ['kds.operate'],
+      kitchen: ['kds.operate', 'orders.read'],
       waiter: ['orders.read', 'waiter.operate'],
       delivery_operator: ['delivery.operate', 'orders.read'],
-      finance: ['orders.read', 'settings.read'],
+      finance: ['orders.read', 'settings.read', 'billing.read', 'billing.manage'],
       inventory: ['orders.read'],
       support: ['orders.read'],
-      admin: ['admin.users.read', 'settings.read', 'orders.manage'],
-      master: ['admin.users.read', 'settings.read', 'orders.manage'],
+      admin: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
+      master: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'billing.read', 'billing.manage'],
       user: ['orders.read'],
     };
     return matrix[role] ?? ['orders.read'];

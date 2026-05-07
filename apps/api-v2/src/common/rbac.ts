@@ -39,9 +39,12 @@ export const TENANT_PERMISSIONS = {
   ADMIN_USERS_WRITE: 'admin.users.write',
   SETTINGS_READ: 'settings.read',
   SETTINGS_WRITE: 'settings.write',
+  BILLING_READ: 'billing.read',
+  BILLING_MANAGE: 'billing.manage',
   ORDERS_READ: 'orders.read',
   ORDERS_MANAGE: 'orders.manage',
   MODULES_READ: 'modules.read',
+  MODULES_MANAGE: 'modules.manage',
   PDV_OPERATE: 'pdv.operate',
   KDS_OPERATE: 'kds.operate',
   WAITER_OPERATE: 'waiter.operate',
@@ -82,4 +85,3 @@ export function hasAnyPermission(
 export function isTechnicalAdminSource(ctx: Pick<RequestContext, 'source'>): boolean {
   return ctx.source === 'technical-admin';
 }
-
