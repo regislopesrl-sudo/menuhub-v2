@@ -42,6 +42,28 @@ describe('DeveloperController', () => {
     ).toThrow(ForbiddenException);
   });
 
+  it('createPlan sem permissao platform registra blocked', async () => {
+    await expect(
+      controller.createPlan(
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:read'],
+        },
+        { key: 'basic', name: 'Plano Basic' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.plan.create',
+        outcome: 'blocked',
+      }),
+    );
+  });
+
   it('listPlans permite contexto platform por source', () => {
     modulesService.listPlans.mockReturnValueOnce([{ key: 'pro' }]);
     const result = controller.listPlans({
