@@ -3,6 +3,7 @@ import { InvoiceStatus, PaymentAttemptStatus, Prisma, SubscriptionStatus } from 
 import { PrismaService } from '../database/prisma.service';
 import { BILLING_PROVIDER_TOKEN } from './providers/billing-provider.tokens';
 import type { BillingProvider } from './providers/billing-provider.interface';
+import { assertValidSubscriptionTransition } from './billing-platform.policy';
 
 const FALLBACK_MODULES = [
   'pdv',
@@ -367,6 +368,9 @@ export class BillingService {
 
     if (invoice.subscriptionId) {
       const currentSubscription = await this.prisma.companySubscription.findUnique({ where: { id: invoice.subscriptionId } });
+      if (currentSubscription) {
+        assertValidSubscriptionTransition(currentSubscription.status, SubscriptionStatus.ACTIVE);
+      }
       await this.prisma.companySubscription.update({
         where: { id: invoice.subscriptionId },
         data: { status: SubscriptionStatus.ACTIVE },
@@ -490,6 +494,9 @@ export class BillingService {
             const currentSubscription = await this.prisma.companySubscription.findUnique({
               where: { id: attempt.invoice.subscriptionId },
             });
+            if (currentSubscription) {
+              assertValidSubscriptionTransition(currentSubscription.status, SubscriptionStatus.ACTIVE);
+            }
             await this.prisma.companySubscription.update({
               where: { id: attempt.invoice.subscriptionId },
               data: { status: SubscriptionStatus.ACTIVE },
@@ -558,6 +565,7 @@ export class BillingService {
 
     const target = unpaid ? SubscriptionStatus.PAST_DUE : SubscriptionStatus.ACTIVE;
     if (subscription.status !== target) {
+      assertValidSubscriptionTransition(subscription.status, target);
       await this.prisma.companySubscription.update({
         where: { id: subscription.id },
         data: { status: target },

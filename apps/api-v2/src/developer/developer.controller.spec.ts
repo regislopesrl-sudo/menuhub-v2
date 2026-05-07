@@ -60,4 +60,48 @@ describe('DeveloperController', () => {
     expect(modulesService.listPlans).toHaveBeenCalled();
     expect(result).toEqual([{ key: 'pro-admin' }]);
   });
+
+  it('getCompanySubscription permite platform:billing:read', async () => {
+    prisma.companySubscription.findFirst.mockResolvedValueOnce({
+      id: 'sub_1',
+      companyId: 'c1',
+      planId: 'plan_1',
+      status: 'ACTIVE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+      trialEndsAt: null,
+      plan: { id: 'plan_1', key: 'basic', name: 'Basic' },
+    });
+
+    const result = await controller.getCompanySubscription('c1', {
+      companyId: 'c1',
+      userRole: 'developer',
+      source: 'jwt',
+      requestId: 'r1',
+      permissions: ['platform:billing:read'],
+    });
+
+    expect(prisma.companySubscription.findFirst).toHaveBeenCalled();
+    expect(result).toMatchObject({ id: 'sub_1', planId: 'plan_1', status: 'ACTIVE' });
+  });
+
+  it('createCompanySubscription bloqueia platform:billing:read sem manage', async () => {
+    await expect(
+      controller.createCompanySubscription(
+        'c1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:read'],
+        },
+        {
+          planId: 'plan_1',
+          status: 'ACTIVE',
+          startsAt: '2026-01-01T00:00:00.000Z',
+        },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
