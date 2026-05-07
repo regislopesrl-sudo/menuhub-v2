@@ -15,18 +15,17 @@ import {
   assertCanPerformPlatformBillingAction,
   assertValidSubscriptionTransition,
 } from '../billing/billing-platform.policy';
+import {
+  assertNonEmptyPayload,
+  assertRequiredModuleKey,
+  assertRequiredString,
+  assertValidCompanyStatus,
+  assertValidDateString,
+  assertValidSubscriptionStatus,
+} from './developer-validation';
 
 @Controller('v2/developer')
 export class DeveloperController {
-  private static readonly ALLOWED_COMPANY_STATUSES = new Set(['ACTIVE', 'INACTIVE', 'SUSPENDED']);
-  private static readonly ALLOWED_SUBSCRIPTION_STATUSES = new Set([
-    'ACTIVE',
-    'TRIAL',
-    'PAST_DUE',
-    'CANCELED',
-    'EXPIRED',
-  ]);
-
   constructor(
     private readonly modulesService: ModulesService,
     private readonly authService: AuthServiceV2,
@@ -151,19 +150,10 @@ export class DeveloperController {
     },
   ) {
     assertCanPerformPlatformAction(ctx, 'companies:create');
-    const name = String(body?.name ?? '').trim();
-    const legalName = String(body?.legalName ?? '').trim();
+    const name = assertRequiredString(body?.name, 'name');
+    const legalName = assertRequiredString(body?.legalName, 'legalName');
     const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
-
-    if (!name) {
-      throw new BadRequestException('name obrigatorio.');
-    }
-    if (!legalName) {
-      throw new BadRequestException('legalName obrigatorio.');
-    }
-    if (body?.status && !DeveloperController.ALLOWED_COMPANY_STATUSES.has(body.status)) {
-      throw new BadRequestException('status de company invalido.');
-    }
+    assertValidCompanyStatus(body?.status);
 
     const created = await this.prisma.company.create({
       data: {
@@ -211,17 +201,11 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
-    if (
-      body.name === undefined &&
-      body.legalName === undefined &&
-      body.document === undefined &&
-      body.slug === undefined &&
-      body.email === undefined &&
-      body.phone === undefined &&
-      body.status === undefined
-    ) {
-      throw new BadRequestException('payload vazio para update company.');
-    }
+    assertNonEmptyPayload(
+      body,
+      ['name', 'legalName', 'document', 'slug', 'email', 'phone', 'status'],
+      'payload vazio para update company.',
+    );
 
     assertCanPerformPlatformAction(ctx, 'companies:update');
     const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
@@ -232,13 +216,7 @@ export class DeveloperController {
     if (body.legalName !== undefined && !nextLegalName) {
       throw new BadRequestException('legalName nao pode ser vazio.');
     }
-    if (
-      body.status !== undefined &&
-      body.status !== null &&
-      !DeveloperController.ALLOWED_COMPANY_STATUSES.has(body.status)
-    ) {
-      throw new BadRequestException('status de company invalido.');
-    }
+    assertValidCompanyStatus(body.status);
 
     const updated = await this.prisma.company.update({
       where: { id: companyId },
@@ -319,22 +297,11 @@ export class DeveloperController {
   ) {
     assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
-    const planId = String(body?.planId ?? '').trim();
-    if (!planId) {
-      throw new BadRequestException('planId obrigatorio.');
-    }
-    if (!DeveloperController.ALLOWED_SUBSCRIPTION_STATUSES.has(body.status)) {
-      throw new BadRequestException('status de assinatura invalido.');
-    }
-    if (Number.isNaN(new Date(body.startsAt).getTime())) {
-      throw new BadRequestException('startsAt invalido.');
-    }
-    if (body.endsAt && Number.isNaN(new Date(body.endsAt).getTime())) {
-      throw new BadRequestException('endsAt invalido.');
-    }
-    if (body.trialEndsAt && Number.isNaN(new Date(body.trialEndsAt).getTime())) {
-      throw new BadRequestException('trialEndsAt invalido.');
-    }
+    const planId = assertRequiredString(body?.planId, 'planId');
+    assertValidSubscriptionStatus(body.status);
+    assertValidDateString(body.startsAt, 'startsAt');
+    assertValidDateString(body.endsAt, 'endsAt');
+    assertValidDateString(body.trialEndsAt, 'trialEndsAt');
 
     const created = await this.prisma.companySubscription.create({
       data: {
@@ -365,13 +332,11 @@ export class DeveloperController {
       trialEndsAt: string | null;
     }>,
   ) {
-    if (
-      body.status === undefined &&
-      body.endsAt === undefined &&
-      body.trialEndsAt === undefined
-    ) {
-      throw new BadRequestException('payload vazio para patch subscription.');
-    }
+    assertNonEmptyPayload(
+      body,
+      ['status', 'endsAt', 'trialEndsAt'],
+      'payload vazio para patch subscription.',
+    );
 
     assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
     assertCompanyScope(ctx, companyId);
@@ -383,21 +348,11 @@ export class DeveloperController {
       throw new BadRequestException('Assinatura nao encontrada para a empresa.');
     }
     if (body.status !== undefined) {
-      if (!DeveloperController.ALLOWED_SUBSCRIPTION_STATUSES.has(body.status)) {
-        throw new BadRequestException('status de assinatura invalido.');
-      }
+      assertValidSubscriptionStatus(body.status);
       assertValidSubscriptionTransition(current.status, body.status);
     }
-    if (body.endsAt !== undefined && body.endsAt !== null && Number.isNaN(new Date(body.endsAt).getTime())) {
-      throw new BadRequestException('endsAt invalido.');
-    }
-    if (
-      body.trialEndsAt !== undefined &&
-      body.trialEndsAt !== null &&
-      Number.isNaN(new Date(body.trialEndsAt).getTime())
-    ) {
-      throw new BadRequestException('trialEndsAt invalido.');
-    }
+    assertValidDateString(body.endsAt, 'endsAt');
+    assertValidDateString(body.trialEndsAt, 'trialEndsAt');
 
     const updated = await this.prisma.companySubscription.update({
       where: { id: subscriptionId },
@@ -423,9 +378,7 @@ export class DeveloperController {
     @CurrentContext() ctx: RequestContext,
     @Body() body: { enabled: boolean },
   ) {
-    if (!String(moduleKey ?? '').trim()) {
-      throw new BadRequestException('moduleKey obrigatorio.');
-    }
+    assertRequiredModuleKey(moduleKey);
     assertCompanyScope(ctx, companyId);
     return this.modulesService.updateCompanyModuleOverride({
       companyId,

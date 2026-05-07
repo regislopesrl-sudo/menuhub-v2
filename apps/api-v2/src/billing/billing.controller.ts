@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
-import { BadRequestException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
@@ -7,6 +6,7 @@ import { RequirePermissions } from '../common/permissions.decorator';
 import { PLATFORM_PERMISSIONS, TENANT_PERMISSIONS } from '../common/rbac';
 import { BillingService } from './billing.service';
 import { assertCanAccessCompanyBillingAction } from './billing-platform.policy';
+import { assertRequiredBillingEmail } from './billing-validation';
 
 @Controller('v2/developer')
 export class BillingController {
@@ -34,10 +34,7 @@ export class BillingController {
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
     @CurrentContext() ctx: RequestContext,
   ) {
-    const billingEmail = String(body?.billingEmail ?? '').trim();
-    if (!billingEmail) {
-      throw new BadRequestException('billingEmail obrigatorio.');
-    }
+    const billingEmail = assertRequiredBillingEmail(body?.billingEmail);
     assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
     return this.billingService.upsertBillingAccount(companyId, { ...body, billingEmail });
   }
