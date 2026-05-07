@@ -16,6 +16,7 @@ import { AdminMenuController, AdminMenuUtilityController } from '../admin-menu/a
 import { ChannelsController } from '../channels/channels.controller';
 import { DeveloperController } from '../developer/developer.controller';
 import { OnboardingController } from '../onboarding/onboarding.controller';
+import { BranchesController } from '../branches/branches.controller';
 import { PLATFORM_PERMISSIONS } from './rbac';
 
 function methodPermissions(target: object, methodName: string): string[] {
@@ -159,6 +160,19 @@ describe('RBAC route permissions metadata', () => {
     ]);
   });
 
+  it('branches admin exige settings permissions', () => {
+    expect(methodPermissions(BranchesController.prototype, 'list')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_READ,
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+    expect(methodPermissions(BranchesController.prototype, 'create')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+    expect(methodPermissions(BranchesController.prototype, 'update')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+  });
+
   it('onboarding exige leitura/escrita de settings', () => {
     expect(methodPermissions(OnboardingController.prototype, 'getStatus')).toEqual([
       TENANT_PERMISSIONS.SETTINGS_READ,
@@ -176,3 +190,4 @@ describe('RBAC route permissions metadata', () => {
     ]);
   });
 });
+
