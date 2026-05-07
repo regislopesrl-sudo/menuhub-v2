@@ -7,6 +7,8 @@ import { PLATFORM_PERMISSIONS, TENANT_PERMISSIONS } from '../common/rbac';
 import { BillingService } from './billing.service';
 import { assertCanAccessCompanyBillingAction } from './billing-platform.policy';
 import { assertRequiredBillingEmail } from './billing-validation';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
+import { AUDIT_ACTIONS } from '../common/audit-log';
 
 @Controller('v2/developer')
 export class BillingController {
@@ -36,7 +38,26 @@ export class BillingController {
   ) {
     const billingEmail = assertRequiredBillingEmail(body?.billingEmail);
     assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
-    return this.billingService.upsertBillingAccount(companyId, { ...body, billingEmail });
+    try {
+      const result = await this.billingService.upsertBillingAccount(companyId, { ...body, billingEmail });
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_ACCOUNT_UPSERT,
+        outcome: 'success',
+        ctx,
+        target: { type: 'billing_account', id: result.id, label: result.billingEmail },
+        metadata: { companyId, billingEmail: result.billingEmail },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_ACCOUNT_UPSERT,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'billing_account', id: companyId },
+        metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Get('companies/:companyId/invoices')
@@ -61,7 +82,26 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:mock_payment');
-    return this.billingService.createMockInvoice(companyId);
+    try {
+      const result = await this.billingService.createMockInvoice(companyId);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
+        outcome: 'success',
+        ctx,
+        target: { type: 'invoice', id: result.id },
+        metadata: { companyId, invoiceId: result.id, status: result.status },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'invoice' },
+        metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Post('invoices/:invoiceId/pay/mock')
@@ -71,7 +111,26 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:mock_payment');
-    return this.billingService.payMockInvoice(invoiceId, ctx.companyId);
+    try {
+      const result = await this.billingService.payMockInvoice(invoiceId, ctx.companyId);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
+        outcome: 'success',
+        ctx,
+        target: { type: 'invoice', id: result.id },
+        metadata: { companyId: ctx.companyId, invoiceId: result.id, status: result.status },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_MOCK_PAYMENT,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'invoice', id: invoiceId },
+        metadata: { companyId: ctx.companyId, invoiceId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Post('invoices/:invoiceId/payment-link')
@@ -81,7 +140,26 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     assertCanAccessCompanyBillingAction(ctx, ctx.companyId, 'billing:manage');
-    return this.billingService.createPaymentLink(invoiceId, ctx.companyId);
+    try {
+      const result = await this.billingService.createPaymentLink(invoiceId, ctx.companyId);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_PAYMENT_LINK_CREATE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'invoice', id: invoiceId },
+        metadata: { companyId: ctx.companyId, invoiceId, provider: result.provider },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_PAYMENT_LINK_CREATE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'invoice', id: invoiceId },
+        metadata: { companyId: ctx.companyId, invoiceId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 
   @Post('companies/:companyId/billing/run-cycle')
@@ -92,6 +170,25 @@ export class BillingController {
     @CurrentContext() ctx: RequestContext,
   ) {
     assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:run_cycle');
-    return this.billingService.runBillingCycle(companyId, body?.referenceDate);
+    try {
+      const result = await this.billingService.runBillingCycle(companyId, body?.referenceDate);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_RUN_CYCLE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'company', id: companyId },
+        metadata: { companyId, createdInvoiceId: result.createdInvoiceId ?? null },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.BILLING_RUN_CYCLE,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'company', id: companyId },
+        metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
   }
 }

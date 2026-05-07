@@ -1,6 +1,7 @@
 import { DeveloperController } from './developer.controller';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
+import * as auditRecorder from '../common/audit-log-recorder';
 
 describe('DeveloperController', () => {
   const modulesService = {
@@ -20,6 +21,11 @@ describe('DeveloperController', () => {
   };
 
   const controller = new DeveloperController(modulesService as any, authService as any, prisma as any);
+  const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('login tecnico usa codigo e retorna sessao', async () => {
     authService.loginWithDeveloperCode.mockResolvedValue({ accessToken: 'a', refreshToken: 'r', expiresInSec: 900 });
@@ -186,6 +192,11 @@ describe('DeveloperController', () => {
         { key: 'pro', name: '' },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'failure',
+      }),
+    );
   });
 
   it('updatePlan inexistente retorna erro esperado do service', async () => {
@@ -203,6 +214,33 @@ describe('DeveloperController', () => {
         { name: 'Pro' },
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: 'failure',
+      }),
+    );
+  });
+
+  it('createPlan sucesso registra audit event', async () => {
+    modulesService.createPlan.mockResolvedValueOnce({ id: 'p1', key: 'basic' });
+
+    await controller.createPlan(
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'technical-admin',
+        requestId: 'r1',
+        permissions: ['*'],
+      },
+      { key: 'basic', name: 'Plano Basic' },
+    );
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.plan.create',
+        outcome: 'success',
+      }),
+    );
   });
 
   it('create subscription sem planId bloqueia', async () => {

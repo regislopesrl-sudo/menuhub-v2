@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BillingController } from './billing.controller';
+import * as auditRecorder from '../common/audit-log-recorder';
 
 describe('BillingController', () => {
   const service = {
@@ -12,6 +13,11 @@ describe('BillingController', () => {
     runBillingCycle: jest.fn(),
   };
   const controller = new BillingController(service as never);
+  const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('bloqueia cross-company no endpoint billing', async () => {
     await expect(
@@ -117,6 +123,12 @@ describe('BillingController', () => {
         permissions: ['billing.manage'],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.billing.mock_payment',
+        outcome: 'failure',
+      }),
+    );
   });
 
   it('platform:billing:read nao executa mock payment', async () => {
@@ -141,5 +153,11 @@ describe('BillingController', () => {
       permissions: ['platform:billing:manage'],
     });
     expect(service.payMockInvoice).toHaveBeenCalledWith('inv_1', 'c1');
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.billing.mock_payment',
+        outcome: 'success',
+      }),
+    );
   });
 });
