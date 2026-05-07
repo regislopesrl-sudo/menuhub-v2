@@ -5,6 +5,7 @@ import { ModulesController } from './modules.controller';
 describe('ModulesController', () => {
   const service = {
     listAvailableModules: jest.fn(),
+    listPlans: jest.fn(),
     listCurrentCompanyModules: jest.fn(),
     updateCurrentCompanyModule: jest.fn(),
     getCompanyModulesView: jest.fn(),

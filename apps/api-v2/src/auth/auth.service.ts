@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash, randomUUID, scryptSync, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { JwtServiceV2 } from './jwt.service';
@@ -64,7 +64,7 @@ export class AuthServiceV2 {
     let role: AppUserRole;
 
     if (isDeveloper || isTechnicalAdmin) {
-      role = isTechnicalAdmin ? 'technical_admin' : 'developer';
+      role = 'developer';
       const firstMembership = user.memberships[0];
       companyId = firstMembership?.companyId ?? user.branchAccesses[0]?.branch.companyId ?? '';
       if (!companyId) {
@@ -342,16 +342,19 @@ export class AuthServiceV2 {
   private normalizeRoleKey(roleKey: string): AppUserRole {
     const key = String(roleKey ?? '').trim().toLowerCase();
     if (
-      key === 'technical_admin' ||
       key === 'owner' ||
       key === 'manager' ||
       key === 'cashier' ||
       key === 'kitchen' ||
       key === 'waiter' ||
-      key === 'delivery_operator'
+      key === 'delivery_operator' ||
+      key === 'finance' ||
+      key === 'inventory' ||
+      key === 'support'
     ) {
       return key;
     }
+    if (key === 'developer' || key === 'technical_admin') return 'developer';
     if (key === 'admin' || key === 'master') return key;
     return 'user';
   }
@@ -359,15 +362,17 @@ export class AuthServiceV2 {
   private buildPermissions(role: AppUserRole): string[] {
     const matrix: Record<string, string[]> = {
       developer: ['*'],
-      technical_admin: ['*'],
-      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read'],
-      manager: ['admin.users.read', 'settings.read', 'orders.manage', 'modules.read'],
+      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      manager: ['admin.users.read', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'catalog.read', 'catalog.manage', 'billing.read'],
       cashier: ['orders.manage', 'pdv.operate'],
-      kitchen: ['kds.operate'],
+      kitchen: ['kds.operate', 'orders.read'],
       waiter: ['orders.read', 'waiter.operate'],
       delivery_operator: ['delivery.operate', 'orders.read'],
-      admin: ['admin.users.read', 'settings.read', 'orders.manage'],
-      master: ['admin.users.read', 'settings.read', 'orders.manage'],
+      finance: ['orders.read', 'settings.read', 'billing.read', 'billing.manage'],
+      inventory: ['orders.read'],
+      support: ['orders.read'],
+      admin: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      master: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
       user: ['orders.read'],
     };
     return matrix[role] ?? ['orders.read'];
@@ -385,3 +390,4 @@ export class AuthServiceV2 {
     return Number(process.env.AUTH_REFRESH_TTL_SEC ?? 60 * 60 * 24 * 15);
   }
 }
+

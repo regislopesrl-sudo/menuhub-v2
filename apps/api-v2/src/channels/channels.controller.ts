@@ -6,6 +6,8 @@ import { ModuleAccess } from '../modules/module-access.decorator';
 import { ModuleGuard } from '../modules/module.guard';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
+import { RequirePermissions } from '../common/permissions.decorator';
+import { TENANT_PERMISSIONS } from '../common/rbac';
 
 @Controller('v2/channels')
 export class ChannelsController {
@@ -25,6 +27,7 @@ export class ChannelsController {
   @Post('pdv/checkout')
   @UseGuards(ModuleGuard)
   @ModuleAccess('pdv' as any)
+  @RequirePermissions(TENANT_PERMISSIONS.PDV_OPERATE)
   async pdvCheckout(
     @Body() body: PdvCheckoutRequestBody,
     @CurrentContext() ctx: RequestContext,

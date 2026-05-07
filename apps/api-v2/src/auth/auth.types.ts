@@ -1,6 +1,5 @@
 export type AppUserRole =
   | 'admin'
-  | 'technical_admin'
   | 'user'
   | 'master'
   | 'developer'
@@ -9,7 +8,10 @@ export type AppUserRole =
   | 'cashier'
   | 'kitchen'
   | 'waiter'
-  | 'delivery_operator';
+  | 'delivery_operator'
+  | 'finance'
+  | 'inventory'
+  | 'support';
 
 export interface AuthTokenClaims {
   sub: string;
@@ -27,5 +29,3 @@ export interface AuthTokens {
   refreshToken: string;
   expiresInSec: number;
 }
-
-

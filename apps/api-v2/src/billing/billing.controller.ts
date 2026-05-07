@@ -4,6 +4,8 @@ import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { requireDeveloperOrAdmin } from '../common/developer-role';
 import { assertCompanyScope } from '../common/platform-access';
+import { RequirePermissions } from '../common/permissions.decorator';
+import { PLATFORM_PERMISSIONS, TENANT_PERMISSIONS } from '../common/rbac';
 import { BillingService } from './billing.service';
 
 @Controller('v2/developer')
@@ -11,6 +13,12 @@ export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 
   @Get('companies/:companyId/billing')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.BILLING_READ,
+    TENANT_PERMISSIONS.BILLING_MANAGE,
+    PLATFORM_PERMISSIONS.BILLING_READ,
+    PLATFORM_PERMISSIONS.BILLING_MANAGE,
+  )
   async getBilling(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -21,6 +29,7 @@ export class BillingController {
   }
 
   @Put('companies/:companyId/billing-account')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async upsertBillingAccount(
     @Param('companyId') companyId: string,
     @Body() body: { billingEmail: string; document?: string; legalName?: string; addressJson?: Prisma.InputJsonValue },
@@ -32,6 +41,12 @@ export class BillingController {
   }
 
   @Get('companies/:companyId/invoices')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.BILLING_READ,
+    TENANT_PERMISSIONS.BILLING_MANAGE,
+    PLATFORM_PERMISSIONS.BILLING_READ,
+    PLATFORM_PERMISSIONS.BILLING_MANAGE,
+  )
   async listInvoices(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -42,6 +57,7 @@ export class BillingController {
   }
 
   @Post('companies/:companyId/invoices/mock')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async createMockInvoice(
     @Param('companyId') companyId: string,
     @CurrentContext() ctx: RequestContext,
@@ -52,6 +68,7 @@ export class BillingController {
   }
 
   @Post('invoices/:invoiceId/pay/mock')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async payMockInvoice(
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
@@ -61,6 +78,7 @@ export class BillingController {
   }
 
   @Post('invoices/:invoiceId/payment-link')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async createPaymentLink(
     @Param('invoiceId') invoiceId: string,
     @CurrentContext() ctx: RequestContext,
@@ -70,6 +88,7 @@ export class BillingController {
   }
 
   @Post('companies/:companyId/billing/run-cycle')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async runBillingCycle(
     @Param('companyId') companyId: string,
     @Body() body: { referenceDate?: string },

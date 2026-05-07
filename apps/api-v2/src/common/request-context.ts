@@ -4,7 +4,6 @@ import type { AuthTokenClaims } from '../auth/auth.types';
 
 export type UserRole =
   | 'admin'
-  | 'technical_admin'
   | 'user'
   | 'master'
   | 'developer'
@@ -13,7 +12,10 @@ export type UserRole =
   | 'cashier'
   | 'kitchen'
   | 'waiter'
-  | 'delivery_operator';
+  | 'delivery_operator'
+  | 'finance'
+  | 'inventory'
+  | 'support';
 export type ChannelKey = 'delivery' | 'pdv' | 'whatsapp' | 'kiosk' | 'waiter_app' | 'admin_panel';
 
 export interface RequestContext {
@@ -30,8 +32,8 @@ export interface RequestContext {
 
 type HeaderMap = Record<string, string | string[] | undefined>;
 
-const VALID_ROLES: UserRole[] = ['admin', 'technical_admin', 'user', 'master', 'developer', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
-const HEADER_FALLBACK_ALLOWED_ROLES: UserRole[] = ['admin', 'user', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator'];
+const VALID_ROLES: UserRole[] = ['admin', 'user', 'master', 'developer', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator', 'finance', 'inventory', 'support'];
+const HEADER_FALLBACK_ALLOWED_ROLES: UserRole[] = ['admin', 'user', 'owner', 'manager', 'cashier', 'kitchen', 'waiter', 'delivery_operator', 'finance', 'inventory', 'support'];
 const VALID_CHANNELS: ChannelKey[] = ['delivery', 'pdv', 'whatsapp', 'kiosk', 'waiter_app', 'admin_panel'];
 
 export function buildRequestContextFromHeaders(headers: HeaderMap): RequestContext {

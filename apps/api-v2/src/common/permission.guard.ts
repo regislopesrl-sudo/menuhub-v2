@@ -1,7 +1,8 @@
-﻿import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { REQUIRED_PERMISSIONS_KEY } from './permissions.decorator';
 import type { RequestContext } from './request-context';
+import { PLATFORM_PERMISSIONS } from './rbac';
 
 type HttpRequest = { context?: RequestContext };
 
@@ -20,6 +21,10 @@ export class PermissionGuardV2 implements CanActivate {
 
     const request = context.switchToHttp().getRequest<HttpRequest>();
     const granted = request.context?.permissions ?? [];
+    if (granted.includes(PLATFORM_PERMISSIONS.ALL)) {
+      return true;
+    }
+
     const denied = required.filter((permission) => !granted.includes(permission));
     if (denied.length > 0) {
       throw new ForbiddenException(`Permissoes ausentes: ${denied.join(', ')}`);
