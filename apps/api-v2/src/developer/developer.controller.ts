@@ -7,9 +7,10 @@ import { AuthServiceV2 } from '../auth/auth.service';
 import { PrismaService } from '../database/prisma.service';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
-import { assertCompanyScope, assertPlatformAdmin } from '../common/platform-access';
+import { assertCompanyScope } from '../common/platform-access';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { PLATFORM_PERMISSIONS } from '../common/rbac';
+import { assertCanPerformPlatformAction } from './developer-platform.policy';
 
 @Controller('v2/developer')
 export class DeveloperController {
@@ -29,7 +30,7 @@ export class DeveloperController {
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.PLANS_MANAGE)
   listPlans(@CurrentContext() ctx: RequestContext) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.listPlans();
   }
 
@@ -47,7 +48,7 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.createPlan(body);
   }
 
@@ -66,7 +67,7 @@ export class DeveloperController {
       limits?: Array<{ limitKey: string; limitValue: number }>;
     },
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'plans:manage');
     return this.modulesService.updatePlan(id, body);
   }
 
@@ -74,7 +75,7 @@ export class DeveloperController {
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.COMPANIES_READ)
   async listCompanies(@CurrentContext() ctx: RequestContext) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'companies:read');
     const rows = await this.prisma.company.findMany({
       orderBy: [{ createdAt: 'desc' }],
       select: {
@@ -136,7 +137,7 @@ export class DeveloperController {
       status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     },
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'companies:create');
     const name = String(body?.name ?? '').trim();
     const legalName = String(body?.legalName ?? '').trim();
     const slug = String(body?.slug ?? '').trim().toLowerCase() || null;
@@ -194,7 +195,7 @@ export class DeveloperController {
       status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     }>,
   ) {
-    assertPlatformAdmin(ctx);
+    assertCanPerformPlatformAction(ctx, 'companies:update');
     const nextName = body.name !== undefined ? String(body.name).trim() : undefined;
     const nextLegalName = body.legalName !== undefined ? String(body.legalName).trim() : undefined;
     if (body.name !== undefined && !nextName) {
