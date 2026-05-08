@@ -644,4 +644,31 @@ describe('AdminMenuService', () => {
     expect(sql).toContain('ADD COLUMN "available_kiosk" BOOLEAN NOT NULL DEFAULT true');
     expect(sql).toContain('SET "available_kiosk" = "available_counter"');
   });
+
+  it('bloqueia operacao de catalogo quando branch nao pertence a company', async () => {
+    const prisma = prismaMock();
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.listProducts(ctx)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia recomendacao com produto de outra empresa', async () => {
+    const prisma = prismaMock();
+    prisma.product.findFirst
+      .mockResolvedValueOnce(product({ id: 'prod_1' }))
+      .mockResolvedValueOnce(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(
+      service.putRecommendations('prod_1', ctx, {
+        title: 'Peca tambem',
+        type: 'manual',
+        limit: 2,
+        active: true,
+        productIds: ['prod_other'],
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
 });

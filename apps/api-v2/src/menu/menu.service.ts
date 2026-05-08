@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { RequestContext } from '../common/request-context';
+import { isProductVisibleOnChannel, resolvePublicMenuPrice } from './menu-visibility.policy';
 
 export interface MenuItemDto {
   id: string;
@@ -31,6 +32,9 @@ export class MenuService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(ctx: RequestContext): Promise<MenuItemDto[]> {
+    if (!ctx?.companyId?.trim()) {
+      throw new BadRequestException('Contexto de empresa ausente para carregar o cardapio.');
+    }
     const products = await this.prisma.product.findMany({
       where: {
         companyId: ctx.companyId,
@@ -62,11 +66,14 @@ export class MenuService {
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
 
-    return products.map((product) => {
-      const deliveryPrice = Number(product.deliveryPickupPrice);
-      const salePrice = Number(product.salePrice);
-      const promotionalPrice = product.promotionalPrice ? Number(product.promotionalPrice) : undefined;
-      const resolvedPrice = promotionalPrice ?? (deliveryPrice > 0 ? deliveryPrice : salePrice);
+    return products
+      .filter((product) => isProductVisibleOnChannel(product, 'delivery'))
+      .map((product) => {
+      const resolvedPrice = resolvePublicMenuPrice({
+        salePrice: product.salePrice,
+        deliveryPickupPrice: product.deliveryPickupPrice,
+        promotionalPrice: product.promotionalPrice,
+      });
 
       const addonGroups = product.addonLinks.map((link) => ({
         id: link.addonGroup.id,
@@ -83,16 +90,16 @@ export class MenuService {
         })),
       }));
 
-      return {
+        return {
         id: product.id,
         name: product.name,
         description: product.description ?? undefined,
         imageUrl: product.imageUrl ?? undefined,
         price: resolvedPrice,
         categoryName: product.category?.name ?? undefined,
-        available: Boolean(product.isActive && product.availableDelivery && !product.deletedAt),
+          available: isProductVisibleOnChannel(product, 'delivery'),
         addonGroups,
       };
-    });
+      });
   }
 }
