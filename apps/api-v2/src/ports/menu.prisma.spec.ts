@@ -414,6 +414,52 @@ describe('MenuPrismaPort', () => {
     ).rejects.toThrow("Grupo 'Borda' nao permite multiplas opcoes");
   });
 
+  it('bloqueia repeticao da mesma opcao no mesmo grupo', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        deletedAt: null,
+        addonLinks: [
+          {
+            addonGroup: {
+              id: 'grp_repeat',
+              name: 'Molhos',
+              minSelect: 0,
+              maxSelect: 3,
+              required: false,
+              allowMultiple: true,
+              items: [{ id: 'add_1', name: 'Barbecue', price: 2 }],
+            },
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      port.validateItems({
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'delivery',
+        items: [
+          {
+            productId: 'p1',
+            quantity: 1,
+            selectedOptions: [
+              { groupId: 'grp_repeat', optionId: 'add_1', name: 'x', price: 1 },
+              { groupId: 'grp_repeat', optionId: 'add_1', name: 'x', price: 1 },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("Grupo 'Molhos' nao permite repetir a mesma opcao");
+  });
+
   it('selecao valida passa', async () => {
     const { port } = makePortWithProducts([
       {

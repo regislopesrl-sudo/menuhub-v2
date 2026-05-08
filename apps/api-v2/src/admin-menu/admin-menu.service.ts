@@ -628,8 +628,17 @@ export class AdminMenuService {
     }
     const resolvedMin = minSelect ?? Number(existing?.minSelect ?? 0);
     const resolvedMax = maxSelect ?? Number(existing?.maxSelect ?? 1);
+    const resolvedRequired = typeof input.required === 'boolean' ? input.required : creating ? false : undefined;
+    const resolvedAllowMultiple =
+      typeof input.allowMultiple === 'boolean' ? input.allowMultiple : creating ? false : undefined;
     if ((creating || minSelect !== undefined || maxSelect !== undefined) && resolvedMin > resolvedMax) {
       throw new BadRequestException('Minimo de selecao nao pode ser maior que o maximo.');
+    }
+    if ((creating || input.allowMultiple !== undefined || maxSelect !== undefined) && resolvedAllowMultiple === false && resolvedMax > 1) {
+      throw new BadRequestException('Grupo sem multiplas opcoes nao pode ter maximo de selecao maior que 1.');
+    }
+    if ((creating || input.required !== undefined || maxSelect !== undefined) && resolvedRequired === true && resolvedMax === 0) {
+      throw new BadRequestException('Grupo obrigatorio deve permitir ao menos uma opcao.');
     }
 
     return {
