@@ -112,4 +112,41 @@ describe('OnboardingService', () => {
     expect(status.progress.done).toBe(0);
     expect(prisma.companySetting.upsert).toHaveBeenCalled();
   });
+
+  it('retorna proxima etapa pendente no fluxo', async () => {
+    const prisma = prismaMock();
+    prisma.companySetting.findFirst.mockResolvedValueOnce({
+      value: {
+        completedSteps: ['company_profile', 'branch_profile'],
+      },
+    });
+    const service = new OnboardingService(prisma);
+
+    const next = await service.getNextStep(ctx);
+
+    expect(next.nextStep).toBe('operation_hours');
+    expect(next.blockedBy).toEqual([]);
+  });
+
+  it('retorna completo quando nao ha etapa pendente', async () => {
+    const prisma = prismaMock();
+    prisma.companySetting.findFirst.mockResolvedValueOnce({
+      value: {
+        completedSteps: [
+          'company_profile',
+          'branch_profile',
+          'operation_hours',
+          'payment_methods',
+          'catalog_basics',
+          'first_order_flow',
+        ],
+      },
+    });
+    const service = new OnboardingService(prisma);
+
+    const next = await service.getNextStep(ctx);
+
+    expect(next.completed).toBe(true);
+    expect(next.nextStep).toBeNull();
+  });
 });

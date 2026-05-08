@@ -33,6 +33,35 @@ export class OnboardingService {
     };
   }
 
+  async getNextStep(ctx: RequestContext) {
+    const status = await this.getStatus(ctx);
+    const completedSteps = status.steps.filter((step) => step.completed).map((step) => step.stepKey);
+    const nextStep = ONBOARDING_STEP_ORDER.find((step) => !completedSteps.includes(step)) ?? null;
+
+    if (!nextStep) {
+      return {
+        companyId: status.companyId,
+        branchId: status.branchId,
+        completed: true,
+        nextStep: null,
+        blockedBy: [],
+      };
+    }
+
+    const stepIndex = ONBOARDING_STEP_ORDER.indexOf(nextStep);
+    const blockedBy = ONBOARDING_STEP_ORDER
+      .slice(0, stepIndex)
+      .filter((requiredStep) => !completedSteps.includes(requiredStep));
+
+    return {
+      companyId: status.companyId,
+      branchId: status.branchId,
+      completed: false,
+      nextStep,
+      blockedBy,
+    };
+  }
+
   async patchStep(ctx: RequestContext, stepKey: OnboardingStepKey, completed: boolean) {
     this.assertStepKey(stepKey);
     const branchId = await this.resolveBranchId(ctx);

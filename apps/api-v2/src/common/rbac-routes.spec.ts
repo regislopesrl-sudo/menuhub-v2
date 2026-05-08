@@ -145,6 +145,10 @@ describe('RBAC route permissions metadata', () => {
       TENANT_PERMISSIONS.SETTINGS_READ,
       TENANT_PERMISSIONS.SETTINGS_WRITE,
     ]);
+    expect(methodPermissions(OnboardingController.prototype, 'getNextStep')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_READ,
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
     expect(methodPermissions(OnboardingController.prototype, 'patchStep')).toEqual([
       TENANT_PERMISSIONS.SETTINGS_WRITE,
     ]);

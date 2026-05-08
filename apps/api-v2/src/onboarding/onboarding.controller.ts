@@ -20,6 +20,12 @@ export class OnboardingController {
     return this.onboardingService.getStatus(ctx);
   }
 
+  @Get('next-step')
+  @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_READ, TENANT_PERMISSIONS.SETTINGS_WRITE)
+  async getNextStep(@CurrentContext() ctx: RequestContext) {
+    return this.onboardingService.getNextStep(ctx);
+  }
+
   @Patch('steps/:stepKey')
   @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
   async patchStep(

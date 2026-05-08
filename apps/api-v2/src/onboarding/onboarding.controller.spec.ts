@@ -5,6 +5,7 @@ import { OnboardingController } from './onboarding.controller';
 describe('OnboardingController', () => {
   const service = {
     getStatus: jest.fn(),
+    getNextStep: jest.fn(),
     patchStep: jest.fn(),
     reset: jest.fn(),
   };
@@ -62,5 +63,11 @@ describe('OnboardingController', () => {
         outcome: 'success',
       }),
     );
+  });
+
+  it('getNextStep retorna resposta do service', async () => {
+    service.getNextStep.mockResolvedValueOnce({ completed: false, nextStep: 'company_profile' });
+    const result = await controller.getNextStep(ctx);
+    expect(result).toEqual({ completed: false, nextStep: 'company_profile' });
   });
 });
