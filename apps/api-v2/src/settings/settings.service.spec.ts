@@ -98,6 +98,26 @@ describe('SettingsService', () => {
     expect(prisma.branch.update).not.toHaveBeenCalled();
   });
 
+  it('patch company com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchCompany(ctx, {})).rejects.toThrow('Payload de settings/company vazio.');
+  });
+
+  it('patch branch com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchBranch(ctx, {})).rejects.toThrow('Payload de settings/branch vazio.');
+  });
+
+  it('patch operation com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchOperation(ctx, {})).rejects.toThrow('Payload de settings/operation vazio.');
+  });
+
+  it('patch payments com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchPayments(ctx, {})).rejects.toThrow('Payload de settings/payments vazio.');
+  });
+
   it('update payments nao retorna segredo', async () => {
     const prisma = prismaMock();
     prisma.companySetting.findFirst.mockResolvedValue({
@@ -158,6 +178,42 @@ describe('SettingsService', () => {
         }),
       }),
     );
+  });
+
+  it('patch company falha com brandColor invalido', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(
+      service.patchCompany(ctx, {
+        brandColor: 'blue',
+      }),
+    ).rejects.toThrow('Cor principal invalida');
+  });
+
+  it('patch company falha com timezone invalida', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(
+      service.patchCompany(ctx, {
+        timezone: 'America/Invalid',
+      }),
+    ).rejects.toThrow('Timezone invalida.');
+  });
+
+  it('patch company falha com logoUrl invalida', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(
+      service.patchCompany(ctx, {
+        logoUrl: 'ftp://menuhub.local/logo.png',
+      }),
+    ).rejects.toThrow('Logo URL invalida.');
+  });
+
+  it('patch company falha quando titulo publico excede limite', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(
+      service.patchCompany(ctx, {
+        publicTitle: 'x'.repeat(121),
+      }),
+    ).rejects.toThrow('Titulo publico excede 120 caracteres.');
   });
 
   it('horarios invalidos falham', async () => {
