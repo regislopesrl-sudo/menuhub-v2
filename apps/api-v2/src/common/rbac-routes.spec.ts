@@ -15,6 +15,7 @@ import { BillingWebhookController } from '../billing/billing.webhook.controller'
 import { AdminMenuController, AdminMenuUtilityController } from '../admin-menu/admin-menu.controller';
 import { ChannelsController } from '../channels/channels.controller';
 import { DeveloperController } from '../developer/developer.controller';
+import { OnboardingController } from '../onboarding/onboarding.controller';
 import { PLATFORM_PERMISSIONS } from './rbac';
 
 function methodPermissions(target: object, methodName: string): string[] {
@@ -136,6 +137,23 @@ describe('RBAC route permissions metadata', () => {
     expect(methodPermissions(DeveloperController.prototype, 'updateCompanyModule')).toEqual([
       PLATFORM_PERMISSIONS.MODULES_MANAGE,
       PLATFORM_PERMISSIONS.COMPANIES_UPDATE,
+    ]);
+  });
+
+  it('onboarding exige leitura/escrita de settings', () => {
+    expect(methodPermissions(OnboardingController.prototype, 'getStatus')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_READ,
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+    expect(methodPermissions(OnboardingController.prototype, 'getNextStep')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_READ,
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+    expect(methodPermissions(OnboardingController.prototype, 'patchStep')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
+    expect(methodPermissions(OnboardingController.prototype, 'reset')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
     ]);
   });
 });
