@@ -58,6 +58,7 @@ export class AdminMenuService {
     if (!name) {
       throw new BadRequestException('Nome da categoria e obrigatorio.');
     }
+    const sortOrder = this.parseCategorySortOrder(input.sortOrder);
     const existing = await this.prisma.productCategory.findFirst({
       where: { companyId: ctx.companyId, name },
       include: { _count: { select: { products: true } } },
@@ -66,7 +67,11 @@ export class AdminMenuService {
       return this.mapCategory(existing);
     }
     const created = await this.prisma.productCategory.create({
-      data: { companyId: ctx.companyId, name },
+      data: {
+        companyId: ctx.companyId,
+        name,
+        ...(sortOrder !== undefined ? { sortOrder } : {}),
+      },
       include: { _count: { select: { products: true } } },
     });
     return this.mapCategory(created);
@@ -91,6 +96,9 @@ export class AdminMenuService {
     }
     if ('active' in input && typeof input.active === 'boolean') {
       data.isActive = input.active;
+    }
+    if (input.sortOrder !== undefined) {
+      data.sortOrder = this.parseCategorySortOrder(input.sortOrder);
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Informe pelo menos um campo da categoria para atualizar.');
@@ -571,9 +579,19 @@ export class AdminMenuService {
     return {
       id: category.id,
       name: category.name,
+      sortOrder: Number(category.sortOrder ?? 0),
       count: Number(category._count?.products ?? 0),
       active: category.isActive !== false,
     };
+  }
+
+  private parseCategorySortOrder(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) {
+      throw new BadRequestException('Ordenacao da categoria deve ser um inteiro.');
+    }
+    return parsed;
   }
 
   private mapAddonGroup(group: any) {

@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -85,6 +86,10 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateCategoryDto {
@@ -95,6 +100,10 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateAvailabilityDto {

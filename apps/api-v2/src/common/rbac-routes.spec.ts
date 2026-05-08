@@ -119,6 +119,12 @@ describe('RBAC route permissions metadata', () => {
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'createCategory')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'updateCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'deleteCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
   });
 
   it('channels pdv checkout exige pdv.operate', () => {
