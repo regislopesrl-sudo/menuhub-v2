@@ -1,4 +1,5 @@
 import { MenuService } from './menu.service';
+import { BadRequestException } from '@nestjs/common';
 
 describe('MenuService', () => {
   const ctx = {
@@ -181,5 +182,17 @@ describe('MenuService', () => {
     const result = await service.list(ctx);
 
     expect(result).toEqual([]);
+  });
+
+  it('falha quando companyId nao esta presente no contexto', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as any;
+    const service = new MenuService(prismaMock);
+
+    await expect(service.list({ companyId: '' } as any)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prismaMock.product.findMany).not.toHaveBeenCalled();
   });
 });

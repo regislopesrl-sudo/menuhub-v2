@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { RequestContext } from '../common/request-context';
 import { isProductVisibleOnChannel, resolvePublicMenuPrice } from './menu-visibility.policy';
@@ -32,6 +32,9 @@ export class MenuService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(ctx: RequestContext): Promise<MenuItemDto[]> {
+    if (!ctx?.companyId?.trim()) {
+      throw new BadRequestException('Contexto de empresa ausente para carregar o cardapio.');
+    }
     const products = await this.prisma.product.findMany({
       where: {
         companyId: ctx.companyId,
