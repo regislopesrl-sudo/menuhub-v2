@@ -387,6 +387,29 @@ describe('AdminMenuService', () => {
     await expect(service.updateProduct('prod_1', ctx, { salePrice: -1 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('bloqueia listagem de produtos quando branch nao pertence a company', async () => {
+    const prisma = prismaMock();
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.listProducts(ctx)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia criacao de produto quando branch nao pertence a company', async () => {
+    const prisma = prismaMock();
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(
+      service.createProduct(ctx, {
+        name: 'Produto invalido',
+        salePrice: 10,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.product.create).not.toHaveBeenCalled();
+  });
+
   it('update sem campos falha', async () => {
     const service = new AdminMenuService(prismaMock());
 
