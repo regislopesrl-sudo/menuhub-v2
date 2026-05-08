@@ -154,4 +154,32 @@ describe('MenuService', () => {
       },
     ]);
   });
+
+  it('remove do menu publico produto nao visivel no canal delivery', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'prod_hidden',
+            name: 'Produto oculto',
+            description: null,
+            imageUrl: null,
+            salePrice: 20,
+            promotionalPrice: null,
+            deliveryPickupPrice: 20,
+            isActive: true,
+            availableDelivery: false,
+            deletedAt: null,
+            category: { name: 'Teste' },
+            addonLinks: [],
+          },
+        ]),
+      },
+    } as any;
+
+    const service = new MenuService(prismaMock);
+    const result = await service.list(ctx);
+
+    expect(result).toEqual([]);
+  });
 });
