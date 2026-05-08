@@ -156,6 +156,23 @@ describe('AdminMenuService', () => {
     expect(result).toEqual({ id: 'cat_new', name: 'Combos', sortOrder: 0, count: 0, active: true });
   });
 
+  it('cria produto com ordenacao explicita', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.createProduct(ctx, {
+      name: 'Batata',
+      salePrice: 12,
+      sortOrder: 5,
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        sortOrder: 5,
+      }),
+    }));
+  });
+
   it('cria categoria com ordenacao explicita', async () => {
     const prisma = prismaMock();
     prisma.productCategory.findFirst.mockResolvedValue(null);
@@ -273,6 +290,18 @@ describe('AdminMenuService', () => {
     }));
   });
 
+  it('edita ordenacao do produto', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.updateProduct('prod_1', ctx, { sortOrder: 8 });
+
+    expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'prod_1' },
+      data: expect.objectContaining({ sortOrder: 8 }),
+    }));
+  });
+
   it('bloqueia produto de outra empresa', async () => {
     const prisma = prismaMock();
     prisma.product.findFirst.mockResolvedValue(null);
@@ -356,6 +385,19 @@ describe('AdminMenuService', () => {
     const service = new AdminMenuService(prismaMock());
 
     await expect(service.updateProduct('prod_1', ctx, { salePrice: -1 })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('update sem campos falha', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.updateProduct('prod_1', ctx, {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('sortOrder invalido no produto falha', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, sortOrder: -1 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateProduct('prod_1', ctx, { sortOrder: 1.25 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('patch availability bloqueia produto de outra empresa', async () => {

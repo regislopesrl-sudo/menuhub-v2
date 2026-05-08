@@ -78,6 +78,11 @@ export class CreateProductDto {
   @ValidateNested()
   @Type(() => ProductChannelsDto)
   channels?: ProductChannelsDto;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
 }
 
 export class UpdateProductDto extends CreateProductDto {}

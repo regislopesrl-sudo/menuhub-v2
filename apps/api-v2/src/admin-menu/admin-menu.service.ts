@@ -375,7 +375,8 @@ export class AdminMenuService {
     }
 
     const categoryId = await this.resolveCategoryId(ctx, input.categoryId, input.categoryName);
-    return {
+    const sortOrder = this.parseProductSortOrder(input.sortOrder);
+    const data = {
       ...(creating ? { companyId: ctx.companyId } : {}),
       ...(name ? { name } : {}),
       ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
@@ -386,7 +387,12 @@ export class AdminMenuService {
       ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : {}),
       ...this.mapChannelData(input.channels),
+      ...(sortOrder !== undefined ? { sortOrder } : {}),
     };
+    if (!creating && Object.keys(data).length === 0) {
+      throw new BadRequestException('Informe pelo menos um campo do produto para atualizar.');
+    }
+    return data;
   }
 
   private async resolveCategoryId(
@@ -619,6 +625,15 @@ export class AdminMenuService {
   private pickPrice(input: AdminMenuProductInput): number | undefined {
     const raw = input.salePrice ?? input.price;
     return raw === undefined ? undefined : Number(raw);
+  }
+
+  private parseProductSortOrder(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new BadRequestException('Ordenacao do produto deve ser um inteiro maior ou igual a zero.');
+    }
+    return parsed;
   }
 
   private assertNonNegative(value: number, message: string) {
