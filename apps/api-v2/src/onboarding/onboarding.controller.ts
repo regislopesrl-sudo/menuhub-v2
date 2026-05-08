@@ -49,5 +49,29 @@ export class OnboardingController {
       throw error;
     }
   }
-}
 
+  @Patch('reset')
+  @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_WRITE)
+  async reset(@CurrentContext() ctx: RequestContext) {
+    try {
+      const status = await this.onboardingService.reset(ctx);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ONBOARDING_RESET,
+        outcome: 'success',
+        ctx,
+        target: { type: 'onboarding', id: 'reset', label: 'reset' },
+        metadata: { reset: true },
+      });
+      return status;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.ONBOARDING_RESET,
+        outcome: 'failure',
+        ctx,
+        target: { type: 'onboarding', id: 'reset', label: 'reset' },
+        metadata: { reset: true, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
+  }
+}

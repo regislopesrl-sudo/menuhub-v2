@@ -148,5 +148,8 @@ describe('RBAC route permissions metadata', () => {
     expect(methodPermissions(OnboardingController.prototype, 'patchStep')).toEqual([
       TENANT_PERMISSIONS.SETTINGS_WRITE,
     ]);
+    expect(methodPermissions(OnboardingController.prototype, 'reset')).toEqual([
+      TENANT_PERMISSIONS.SETTINGS_WRITE,
+    ]);
   });
 });

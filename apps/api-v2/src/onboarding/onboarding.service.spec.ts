@@ -91,4 +91,25 @@ describe('OnboardingService', () => {
     expect(status.progress.done).toBe(2);
     expect(prisma.companySetting.upsert).toHaveBeenCalled();
   });
+
+  it('reset limpa etapas concluidas', async () => {
+    const prisma = prismaMock();
+    prisma.companySetting.findFirst
+      .mockResolvedValueOnce({
+        value: {
+          completedSteps: ['company_profile', 'branch_profile'],
+        },
+      })
+      .mockResolvedValueOnce({
+        value: {
+          completedSteps: [],
+        },
+      });
+    const service = new OnboardingService(prisma);
+
+    const status = await service.reset(ctx);
+
+    expect(status.progress.done).toBe(0);
+    expect(prisma.companySetting.upsert).toHaveBeenCalled();
+  });
 });

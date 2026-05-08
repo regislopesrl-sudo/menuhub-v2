@@ -6,6 +6,7 @@ describe('OnboardingController', () => {
   const service = {
     getStatus: jest.fn(),
     patchStep: jest.fn(),
+    reset: jest.fn(),
   };
   const controller = new OnboardingController(service as never);
   const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
@@ -49,5 +50,17 @@ describe('OnboardingController', () => {
       }),
     );
   });
-});
 
+  it('reset registra auditoria de sucesso', async () => {
+    service.reset.mockResolvedValueOnce({ completed: false, steps: [] });
+
+    await controller.reset(ctx);
+
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'onboarding.reset',
+        outcome: 'success',
+      }),
+    );
+  });
+});

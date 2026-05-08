@@ -54,6 +54,20 @@ export class OnboardingService {
     return this.getStatus(ctx);
   }
 
+  async reset(ctx: RequestContext) {
+    const branchId = await this.resolveBranchId(ctx);
+    const current = await this.readSetting(ctx.companyId, branchId);
+
+    await this.writeSetting(ctx.companyId, branchId, {
+      ...current,
+      completedSteps: [],
+      updatedAt: new Date().toISOString(),
+      resetAt: new Date().toISOString(),
+    });
+
+    return this.getStatus(ctx);
+  }
+
   private assertStepKey(stepKey: string): asserts stepKey is OnboardingStepKey {
     if (!ONBOARDING_STEP_KEYS.includes(stepKey as OnboardingStepKey)) {
       throw new BadRequestException(`Etapa de onboarding invalida: '${stepKey}'.`);
