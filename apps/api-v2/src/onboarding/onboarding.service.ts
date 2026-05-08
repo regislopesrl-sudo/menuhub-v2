@@ -4,6 +4,7 @@ import type { RequestContext } from '../common/request-context';
 import { ONBOARDING_STEP_KEYS, type OnboardingStepKey } from './dto/onboarding.dto';
 
 const ONBOARDING_SETTINGS_KEY = 'settings.onboarding';
+const ONBOARDING_STEP_ORDER: OnboardingStepKey[] = [...ONBOARDING_STEP_KEYS];
 
 type JsonRecord = Record<string, unknown>;
 
@@ -37,6 +38,9 @@ export class OnboardingService {
     const branchId = await this.resolveBranchId(ctx);
     const current = await this.readSetting(ctx.companyId, branchId);
     const completedSteps = this.readCompletedSteps(current);
+    if (completed) {
+      this.assertStepPrerequisites(stepKey, completedSteps);
+    }
     const nextCompletedSteps = completed
       ? Array.from(new Set([...completedSteps, stepKey]))
       : completedSteps.filter((currentStep) => currentStep !== stepKey);
@@ -53,6 +57,19 @@ export class OnboardingService {
   private assertStepKey(stepKey: string): asserts stepKey is OnboardingStepKey {
     if (!ONBOARDING_STEP_KEYS.includes(stepKey as OnboardingStepKey)) {
       throw new BadRequestException(`Etapa de onboarding invalida: '${stepKey}'.`);
+    }
+  }
+
+  private assertStepPrerequisites(stepKey: OnboardingStepKey, completedSteps: OnboardingStepKey[]) {
+    const stepIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
+    const missingPrerequisites = ONBOARDING_STEP_ORDER
+      .slice(0, stepIndex)
+      .filter((requiredStep) => !completedSteps.includes(requiredStep));
+
+    if (missingPrerequisites.length > 0) {
+      throw new BadRequestException(
+        `Etapa '${stepKey}' exige conclusao previa de: ${missingPrerequisites.join(', ')}.`,
+      );
     }
   }
 
@@ -110,4 +127,3 @@ export class OnboardingService {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
   }
 }
-
