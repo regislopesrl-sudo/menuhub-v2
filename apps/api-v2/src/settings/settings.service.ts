@@ -94,6 +94,7 @@ export class SettingsService {
     if (email && !this.isValidEmail(email)) {
       throw new BadRequestException('Email da empresa invalido.');
     }
+    this.assertCompanySemanticConstraints(body);
 
     await this.prisma.company.update({
       where: { id: ctx.companyId },
@@ -662,6 +663,42 @@ export class SettingsService {
     return normalized.length > 0 ? normalized : null;
   }
 
+  private assertCompanySemanticConstraints(body: CompanySettingsDto) {
+    const brandColor = this.normalizeOptionalString(body.brandColor);
+    if (brandColor && !this.isHexColor(brandColor)) {
+      throw new BadRequestException('Cor principal invalida. Use formato hexadecimal (#RRGGBB).');
+    }
+
+    const timezone = this.normalizeOptionalString(body.timezone);
+    if (timezone && !this.isValidTimezone(timezone)) {
+      throw new BadRequestException('Timezone invalida.');
+    }
+
+    if (body.currency !== undefined && body.currency !== 'BRL') {
+      throw new BadRequestException('Moeda invalida. Apenas BRL e suportado nesta versao.');
+    }
+
+    const logoUrl = this.normalizeOptionalString(body.logoUrl);
+    if (logoUrl && !this.isValidHttpUrl(logoUrl)) {
+      throw new BadRequestException('Logo URL invalida.');
+    }
+
+    const bannerUrl = this.normalizeOptionalString(body.bannerUrl);
+    if (bannerUrl && !this.isValidHttpUrl(bannerUrl)) {
+      throw new BadRequestException('Banner URL invalida.');
+    }
+
+    const publicTitle = this.normalizeOptionalString(body.publicTitle);
+    if (publicTitle && publicTitle.length > 120) {
+      throw new BadRequestException('Titulo publico excede 120 caracteres.');
+    }
+
+    const closedMessage = this.normalizeOptionalString(body.closedMessage);
+    if (closedMessage && closedMessage.length > 280) {
+      throw new BadRequestException('Mensagem de loja fechada excede 280 caracteres.');
+    }
+  }
+
   private nonNegativeNumber(value: unknown, label: string) {
     if (value === undefined || value === null || value === '') return undefined;
     const parsed = Number(value);
@@ -701,6 +738,28 @@ export class SettingsService {
 
   private isValidEmail(value: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  private isHexColor(value: string) {
+    return /^#[0-9a-fA-F]{6}$/.test(value);
+  }
+
+  private isValidTimezone(value: string) {
+    try {
+      Intl.DateTimeFormat('en-US', { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private isValidHttpUrl(value: string) {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
   }
 
   private readString(input: unknown, key: string): string | null {
