@@ -98,6 +98,26 @@ describe('SettingsService', () => {
     expect(prisma.branch.update).not.toHaveBeenCalled();
   });
 
+  it('patch company com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchCompany(ctx, {})).rejects.toThrow('Payload de settings/company vazio.');
+  });
+
+  it('patch branch com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchBranch(ctx, {})).rejects.toThrow('Payload de settings/branch vazio.');
+  });
+
+  it('patch operation com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchOperation(ctx, {})).rejects.toThrow('Payload de settings/operation vazio.');
+  });
+
+  it('patch payments com payload vazio falha', async () => {
+    const service = new SettingsService(prismaMock());
+    await expect(service.patchPayments(ctx, {})).rejects.toThrow('Payload de settings/payments vazio.');
+  });
+
   it('update payments nao retorna segredo', async () => {
     const prisma = prismaMock();
     prisma.companySetting.findFirst.mockResolvedValue({

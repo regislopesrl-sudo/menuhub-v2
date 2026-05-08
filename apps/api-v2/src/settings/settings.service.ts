@@ -81,6 +81,7 @@ export class SettingsService {
   }
 
   async patchCompany(ctx: RequestContext, body: CompanySettingsDto) {
+    this.assertNonEmptyPatchPayload(body, 'company');
     const branchId = await this.resolveBranchId(ctx);
     const company = await this.prisma.company.findUnique({
       where: { id: ctx.companyId },
@@ -192,6 +193,7 @@ export class SettingsService {
   }
 
   async patchBranch(ctx: RequestContext, body: BranchSettingsDto) {
+    this.assertNonEmptyPatchPayload(body, 'branch');
     const branchId = await this.resolveBranchId(ctx);
     const branch = await this.prisma.branch.findFirst({
       where: { id: branchId, companyId: ctx.companyId },
@@ -311,6 +313,7 @@ export class SettingsService {
   }
 
   async patchOperation(ctx: RequestContext, body: OperationSettingsDto) {
+    this.assertNonEmptyPatchPayload(body, 'operation');
     const branchId = await this.resolveBranchId(ctx);
     await this.assertBranchBelongsToCompany(branchId, ctx.companyId);
 
@@ -362,6 +365,7 @@ export class SettingsService {
   }
 
   async patchPayments(ctx: RequestContext, body: PaymentSettingsDto) {
+    this.assertNonEmptyPatchPayload(body, 'payments');
     const branchId = await this.resolveBranchId(ctx);
     await this.assertBranchBelongsToCompany(branchId, ctx.companyId);
 
@@ -637,6 +641,18 @@ export class SettingsService {
       throw new BadRequestException(`${label} e obrigatorio.`);
     }
     return normalized;
+  }
+
+  private assertNonEmptyPatchPayload(
+    payload: unknown,
+    section: 'company' | 'branch' | 'operation' | 'payments',
+  ) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new BadRequestException(`Payload de settings/${section} invalido.`);
+    }
+    if (Object.keys(payload as object).length === 0) {
+      throw new BadRequestException(`Payload de settings/${section} vazio.`);
+    }
   }
 
   private normalizeOptionalString(value?: string | null) {
