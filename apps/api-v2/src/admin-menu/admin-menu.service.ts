@@ -374,17 +374,22 @@ export class AdminMenuService {
       this.assertNonNegative(promotionalPrice, 'Preco promocional deve ser maior ou igual a zero.');
     }
 
+    const normalizedDescription =
+      input.description === undefined ? undefined : this.normalizeOptionalDescription(input.description);
+    const normalizedImageUrl =
+      input.imageUrl === undefined ? undefined : this.normalizeOptionalImageUrl(input.imageUrl);
+
     const categoryId = await this.resolveCategoryId(ctx, input.categoryId, input.categoryName);
     const sortOrder = this.parseProductSortOrder(input.sortOrder);
     const data = {
       ...(creating ? { companyId: ctx.companyId } : {}),
       ...(name ? { name } : {}),
-      ...(input.description !== undefined ? { description: input.description?.trim() || null } : {}),
+      ...(normalizedDescription !== undefined ? { description: normalizedDescription } : {}),
       ...(categoryId !== undefined ? { categoryId } : {}),
       ...(price !== undefined ? { salePrice: price, localPrice: price } : {}),
       ...(deliveryPrice !== undefined ? { deliveryPickupPrice: deliveryPrice } : price !== undefined ? { deliveryPickupPrice: price } : {}),
       ...(input.promotionalPrice !== undefined ? { promotionalPrice } : {}),
-      ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl?.trim() || null } : {}),
+      ...(normalizedImageUrl !== undefined ? { imageUrl: normalizedImageUrl } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : {}),
       ...this.mapChannelData(input.channels),
       ...(sortOrder !== undefined ? { sortOrder } : {}),
@@ -640,6 +645,31 @@ export class AdminMenuService {
     if (!Number.isFinite(value) || value < 0) {
       throw new BadRequestException(message);
     }
+  }
+
+  private normalizeOptionalDescription(value: string | null | undefined): string | null {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.length > 300) {
+      throw new BadRequestException('Descricao comercial deve ter no maximo 300 caracteres.');
+    }
+    return trimmed;
+  }
+
+  private normalizeOptionalImageUrl(value: string | null | undefined): string | null {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.length > 2048) {
+      throw new BadRequestException('URL da imagem comercial excede o tamanho maximo permitido.');
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      throw new BadRequestException('URL da imagem comercial deve iniciar com http:// ou https://.');
+    }
+    return trimmed;
   }
 
   private buildAddonGroupData(input: AdminMenuAddonGroupInput, creating: boolean, existing?: { minSelect?: number; maxSelect?: number }) {

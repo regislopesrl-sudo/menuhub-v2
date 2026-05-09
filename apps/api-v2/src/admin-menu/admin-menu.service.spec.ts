@@ -423,6 +423,42 @@ describe('AdminMenuService', () => {
     await expect(service.updateProduct('prod_1', ctx, { sortOrder: 1.25 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('bloqueia descricao comercial muito longa', async () => {
+    const service = new AdminMenuService(prismaMock());
+    const tooLongDescription = 'a'.repeat(301);
+
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, description: tooLongDescription })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('bloqueia imageUrl sem protocolo http/https', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, imageUrl: 'cdn.local/image.png' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('aceita imageUrl valida com https', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.createProduct(ctx, {
+      name: 'Produto',
+      salePrice: 10,
+      imageUrl: 'https://img.local/produto.png',
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl: 'https://img.local/produto.png',
+        }),
+      }),
+    );
+  });
+
   it('patch availability bloqueia produto de outra empresa', async () => {
     const prisma = prismaMock();
     prisma.product.findFirst.mockResolvedValue(null);
