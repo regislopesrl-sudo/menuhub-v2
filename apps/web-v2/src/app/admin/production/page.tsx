@@ -12,8 +12,11 @@ import {
   cancelProductionOrder,
   createProductionOrder,
   finishProductionOrder,
+  listProductionLosses,
+  registerProductionLoss,
   listProductionOrders,
   startProductionOrder,
+  type ProductionLossEvent,
   type ProductionOrder,
 } from '@/features/production/production.api';
 import styles from './page.module.css';
@@ -35,6 +38,7 @@ export default function AdminProductionPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [losses, setLosses] = useState<ProductionLossEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -44,6 +48,8 @@ export default function AdminProductionPage() {
     try {
       const data = await listProductionOrders();
       setOrders(Array.isArray(data) ? data : []);
+      const lossData = await listProductionLosses();
+      setLosses(Array.isArray(lossData) ? lossData : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar ordens.');
     } finally {
@@ -130,6 +136,30 @@ export default function AdminProductionPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao cancelar ordem.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onRegisterLoss(orderId: string) {
+    const quantityRaw = window.prompt('Quantidade perdida:');
+    if (!quantityRaw) return;
+    const quantity = Number(quantityRaw);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError('Quantidade de perda invalida.');
+      return;
+    }
+    const reason = window.prompt('Motivo da perda (opcional):')?.trim();
+
+    setBusyId(orderId);
+    setError(null);
+    setSuccess(null);
+    try {
+      await registerProductionLoss(orderId, { quantity, reason: reason || undefined });
+      setSuccess('Perda de preparo registrada.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registrar perda.');
     } finally {
       setBusyId(null);
     }
@@ -239,6 +269,37 @@ export default function AdminProductionPage() {
                       Cancelar
                     </Button>
                   ) : null}
+                  <Button onClick={() => void onRegisterLoss(order.id)} disabled={busyId === order.id}>
+                    Registrar perda
+                  </Button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </Card>
+
+      <Card className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <h2>Perdas de preparo</h2>
+          <Badge>{losses.length} eventos</Badge>
+        </div>
+        <div className={styles.list}>
+          {losses.length === 0 ? (
+            <Card className={styles.orderCard}>Sem perdas registradas para esta filial.</Card>
+          ) : (
+            losses.map((loss) => (
+              <article key={loss.id} className={styles.orderCard}>
+                <div className={styles.orderTop}>
+                  <strong>Ordem: {loss.sourceId ?? '-'}</strong>
+                  <Badge>LOSS</Badge>
+                </div>
+                <div className={styles.orderMeta}>
+                  <span>Item: {loss.stockItemId}</span>
+                  <span>Quantidade: {loss.quantity}</span>
+                  <span>Custo unitário: R$ {Number(loss.unitCost ?? 0).toFixed(4)}</span>
+                  <span>Custo total: R$ {Number(loss.totalCost ?? 0).toFixed(2)}</span>
+                  <span>Motivo: {loss.notes ?? '-'}</span>
                 </div>
               </article>
             ))

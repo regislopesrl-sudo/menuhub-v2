@@ -18,6 +18,8 @@ describe('RecipesController', () => {
     startProductionOrder: jest.fn(),
     finishProductionOrder: jest.fn(),
     cancelProductionOrder: jest.fn(),
+    listProductionLosses: jest.fn(),
+    registerProductionLoss: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', branchId: 'b1', userRole: 'admin', requestId: 'r1' } as any;
@@ -91,6 +93,12 @@ describe('RecipesController', () => {
     service.finishProductionOrder.mockResolvedValueOnce({ id: 'po1', status: 'FINISHED' });
     await controller.finishProductionOrder(ctx, 'po1', { actualQuantity: 9.5 });
     expect(service.finishProductionOrder).toHaveBeenCalledWith(ctx, 'po1', 9.5);
+  });
+
+  it('registra perda de preparo', async () => {
+    service.registerProductionLoss.mockResolvedValueOnce({ id: 'loss1' });
+    await controller.registerProductionLoss(ctx, 'po1', { quantity: 1.5, reason: 'Queima no forno' });
+    expect(service.registerProductionLoss).toHaveBeenCalledWith(ctx, 'po1', 1.5, 'Queima no forno');
   });
 });
 

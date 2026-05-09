@@ -185,5 +185,25 @@ export class RecipesController {
   ) {
     return this.recipesService.cancelProductionOrder(ctx, orderId, body.reason);
   }
+
+  @Get('production-losses')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  listProductionLosses(@CurrentContext() ctx: RequestContext) {
+    return this.recipesService.listProductionLosses(ctx);
+  }
+
+  @Post('production-orders/:orderId/loss')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  registerProductionLoss(
+    @CurrentContext() ctx: RequestContext,
+    @Param('orderId') orderId: string,
+    @Body()
+    body: {
+      quantity: number;
+      reason?: string;
+    },
+  ) {
+    return this.recipesService.registerProductionLoss(ctx, orderId, body.quantity, body.reason);
+  }
 }
 
