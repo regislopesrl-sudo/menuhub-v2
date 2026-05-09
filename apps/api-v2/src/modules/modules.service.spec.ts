@@ -109,4 +109,40 @@ describe('ModulesService', () => {
       }),
     ).rejects.toThrow(BadRequestException);
   });
+
+  it('createPlan bloqueia plano sem modulo habilitado', async () => {
+    const prismaMock = {
+      plan: { create: jest.fn() },
+    } as any;
+    const service = new ModulesService(prismaMock);
+
+    await expect(
+      service.createPlan({
+        key: 'basic',
+        name: 'Basic',
+        modules: [
+          { moduleKey: 'orders', enabled: false },
+          { moduleKey: 'menu', enabled: false },
+        ],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('updatePlan bloqueia configuracao sem modulo habilitado', async () => {
+    const prismaMock = {
+      plan: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'p1', key: 'basic' }),
+      },
+    } as any;
+    const service = new ModulesService(prismaMock);
+
+    await expect(
+      service.updatePlan('p1', {
+        modules: [
+          { moduleKey: 'orders', enabled: false },
+          { moduleKey: 'menu', enabled: false },
+        ],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
 });
