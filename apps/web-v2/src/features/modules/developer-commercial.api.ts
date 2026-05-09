@@ -27,6 +27,13 @@ export type PlanSummary = {
   name: string;
 };
 
+export type DeveloperPlan = {
+  id: string;
+  key: string;
+  name: string;
+  isActive?: boolean;
+};
+
 export type CompanySubscription = {
   id: string;
   companyId: string;
@@ -101,6 +108,10 @@ export async function listDeveloperCompanies(): Promise<DeveloperCompany[]> {
   return apiFetch<DeveloperCompany[]>('/v2/developer/companies', { method: 'GET' });
 }
 
+export async function listDeveloperPlans(): Promise<DeveloperPlan[]> {
+  return apiFetch<DeveloperPlan[]>('/v2/developer/plans', { method: 'GET' });
+}
+
 export async function createDeveloperCompany(input: {
   name: string;
   legalName: string;
@@ -145,11 +156,9 @@ export async function getDeveloperCompanyBilling(companyId: string): Promise<{
   billingAccount: BillingAccount | null;
   subscription: CompanySubscription | null;
 }> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing`, {
-    cache: 'no-store',
-    headers: buildDevHeaders(companyId),
+  return apiFetch(`/v2/developer/companies/${companyId}/billing`, {
+    method: 'GET',
   });
-  return readJson(res, 'Falha ao carregar billing.');
 }
 
 export async function upsertDeveloperCompanyBillingAccount(
@@ -161,53 +170,41 @@ export async function upsertDeveloperCompanyBillingAccount(
     addressJson?: Record<string, unknown>;
   },
 ): Promise<BillingAccount> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing-account`, {
+  return apiFetch(`/v2/developer/companies/${companyId}/billing-account`, {
     method: 'PUT',
-    headers: buildDevHeaders(companyId),
     body: JSON.stringify(input),
   });
-  return readJson(res, 'Falha ao salvar billing account.');
 }
 
 export async function listDeveloperCompanyInvoices(companyId: string): Promise<Invoice[]> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/invoices`, {
-    cache: 'no-store',
-    headers: buildDevHeaders(companyId),
+  return apiFetch(`/v2/developer/companies/${companyId}/invoices`, {
+    method: 'GET',
   });
-  return readJson(res, 'Falha ao listar faturas.');
 }
 
 export async function createDeveloperMockInvoice(companyId: string): Promise<Invoice> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/invoices/mock`, {
+  return apiFetch(`/v2/developer/companies/${companyId}/invoices/mock`, {
     method: 'POST',
-    headers: buildDevHeaders(companyId),
   });
-  return readJson(res, 'Falha ao gerar fatura mock.');
 }
 
 export async function payDeveloperMockInvoice(companyId: string, invoiceId: string): Promise<Invoice> {
-  const res = await fetch(`${API_BASE}/v2/developer/invoices/${invoiceId}/pay/mock`, {
+  return apiFetch(`/v2/developer/invoices/${invoiceId}/pay/mock`, {
     method: 'POST',
-    headers: buildDevHeaders(companyId),
   });
-  return readJson(res, 'Falha ao pagar fatura mock.');
 }
 
 export async function createDeveloperInvoicePaymentLink(companyId: string, invoiceId: string): Promise<BillingPaymentLink> {
-  const res = await fetch(`${API_BASE}/v2/developer/invoices/${invoiceId}/payment-link`, {
+  return apiFetch(`/v2/developer/invoices/${invoiceId}/payment-link`, {
     method: 'POST',
-    headers: buildDevHeaders(companyId),
   });
-  return readJson(res, 'Falha ao gerar link de pagamento.');
 }
 
 export async function runDeveloperBillingCycle(companyId: string, referenceDate?: string): Promise<{ companyId: string; createdInvoiceId: string | null }> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/billing/run-cycle`, {
+  return apiFetch(`/v2/developer/companies/${companyId}/billing/run-cycle`, {
     method: 'POST',
-    headers: buildDevHeaders(companyId),
     body: JSON.stringify({ referenceDate }),
   });
-  return readJson(res, 'Falha ao executar ciclo de billing.');
 }
 
 export async function createDeveloperCompanySubscription(
@@ -220,12 +217,10 @@ export async function createDeveloperCompanySubscription(
     trialEndsAt?: string;
   },
 ): Promise<CompanySubscription> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/subscription`, {
+  return apiFetch(`/v2/developer/companies/${companyId}/subscription`, {
     method: 'POST',
-    headers: buildDevHeaders(companyId),
     body: JSON.stringify(input),
   });
-  return readJson<CompanySubscription>(res, 'Falha ao criar assinatura.');
 }
 
 export async function patchDeveloperCompanySubscription(
@@ -237,12 +232,10 @@ export async function patchDeveloperCompanySubscription(
     trialEndsAt: string | null;
   }>,
 ): Promise<CompanySubscription> {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${companyId}/subscription/${subscriptionId}`, {
+  return apiFetch(`/v2/developer/companies/${companyId}/subscription/${subscriptionId}`, {
     method: 'PATCH',
-    headers: buildDevHeaders(companyId),
     body: JSON.stringify(input),
   });
-  return readJson<CompanySubscription>(res, 'Falha ao atualizar assinatura.');
 }
 
 async function safeReadError(res: Response): Promise<string | null> {

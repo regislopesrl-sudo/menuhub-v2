@@ -39,6 +39,15 @@ export function saveAuthSession(input: { accessToken: string; refreshToken: stri
   window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
+export function updateAuthSessionTokens(input: {
+  accessToken: string;
+  refreshToken: string;
+  expiresInSec: number;
+  role?: AuthSession['role'];
+}) {
+  saveAuthSession(input);
+}
+
 export function clearAuthSession() {
   if (typeof window === 'undefined') return;
   window.sessionStorage.removeItem(SESSION_KEY);

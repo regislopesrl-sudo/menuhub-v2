@@ -5,6 +5,7 @@ import { JwtServiceV2 } from './jwt.service';
 import type { AppUserRole, AuthTokenClaims, AuthTokens } from './auth.types';
 import type { RequestContext } from '../common/request-context';
 import { isProductionLike } from '../common/runtime-env';
+import { TENANT_PERMISSIONS } from '../common/rbac';
 
 @Injectable()
 export class AuthServiceV2 {
@@ -28,6 +29,19 @@ export class AuthServiceV2 {
       },
       include: {
         roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        companyUserRoles: {
           include: {
             role: {
               include: {
@@ -85,7 +99,7 @@ export class AuthServiceV2 {
       branchId = this.resolveBranchIdForCompany(user.branchAccesses, companyId, input.branchId);
     }
 
-    const permissions = this.buildPermissions(role);
+    const permissions = this.buildPermissionsForUser(user, companyId, role);
     const sessionId = randomUUID();
 
     const accessClaims: AuthTokenClaims = {
@@ -358,9 +372,10 @@ export class AuthServiceV2 {
   }
 
   private buildPermissions(role: AppUserRole): string[] {
+    const allTenantPermissions = Object.values(TENANT_PERMISSIONS);
     const matrix: Record<string, string[]> = {
       developer: ['*'],
-      owner: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      owner: allTenantPermissions,
       manager: ['admin.users.read', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'catalog.read', 'catalog.manage', 'billing.read'],
       cashier: ['orders.manage', 'pdv.operate'],
       kitchen: ['kds.operate', 'orders.read'],
@@ -369,11 +384,57 @@ export class AuthServiceV2 {
       finance: ['orders.read', 'settings.read', 'billing.read', 'billing.manage'],
       inventory: ['orders.read'],
       support: ['orders.read'],
-      admin: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
-      master: ['admin.users.read', 'admin.users.write', 'settings.read', 'settings.write', 'orders.manage', 'modules.read', 'modules.manage', 'catalog.read', 'catalog.manage', 'billing.read', 'billing.manage'],
+      admin: allTenantPermissions,
+      master: allTenantPermissions,
       user: ['orders.read'],
     };
     return matrix[role] ?? ['orders.read'];
+  }
+
+  private buildPermissionsForUser(
+    user: {
+      roles?: Array<{ role?: { permissions?: Array<{ permission?: { code?: string | null } }> } }>;
+      companyUserRoles?: Array<{
+        companyId?: string;
+        role?: { permissions?: Array<{ permission?: { key?: string | null } }> };
+      }>;
+    },
+    companyId: string,
+    role: AppUserRole,
+  ): string[] {
+    const permissionSet = new Set<string>();
+
+    for (const roleEntry of user.roles ?? []) {
+      for (const permissionEntry of roleEntry.role?.permissions ?? []) {
+        const code = String(permissionEntry.permission?.code ?? '').trim();
+        if (code) permissionSet.add(code);
+      }
+    }
+
+    for (const roleEntry of user.companyUserRoles ?? []) {
+      if (roleEntry.companyId && roleEntry.companyId !== companyId) continue;
+      for (const permissionEntry of roleEntry.role?.permissions ?? []) {
+        const key = String(permissionEntry.permission?.key ?? '').trim();
+        if (key) permissionSet.add(key);
+      }
+    }
+
+    if (role === 'developer') {
+      return ['*'];
+    }
+
+    if (permissionSet.has('*')) {
+      permissionSet.delete('*');
+      for (const permission of Object.values(TENANT_PERMISSIONS)) {
+        permissionSet.add(permission);
+      }
+    }
+
+    if (permissionSet.size > 0) {
+      return Array.from(permissionSet).sort();
+    }
+
+    return this.buildPermissions(role);
   }
 
   private hashToken(token: string): string {

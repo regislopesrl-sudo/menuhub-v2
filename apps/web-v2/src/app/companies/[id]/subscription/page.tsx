@@ -11,16 +11,12 @@ import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader, PremiumSummary
 import {
   createDeveloperCompanySubscription,
   getDeveloperCompanySubscription,
+  listDeveloperPlans,
   patchDeveloperCompanySubscription,
   type CompanySubscription,
+  type DeveloperPlan,
 } from '@/features/modules/developer-commercial.api';
 import styles from './page.module.css';
-
-const PLAN_OPTIONS = [
-  { id: 'starter', label: 'Starter' },
-  { id: 'pro', label: 'Pro' },
-  { id: 'enterprise', label: 'Enterprise' },
-];
 
 function addOneMonthIso(baseDate: Date): string {
   const copy = new Date(baseDate);
@@ -32,16 +28,29 @@ export default function CompanySubscriptionPage() {
   const params = useParams<{ id: string }>();
   const companyId = params.id;
   const [current, setCurrent] = useState<CompanySubscription | null>(null);
+  const [plans, setPlans] = useState<DeveloperPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [planId, setPlanId] = useState('pro');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [savingCreate, setSavingCreate] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [planId, setPlanId] = useState('');
   const [status, setStatus] = useState<CompanySubscription['status']>('ACTIVE');
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      setCurrent(await getDeveloperCompanySubscription(companyId));
+      const [subscription, plansPayload] = await Promise.all([
+        getDeveloperCompanySubscription(companyId),
+        listDeveloperPlans(),
+      ]);
+      setCurrent(subscription);
+      setPlans(plansPayload);
+      if (!planId) {
+        const activePlan = plansPayload.find((plan) => plan.isActive !== false) ?? plansPayload[0];
+        if (activePlan) setPlanId(activePlan.id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar assinatura.');
     } finally {
@@ -54,7 +63,24 @@ export default function CompanySubscriptionPage() {
   }, [companyId]);
 
   async function createSubscription() {
+    if (!planId) {
+      setError('Selecione um plano valido para salvar a assinatura.');
+      return;
+    }
+    setSavingCreate(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
+      if (current) {
+        await patchDeveloperCompanySubscription(companyId, current.id, {
+          status,
+          endsAt: status === 'CANCELED' ? new Date().toISOString() : null,
+        });
+        setSuccessMessage(`Assinatura atualizada para ${status}.`);
+        await load();
+        return;
+      }
+
       const startsAt = new Date();
       await createDeveloperCompanySubscription(companyId, {
         planId,
@@ -62,22 +88,31 @@ export default function CompanySubscriptionPage() {
         startsAt: startsAt.toISOString(),
         endsAt: addOneMonthIso(startsAt),
       });
+      setSuccessMessage('Assinatura salva com sucesso.');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar assinatura.');
+    } finally {
+      setSavingCreate(false);
     }
   }
 
   async function setSubscriptionStatus(nextStatus: CompanySubscription['status']) {
     if (!current) return;
+    setSavingStatus(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
       await patchDeveloperCompanySubscription(companyId, current.id, {
         status: nextStatus,
         endsAt: nextStatus === 'CANCELED' ? new Date().toISOString() : undefined,
       });
+      setSuccessMessage(`Assinatura atualizada para ${nextStatus}.`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao atualizar assinatura.');
+    } finally {
+      setSavingStatus(false);
     }
   }
 
@@ -93,6 +128,7 @@ export default function CompanySubscriptionPage() {
         }
       />
       {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
+      {successMessage ? <Card className={styles.card}>{successMessage}</Card> : null}
 
       <section className={styles.summaryGrid}>
         <PremiumSummaryCard label="Status" value={current?.status ?? 'SEM_ASSINATURA'} />
@@ -114,19 +150,25 @@ export default function CompanySubscriptionPage() {
             </div>
             <p>Inicio: {new Date(current.startsAt).toLocaleString()}</p>
             <div className={styles.row}>
-              <Button onClick={() => void setSubscriptionStatus('ACTIVE')}>Ativar</Button>
-              <Button variant="danger" onClick={() => void setSubscriptionStatus('CANCELED')}>Cancelar</Button>
+              <Button onClick={() => void setSubscriptionStatus('ACTIVE')} disabled={savingStatus}>
+                {savingStatus ? 'Salvando...' : 'Ativar'}
+              </Button>
+              <Button variant="danger" onClick={() => void setSubscriptionStatus('CANCELED')} disabled={savingStatus}>
+                {savingStatus ? 'Salvando...' : 'Cancelar'}
+              </Button>
             </div>
           </>
         ) : null}
       </Card>
 
       <Card className={styles.card}>
-        <h2>Criar/Trocar assinatura</h2>
+        <h2>{current ? 'Atualizar assinatura' : 'Criar assinatura'}</h2>
         <div className={styles.form}>
           <Select value={planId} onChange={(e) => setPlanId(e.target.value)}>
-            {PLAN_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.name} ({plan.key})
+              </option>
             ))}
           </Select>
           <Select value={status} onChange={(e) => setStatus(e.target.value as CompanySubscription['status'])}>
@@ -137,7 +179,9 @@ export default function CompanySubscriptionPage() {
             <option value="EXPIRED">EXPIRED</option>
           </Select>
           <Input value={new Date().toISOString()} readOnly />
-          <Button variant="primary" onClick={() => void createSubscription()}>Salvar assinatura</Button>
+          <Button variant="primary" onClick={() => void createSubscription()} disabled={savingCreate || !planId}>
+            {savingCreate ? 'Salvando...' : current ? 'Atualizar assinatura' : 'Salvar assinatura'}
+          </Button>
         </div>
       </Card>
     </main>
