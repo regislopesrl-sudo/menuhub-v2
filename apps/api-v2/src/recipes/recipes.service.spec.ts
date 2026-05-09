@@ -182,5 +182,48 @@ describe('RecipesService', () => {
       BadRequestException,
     );
   });
+
+  it('retorna breakdown de custo ordenado por impacto', async () => {
+    const { service, prisma } = createService();
+    prisma.recipe.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      companyId: 'c1',
+      name: 'Pizza',
+      type: 'SALE',
+      yieldQuantity: 1,
+      yieldUnit: 'un',
+      lossPercent: 0,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: 'ri1',
+          stockItemId: 's1',
+          quantity: 2,
+          unit: 'kg',
+          optional: false,
+          affectsStock: true,
+          affectsCost: true,
+          stockItem: { name: 'Queijo', averageCost: 10 },
+        },
+        {
+          id: 'ri2',
+          stockItemId: 's2',
+          quantity: 1,
+          unit: 'kg',
+          optional: false,
+          affectsStock: true,
+          affectsCost: true,
+          stockItem: { name: 'Molho', averageCost: 5 },
+        },
+      ],
+    });
+
+    const result = await service.getRecipeCostBreakdown(ctx, 'r1');
+    expect(result.items[0].stockItemId).toBe('s1');
+    expect(result.summary.grossCost).toBeCloseTo(25);
+    expect(result.summary.totalCost).toBeCloseTo(25);
+  });
 });
 

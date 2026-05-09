@@ -323,6 +323,62 @@ export class RecipesService {
     };
   }
 
+  async getRecipeCostBreakdown(ctx: RequestContext, recipeId: string) {
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+      include: {
+        items: {
+          include: { stockItem: true },
+        },
+      },
+    });
+    if (!recipe || recipe.companyId !== ctx.companyId) {
+      throw new NotFoundException('Ficha tecnica nao encontrada para a empresa atual.');
+    }
+
+    const recipeView = this.mapRecipeWithCost(recipe);
+    const grossCost = recipeView.cost.grossCost;
+    const totalCost = recipeView.cost.totalCost;
+
+    const items = recipeView.items
+      .map((item: any) => {
+        const itemCost = Number(item.totalCost ?? 0);
+        const grossSharePercent = grossCost > 0 ? (itemCost / grossCost) * 100 : 0;
+        const totalSharePercent = totalCost > 0 ? (itemCost / totalCost) * 100 : 0;
+        return {
+          stockItemId: item.stockItemId,
+          stockItemName: item.stockItemName,
+          quantity: item.quantity,
+          unit: item.unit,
+          averageCost: item.averageCost,
+          itemCost,
+          affectsCost: item.affectsCost,
+          grossSharePercent,
+          totalSharePercent,
+        };
+      })
+      .sort(
+        (
+          a: { itemCost: number },
+          b: { itemCost: number },
+        ) => b.itemCost - a.itemCost,
+      );
+
+    return {
+      recipeId: recipeView.id,
+      recipeName: recipeView.name,
+      yieldQuantity: recipeView.yieldQuantity,
+      yieldUnit: recipeView.yieldUnit,
+      lossPercent: recipeView.lossPercent ?? 0,
+      summary: {
+        grossCost,
+        totalCost,
+        costPerYieldUnit: recipeView.cost.costPerYieldUnit,
+      },
+      items,
+    };
+  }
+
   private assertCreatePayload(input: {
     name: string;
     type: 'SALE' | 'PRODUCTION';
