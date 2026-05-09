@@ -374,7 +374,7 @@ export class ModulesService {
     return this.prisma.companySubscription.findFirst({
       where: {
         companyId,
-        status: 'ACTIVE',
+        status: { in: ['ACTIVE', 'TRIAL'] },
       },
       orderBy: [{ startsAt: 'desc' }],
       include: { plan: true },

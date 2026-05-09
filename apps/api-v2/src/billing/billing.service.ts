@@ -339,6 +339,166 @@ export class BillingService {
     return { companyId, createdInvoiceId };
   }
 
+  async changeSubscriptionPlanMock(
+    companyId: string,
+    input: { targetPlanId: string; effectiveAt?: string; reason?: string },
+  ) {
+    const targetPlanId = String(input.targetPlanId ?? '').trim();
+    if (!targetPlanId) {
+      throw new BadRequestException('targetPlanId obrigatorio.');
+    }
+
+    const [currentSubscription, targetPlan] = await Promise.all([
+      this.prisma.companySubscription.findFirst({
+        where: { companyId },
+        orderBy: { startsAt: 'desc' },
+        include: { plan: { select: { id: true, key: true, name: true } } },
+      }),
+      this.prisma.plan.findUnique({
+        where: { id: targetPlanId },
+        select: { id: true, key: true, name: true, isActive: true },
+      }),
+    ]);
+
+    if (!currentSubscription) {
+      throw new BadRequestException('Empresa sem assinatura para trocar plano.');
+    }
+    if (!targetPlan || !targetPlan.isActive) {
+      throw new NotFoundException('Plano alvo nao encontrado/ativo.');
+    }
+    if (currentSubscription.planId === targetPlan.id) {
+      throw new BadRequestException('Assinatura ja esta no plano informado.');
+    }
+
+    const effectiveAt = input.effectiveAt ? new Date(input.effectiveAt) : new Date();
+    if (Number.isNaN(effectiveAt.getTime())) {
+      throw new BadRequestException('effectiveAt invalido.');
+    }
+
+    const fromPrice = this.resolvePlanPriceCents(currentSubscription.plan.key);
+    const toPrice = this.resolvePlanPriceCents(targetPlan.key);
+    const changeType = toPrice >= fromPrice ? 'upgrade' : 'downgrade';
+
+    const updated = await this.prisma.companySubscription.update({
+      where: { id: currentSubscription.id },
+      data: { planId: targetPlan.id },
+      include: { plan: { select: { id: true, key: true, name: true } } },
+    });
+
+    await this.prisma.subscriptionStatusEvent.create({
+      data: {
+        subscriptionId: currentSubscription.id,
+        fromStatus: currentSubscription.status,
+        toStatus: currentSubscription.status,
+        reason: `PLAN_${changeType.toUpperCase()}${input.reason ? `:${input.reason}` : ''}`,
+      },
+    });
+
+    return {
+      subscriptionId: updated.id,
+      companyId,
+      effectiveAt: effectiveAt.toISOString(),
+      changeType,
+      fromPlan: {
+        id: currentSubscription.plan.id,
+        key: currentSubscription.plan.key,
+        name: currentSubscription.plan.name,
+      },
+      toPlan: {
+        id: updated.plan.id,
+        key: updated.plan.key,
+        name: updated.plan.name,
+      },
+      status: updated.status,
+    };
+  }
+
+  async getCommercialHistory(companyId: string, limitInput?: number) {
+    const limit = Number.isFinite(limitInput) ? Math.max(1, Math.min(100, Number(limitInput))) : 30;
+
+    const [subscriptionEvents, invoiceEvents, moduleEvents] = await Promise.all([
+      this.prisma.subscriptionStatusEvent.findMany({
+        where: { subscription: { companyId } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: { subscription: { select: { id: true, planId: true, companyId: true } } },
+      }),
+      this.prisma.invoiceStatusEvent.findMany({
+        where: { invoice: { companyId } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: {
+          invoice: {
+            select: {
+              id: true,
+              companyId: true,
+              subscriptionId: true,
+              amountCents: true,
+              dueDate: true,
+              status: true,
+            },
+          },
+        },
+      }),
+      this.prisma.companyModuleAuditLog.findMany({
+        where: { companyId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    ]);
+
+    const timeline = [
+      ...subscriptionEvents.map((event) => ({
+        type: 'subscription_status' as const,
+        createdAt: event.createdAt.toISOString(),
+        payload: {
+          id: event.id,
+          subscriptionId: event.subscriptionId,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          reason: event.reason ?? null,
+          planId: event.subscription.planId,
+        },
+      })),
+      ...invoiceEvents.map((event) => ({
+        type: 'invoice_status' as const,
+        createdAt: event.createdAt.toISOString(),
+        payload: {
+          id: event.id,
+          invoiceId: event.invoiceId,
+          fromStatus: event.fromStatus,
+          toStatus: event.toStatus,
+          reason: event.reason ?? null,
+          amountCents: event.invoice.amountCents,
+          dueDate: event.invoice.dueDate.toISOString(),
+          currentStatus: event.invoice.status,
+        },
+      })),
+      ...moduleEvents.map((event) => ({
+        type: 'module_audit' as const,
+        createdAt: event.createdAt.toISOString(),
+        payload: {
+          id: event.id,
+          moduleKey: event.moduleKey,
+          action: event.action,
+          source: event.source,
+          userId: event.userId ?? null,
+          reason: event.reason ?? null,
+        },
+      })),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    return {
+      companyId,
+      timeline,
+      summary: {
+        subscriptionEvents: subscriptionEvents.length,
+        invoiceEvents: invoiceEvents.length,
+        moduleAuditEvents: moduleEvents.length,
+      },
+    };
+  }
+
   async payMockInvoice(invoiceId: string, companyId: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },

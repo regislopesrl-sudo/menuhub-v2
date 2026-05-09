@@ -12,6 +12,8 @@ describe('BillingController', () => {
     payMockInvoice: jest.fn(),
     createPaymentLink: jest.fn(),
     runBillingCycle: jest.fn(),
+    getCommercialHistory: jest.fn(),
+    changeSubscriptionPlanMock: jest.fn(),
   };
   const controller = new BillingController(service as never);
   const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
@@ -177,5 +179,36 @@ describe('BillingController', () => {
         outcome: 'success',
       }),
     );
+  });
+
+  it('consulta historico comercial com escopo de empresa', async () => {
+    service.getCommercialHistory.mockResolvedValueOnce({ companyId: 'c1', timeline: [] });
+    await controller.getCommercialHistory('c1', {
+      companyId: 'c1',
+      userRole: 'developer',
+      requestId: 'r1',
+      permissions: ['billing.read'],
+    });
+    expect(service.getCommercialHistory).toHaveBeenCalledWith('c1');
+  });
+
+  it('troca de plano mock com billing.manage', async () => {
+    service.changeSubscriptionPlanMock.mockResolvedValueOnce({
+      subscriptionId: 's1',
+      changeType: 'upgrade',
+      fromPlan: { key: 'basic' },
+      toPlan: { key: 'pro' },
+    });
+    await controller.changeSubscriptionPlanMock(
+      'c1',
+      { targetPlanId: 'plan_pro' },
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        requestId: 'r1',
+        permissions: ['billing.manage'],
+      },
+    );
+    expect(service.changeSubscriptionPlanMock).toHaveBeenCalledWith('c1', { targetPlanId: 'plan_pro' });
   });
 });
