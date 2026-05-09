@@ -31,6 +31,30 @@ describe('menu-visibility.policy', () => {
     expect(isProductVisibleOnChannel(product, 'waiter')).toBe(false);
   });
 
+  it('kiosk usa fallback de pdv quando availableKiosk estiver ausente', () => {
+    const product = {
+      isActive: true,
+      deletedAt: null,
+      availableDelivery: true,
+      availableCounter: true,
+      availableKiosk: null,
+      availableTable: true,
+    };
+    expect(isProductVisibleOnChannel(product, 'kiosk')).toBe(true);
+  });
+
+  it('waiter depende exclusivamente de availableTable', () => {
+    const product = {
+      isActive: true,
+      deletedAt: null,
+      availableDelivery: true,
+      availableCounter: true,
+      availableKiosk: true,
+      availableTable: false,
+    };
+    expect(isProductVisibleOnChannel(product, 'waiter')).toBe(false);
+  });
+
   it('resolve preco publico com prioridade promocional -> delivery -> sale', () => {
     expect(resolvePublicMenuPrice({ salePrice: 20, deliveryPickupPrice: 18, promotionalPrice: 15 })).toBe(15);
     expect(resolvePublicMenuPrice({ salePrice: 20, deliveryPickupPrice: 18, promotionalPrice: null })).toBe(18);
