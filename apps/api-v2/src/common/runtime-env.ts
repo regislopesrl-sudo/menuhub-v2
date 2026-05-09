@@ -3,5 +3,7 @@ export function isProductionLike(): boolean {
 }
 
 export function allowHeaderContextFallback(): boolean {
-  return !isProductionLike() && process.env.ALLOW_HEADER_CONTEXT_FALLBACK === 'true';
+  const env = String(process.env.APP_ENV ?? '').trim().toLowerCase();
+  const isLocal = env === 'local' || env === 'dev' || env === 'development';
+  return !isProductionLike() && isLocal && process.env.ALLOW_HEADER_CONTEXT_FALLBACK === 'true';
 }

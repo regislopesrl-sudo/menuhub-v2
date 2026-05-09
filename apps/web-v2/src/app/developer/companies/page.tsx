@@ -8,7 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { PremiumEmptyState, PremiumErrorState, PremiumPageHeader } from '@/components/premium';
-import { listDeveloperCompanies, type DeveloperCompany } from '@/features/developer/developer-companies.api';
+import {
+  createDeveloperCompany,
+  listDeveloperCompanies,
+  type DeveloperCompany,
+  updateDeveloperCompany,
+} from '@/features/developer/developer-companies.api';
 import { getAuthSession } from '@/lib/auth-session';
 import styles from './page.module.css';
 
@@ -17,9 +22,20 @@ export default function DeveloperCompaniesPage() {
   const [items, setItems] = useState<DeveloperCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'>('ALL');
   const [restricted, setRestricted] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [updatingCompanyId, setUpdatingCompanyId] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    legalName: '',
+    slug: '',
+    email: '',
+    phone: '',
+  });
 
   async function load() {
     setLoading(true);
@@ -79,6 +95,66 @@ export default function DeveloperCompaniesPage() {
         subtitle="Gerencie empresas clientes da plataforma."
       />
 
+      <Card className={styles.createCard}>
+        <h3 className={styles.sectionTitle}>Cadastrar empresa</h3>
+        <div className={styles.createGrid}>
+          <Input
+            placeholder="Nome fantasia"
+            value={createForm.name}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <Input
+            placeholder="Razao social"
+            value={createForm.legalName}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, legalName: e.target.value }))}
+          />
+          <Input
+            placeholder="Slug (opcional)"
+            value={createForm.slug}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, slug: e.target.value }))}
+          />
+          <Input
+            placeholder="E-mail (opcional)"
+            value={createForm.email}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+          />
+          <Input
+            placeholder="Telefone (opcional)"
+            value={createForm.phone}
+            onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+          />
+        </div>
+        <div className={styles.createActions}>
+          <Button
+            variant="primary"
+            disabled={creating}
+            onClick={async () => {
+              setActionError(null);
+              setSuccessMessage(null);
+              setCreating(true);
+              try {
+                await createDeveloperCompany({
+                  name: createForm.name,
+                  legalName: createForm.legalName,
+                  slug: createForm.slug.trim() || undefined,
+                  email: createForm.email.trim() || undefined,
+                  phone: createForm.phone.trim() || undefined,
+                });
+                setCreateForm({ name: '', legalName: '', slug: '', email: '', phone: '' });
+                setSuccessMessage('Empresa criada com sucesso.');
+                await load();
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : 'Falha ao criar empresa.');
+              } finally {
+                setCreating(false);
+              }
+            }}
+          >
+            {creating ? 'Criando...' : 'Criar empresa'}
+          </Button>
+        </div>
+      </Card>
+
       <Card className={styles.filterCard}>
         <Input placeholder="Buscar por nome, slug, documento ou status" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className={styles.filterActions}>
@@ -90,6 +166,8 @@ export default function DeveloperCompaniesPage() {
       </Card>
 
       {error ? <PremiumErrorState message={error} onRetry={() => void load()} /> : null}
+      {actionError ? <Card className={styles.errorCard}>{actionError}</Card> : null}
+      {successMessage ? <Card className={styles.successCard}>{successMessage}</Card> : null}
       {loading ? <Card className={styles.stateCard}>Carregando empresas...</Card> : null}
       {!loading && items.length === 0 ? <PremiumEmptyState title="Nenhuma empresa cadastrada" description="Nao existem empresas para gerenciamento tecnico." /> : null}
       {!loading && items.length > 0 && filteredItems.length === 0 ? (
@@ -116,6 +194,30 @@ export default function DeveloperCompaniesPage() {
               <Link href={`/developer/companies/${item.id}/modules`}>
                 <Button variant="primary">Gerenciar modulos</Button>
               </Link>
+              <Link href={`/developer/companies/${item.id}/subscription`}>
+                <Button>Assinatura e cobranca</Button>
+              </Link>
+              <Button
+                disabled={updatingCompanyId === item.id}
+                onClick={async () => {
+                  setActionError(null);
+                  setSuccessMessage(null);
+                  setUpdatingCompanyId(item.id);
+                  try {
+                    const nextStatus =
+                      item.status === 'ACTIVE' ? 'INACTIVE' : item.status === 'INACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+                    await updateDeveloperCompany(item.id, { status: nextStatus });
+                    setSuccessMessage(`Status da empresa atualizado para ${nextStatus}.`);
+                    await load();
+                  } catch (err) {
+                    setActionError(err instanceof Error ? err.message : 'Falha ao atualizar status da empresa.');
+                  } finally {
+                    setUpdatingCompanyId(null);
+                  }
+                }}
+              >
+                {updatingCompanyId === item.id ? 'Atualizando...' : 'Alterar status'}
+              </Button>
             </div>
           </Card>
         ))}

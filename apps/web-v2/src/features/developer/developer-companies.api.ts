@@ -61,6 +61,37 @@ export async function listDeveloperCompanies(): Promise<DeveloperCompany[]> {
   return apiFetch<DeveloperCompany[]>('/v2/developer/companies', { method: 'GET' });
 }
 
+export async function createDeveloperCompany(input: {
+  name: string;
+  legalName: string;
+  slug?: string;
+  email?: string;
+  phone?: string;
+}): Promise<DeveloperCompany> {
+  return apiFetch<DeveloperCompany>('/v2/developer/companies', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateDeveloperCompany(
+  companyId: string,
+  input: Partial<{
+    name: string;
+    legalName: string;
+    document: string | null;
+    slug: string | null;
+    email: string | null;
+    phone: string | null;
+    status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  }>,
+): Promise<DeveloperCompany> {
+  return apiFetch<DeveloperCompany>(`/v2/developer/companies/${companyId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function getDeveloperCompanyModules(companyId: string): Promise<DeveloperCompanyModulesView> {
   return apiFetch<DeveloperCompanyModulesView>(`/v2/developer/companies/${companyId}/modules`, { method: 'GET' });
 }

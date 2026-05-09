@@ -58,6 +58,7 @@ describe('AuthGuardV2', () => {
 
   it('em fallback local, header developer nao concede role developer', () => {
     process.env.ALLOW_HEADER_CONTEXT_FALLBACK = 'true';
+    process.env.APP_ENV = 'local';
     const guard = new AuthGuardV2(reflector, jwtService as any);
     const ctx = makeContext({ 'x-company-id': 'company_a', 'x-user-role': 'developer' });
 
@@ -68,6 +69,7 @@ describe('AuthGuardV2', () => {
 
   it('rota publica sem x-company-id nao falha com fallback ativo', () => {
     process.env.ALLOW_HEADER_CONTEXT_FALLBACK = 'true';
+    process.env.APP_ENV = 'local';
     (reflector.getAllAndOverride as jest.Mock).mockReturnValueOnce(true);
     const guard = new AuthGuardV2(reflector, jwtService as any);
 

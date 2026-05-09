@@ -140,6 +140,9 @@ export default function DeveloperCompanyModulesPage() {
         actions={
           <>
             <Badge tone={statusTone(subscriptionStatus)}>{subscriptionStatus ?? 'SEM_ASSINATURA'}</Badge>
+            <Link href={`/developer/companies/${companyId}/subscription`}>
+              <Button variant="primary">Ativar assinatura</Button>
+            </Link>
             <Link href="/developer/companies">
               <Button>Voltar para Empresas</Button>
             </Link>
@@ -157,6 +160,11 @@ export default function DeveloperCompanyModulesPage() {
       {!canEdit ? (
         <Card className={styles.alertCard}>
           Assinatura inativa. Ative a assinatura para alterar modulos.
+          <div className={styles.actionRow}>
+            <Link href={`/developer/companies/${companyId}/subscription`}>
+              <Button variant="primary">Ir para assinatura</Button>
+            </Link>
+          </div>
         </Card>
       ) : null}
 
