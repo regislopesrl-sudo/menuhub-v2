@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { ModulesService } from './modules.service';
 import { CurrentContext } from '../common/current-context.decorator';
@@ -42,17 +42,19 @@ export class ModulesController {
   }
 
   @Patch('companies/current/modules/:moduleKey')
-  @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(TENANT_PERMISSIONS.MODULES_MANAGE, PLATFORM_PERMISSIONS.MODULES_MANAGE)
   async updateCurrentCompanyModule(
     @Param('moduleKey') moduleKey: ModuleKey,
     @Body() body: { enabled: boolean },
     @CurrentContext() ctx: RequestContext,
   ) {
+    if (typeof body?.enabled !== 'boolean') {
+      throw new BadRequestException('enabled deve ser boolean.');
+    }
     return this.modulesService.updateCurrentCompanyModule({
       companyId: ctx.companyId,
       moduleKey,
-      enabled: Boolean(body?.enabled),
+      enabled: body.enabled,
     });
   }
 }
