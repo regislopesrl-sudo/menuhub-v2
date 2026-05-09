@@ -260,6 +260,70 @@ export class RecipesService {
     return this.getProductComposition(ctx, productId);
   }
 
+  async getProductSoldCost(
+    ctx: RequestContext,
+    productId: string,
+    input?: {
+      portionQuantity?: number;
+    },
+  ) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        recipe: {
+          include: {
+            items: {
+              include: { stockItem: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!product || product.companyId !== ctx.companyId) {
+      throw new NotFoundException('Produto nao encontrado para a empresa atual.');
+    }
+    if (!product.recipe) {
+      throw new BadRequestException('Produto sem ficha tecnica vinculada.');
+    }
+
+    const portionQuantity = input?.portionQuantity;
+    if (portionQuantity !== undefined && (!Number.isFinite(portionQuantity) || portionQuantity <= 0)) {
+      throw new BadRequestException('portionQuantity deve ser maior que zero.');
+    }
+
+    const recipeView = this.mapRecipeWithCost(product.recipe);
+    const recipeYieldQuantity = Number(recipeView.yieldQuantity);
+    const soldPortionQuantity = portionQuantity ?? recipeYieldQuantity;
+    const soldCost = recipeYieldQuantity > 0 ? (recipeView.cost.totalCost / recipeYieldQuantity) * soldPortionQuantity : 0;
+
+    const salePrice = Number(product.salePrice ?? 0);
+    const promotionalPrice = product.promotionalPrice === null ? null : Number(product.promotionalPrice ?? 0);
+    const effectiveSalePrice = promotionalPrice && promotionalPrice > 0 ? promotionalPrice : salePrice;
+    const grossMarginValue = effectiveSalePrice - soldCost;
+    const grossMarginPercent = effectiveSalePrice > 0 ? (grossMarginValue / effectiveSalePrice) * 100 : null;
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      recipeId: recipeView.id,
+      salePrice,
+      promotionalPrice,
+      effectiveSalePrice,
+      soldPortionQuantity,
+      soldPortionUnit: recipeView.yieldUnit,
+      cost: {
+        recipeTotalCost: recipeView.cost.totalCost,
+        recipeYieldQuantity,
+        soldCost,
+      },
+      margin: {
+        grossMarginValue,
+        grossMarginPercent,
+      },
+    };
+  }
+
   async estimateRecipePortioning(
     ctx: RequestContext,
     recipeId: string,
