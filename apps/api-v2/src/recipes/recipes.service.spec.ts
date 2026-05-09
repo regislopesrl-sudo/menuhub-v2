@@ -19,6 +19,11 @@ describe('RecipesService', () => {
       stockItem: {
         findMany: jest.fn(),
       },
+      product: {
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     } as any;
 
@@ -84,6 +89,45 @@ describe('RecipesService', () => {
     const { service, prisma } = createService();
     prisma.recipe.findUnique.mockResolvedValue({ id: 'r2', companyId: 'c2' });
     await expect(service.getRecipeById(ctx, 'r2')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('bloqueia vinculo com receita de outra empresa', async () => {
+    const { service, prisma } = createService();
+    prisma.product.findUnique.mockResolvedValueOnce({ id: 'p1', companyId: 'c1' });
+    prisma.recipe.findUnique.mockResolvedValueOnce({ id: 'r2', companyId: 'c2' });
+    await expect(service.setProductRecipe(ctx, 'p1', 'r2')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('retorna composicao do produto apos atualizar recipeId', async () => {
+    const { service, prisma } = createService();
+    prisma.product.findUnique
+      .mockResolvedValueOnce({ id: 'p1', companyId: 'c1' })
+      .mockResolvedValueOnce({
+        id: 'p1',
+        companyId: 'c1',
+        name: 'Pizza',
+        sku: 'PZ-1',
+        recipeId: 'r1',
+        recipe: {
+          id: 'r1',
+          companyId: 'c1',
+          name: 'Ficha Pizza',
+          type: 'SALE',
+          yieldQuantity: 1,
+          yieldUnit: 'un',
+          lossPercent: null,
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          items: [],
+        },
+      });
+    prisma.recipe.findUnique.mockResolvedValueOnce({ id: 'r1', companyId: 'c1' });
+    prisma.product.update.mockResolvedValueOnce({});
+
+    const result = await service.setProductRecipe(ctx, 'p1', 'r1');
+    expect(result.productId).toBe('p1');
+    expect(result.recipeId).toBe('r1');
   });
 });
 
