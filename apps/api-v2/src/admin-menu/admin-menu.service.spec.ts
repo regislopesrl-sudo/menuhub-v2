@@ -732,6 +732,30 @@ describe('AdminMenuService', () => {
     })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('bloqueia grupo sem multiplas opcoes com maxSelect maior que 1', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(
+      service.createProductAddonGroup('prod_1', ctx, {
+        name: 'Escolha unica',
+        allowMultiple: false,
+        maxSelect: 2,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('bloqueia grupo obrigatorio com maxSelect igual a zero', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(
+      service.createProductAddonGroup('prod_1', ctx, {
+        name: 'Obrigatorio invalido',
+        required: true,
+        maxSelect: 0,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('lista adicionais atualizados no formato do delivery', async () => {
     const prisma = prismaMock();
     prisma.product.findFirst.mockResolvedValue(product({

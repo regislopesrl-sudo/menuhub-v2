@@ -154,6 +154,13 @@ export class MenuPrismaPort implements MenuPort {
           `Grupo '${group.name}' nao permite multiplas opcoes para item ${productId}`,
         );
       }
+
+      const uniqueOptionIds = new Set(selectedInGroup.map((option) => option.optionId));
+      if (uniqueOptionIds.size !== selectedInGroup.length) {
+        throw new Error(
+          `Grupo '${group.name}' nao permite repetir a mesma opcao para item ${productId}`,
+        );
+      }
     }
   }
 }

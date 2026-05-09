@@ -103,6 +103,8 @@ describe('OrderPrismaRepository', () => {
         quantity: 1,
       },
     ]);
+    expect(createData.items.create[0].totalPrice).toBe(68);
+    expect(createData.items.create[1].totalPrice).toBe(8);
     const internalNotes = JSON.parse(createData.internalNotes);
     expect(internalNotes.checkoutSnapshot.customer.name).toBe('Maria');
     expect(internalNotes.checkoutSnapshot.deliveryAddress.neighborhood).toBe('Centro');
