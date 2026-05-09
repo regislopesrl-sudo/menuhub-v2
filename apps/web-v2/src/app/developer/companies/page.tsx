@@ -194,6 +194,9 @@ export default function DeveloperCompaniesPage() {
               <Link href={`/developer/companies/${item.id}/modules`}>
                 <Button variant="primary">Gerenciar modulos</Button>
               </Link>
+              <Link href={`/developer/companies/${item.id}/subscription`}>
+                <Button>Assinatura e cobranca</Button>
+              </Link>
               <Button
                 disabled={updatingCompanyId === item.id}
                 onClick={async () => {
