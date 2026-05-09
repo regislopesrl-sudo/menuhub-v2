@@ -406,5 +406,46 @@ describe('RecipesService', () => {
     const result = await service.previewRecipeSubstitution(ctx, 'r1', 's-old', 's-new', 1);
     expect(result.impact.deltaTotalCost).toBeCloseTo(2);
   });
+
+  it('lista margens de produtos com classificacao de saude', async () => {
+    const { service, prisma } = createService();
+    prisma.product.findMany.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        companyId: 'c1',
+        name: 'Produto A',
+        salePrice: 20,
+        promotionalPrice: null,
+        recipe: {
+          id: 'r1',
+          companyId: 'c1',
+          name: 'Receita A',
+          type: 'SALE',
+          yieldQuantity: 1,
+          yieldUnit: 'un',
+          lossPercent: 0,
+          active: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          items: [
+            {
+              id: 'ri1',
+              stockItemId: 's1',
+              quantity: 1,
+              unit: 'un',
+              optional: false,
+              affectsStock: true,
+              affectsCost: true,
+              stockItem: { name: 'I1', averageCost: 17 },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await service.listProductMargins(ctx);
+    expect(result.summary.total).toBe(1);
+    expect(result.items[0].health).toBe('critical');
+  });
 });
 

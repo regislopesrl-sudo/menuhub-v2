@@ -22,6 +22,7 @@ describe('RecipesController', () => {
     registerProductionLoss: jest.fn(),
     previewRecipeSubstitution: jest.fn(),
     applyRecipeSubstitution: jest.fn(),
+    listProductMargins: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', branchId: 'b1', userRole: 'admin', requestId: 'r1' } as any;
@@ -111,6 +112,12 @@ describe('RecipesController', () => {
       quantityRatio: 1.1,
     });
     expect(service.previewRecipeSubstitution).toHaveBeenCalledWith(ctx, 'r1', 's-old', 's-new', 1.1);
+  });
+
+  it('lista margem por produto com filtro opcional', async () => {
+    service.listProductMargins.mockResolvedValueOnce({ summary: { total: 0 }, items: [] });
+    await controller.listProductMargins(ctx, '30');
+    expect(service.listProductMargins).toHaveBeenCalledWith(ctx, { minMarginPercent: 30 });
   });
 });
 
