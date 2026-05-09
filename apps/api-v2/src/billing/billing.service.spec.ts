@@ -72,6 +72,8 @@ describe('BillingService', () => {
             provider: 'mock',
             providerPaymentId: 'mock_payment_1',
             invoice: { id: 'i1', companyId: 'c1', subscriptionId: 's1' },
+            status: 'SUCCEEDED',
+            createdAt: new Date('2026-05-01T10:00:00.000Z'),
           },
         ]),
         update: jest.fn().mockResolvedValue({ id: 'pa1', status: 'SUCCEEDED' }),
@@ -82,9 +84,29 @@ describe('BillingService', () => {
       },
       invoiceStatusEvent: {
         create: jest.fn().mockResolvedValue({ id: 'ise1' }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ise1',
+            invoiceId: 'i1',
+            fromStatus: 'OPEN',
+            toStatus: 'PAID',
+            reason: 'MOCK_PAYMENT',
+            createdAt: new Date('2026-05-01T11:00:00.000Z'),
+          },
+        ]),
       },
       subscriptionStatusEvent: {
         create: jest.fn().mockResolvedValue({ id: 'sse1' }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'sse1',
+            subscriptionId: 's1',
+            fromStatus: 'TRIAL',
+            toStatus: 'ACTIVE',
+            reason: 'INVOICE_PAID',
+            createdAt: new Date('2026-05-01T12:00:00.000Z'),
+          },
+        ]),
       },
     };
 
@@ -239,5 +261,14 @@ describe('BillingService', () => {
     expect(result.subscription).toBeNull();
     expect(result.plan).toBeNull();
     expect(result.billing.status).toBe('missing_subscription');
+  });
+
+  it('retorna historico comercial consolidado da empresa', async () => {
+    const { service } = createService();
+    const result = await service.getCommercialHistory('c1');
+    expect(result.companyId).toBe('c1');
+    expect(result.subscriptions[0]).toMatchObject({ subscriptionId: 's1', toStatus: 'ACTIVE' });
+    expect(result.invoices[0]).toMatchObject({ invoiceId: 'i1', toStatus: 'PAID' });
+    expect(result.payments[0]).toMatchObject({ invoiceId: 'i1', status: 'SUCCEEDED' });
   });
 });

@@ -75,6 +75,21 @@ export class BillingController {
     return this.billingService.listInvoices(companyId);
   }
 
+  @Get('companies/:companyId/commercial-history')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.BILLING_READ,
+    TENANT_PERMISSIONS.BILLING_MANAGE,
+    PLATFORM_PERMISSIONS.BILLING_READ,
+    PLATFORM_PERMISSIONS.BILLING_MANAGE,
+  )
+  async getCommercialHistory(
+    @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:read');
+    return this.billingService.getCommercialHistory(companyId);
+  }
+
   @Get('companies/:companyId/invoices/:invoiceId')
   @RequirePermissions(
     TENANT_PERMISSIONS.BILLING_READ,
