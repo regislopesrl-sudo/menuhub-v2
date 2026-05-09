@@ -10,6 +10,7 @@ describe('RecipesController', () => {
     listProductCompositions: jest.fn(),
     getProductComposition: jest.fn(),
     setProductRecipe: jest.fn(),
+    estimateRecipePortioning: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
@@ -46,6 +47,15 @@ describe('RecipesController', () => {
     service.setProductRecipe.mockResolvedValueOnce({ productId: 'p1', recipeId: 'r1' });
     await controller.patchProductComposition(ctx, 'p1', { recipeId: 'r1' });
     expect(service.setProductRecipe).toHaveBeenCalledWith(ctx, 'p1', 'r1');
+  });
+
+  it('estima porcionamento da ficha tecnica', async () => {
+    service.estimateRecipePortioning.mockResolvedValueOnce({ portionsCount: 4 });
+    await controller.estimatePortioning(ctx, 'r1', { portionQuantity: 0.25, portionUnit: 'kg' });
+    expect(service.estimateRecipePortioning).toHaveBeenCalledWith(ctx, 'r1', {
+      portionQuantity: 0.25,
+      portionUnit: 'kg',
+    });
   });
 });
 

@@ -129,5 +129,58 @@ describe('RecipesService', () => {
     expect(result.productId).toBe('p1');
     expect(result.recipeId).toBe('r1');
   });
+
+  it('estima custo por porcao', async () => {
+    const { service, prisma } = createService();
+    prisma.recipe.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      companyId: 'c1',
+      name: 'Molho',
+      type: 'PRODUCTION',
+      yieldQuantity: 2,
+      yieldUnit: 'kg',
+      lossPercent: 10,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: 'ri1',
+          stockItemId: 's1',
+          quantity: 1,
+          unit: 'kg',
+          optional: false,
+          affectsStock: true,
+          affectsCost: true,
+          stockItem: { name: 'Tomate', averageCost: 20 },
+        },
+      ],
+    });
+
+    const result = await service.estimateRecipePortioning(ctx, 'r1', { portionQuantity: 0.25, extraLossPercent: 5 });
+    expect(result.portionsCount).toBeCloseTo(8);
+    expect(result.cost.costPerPortion).toBeGreaterThan(0);
+  });
+
+  it('bloqueia porcionamento com quantidade invalida', async () => {
+    const { service, prisma } = createService();
+    prisma.recipe.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      companyId: 'c1',
+      name: 'Molho',
+      type: 'PRODUCTION',
+      yieldQuantity: 2,
+      yieldUnit: 'kg',
+      lossPercent: 0,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [],
+    });
+
+    await expect(service.estimateRecipePortioning(ctx, 'r1', { portionQuantity: 0 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
 });
 
