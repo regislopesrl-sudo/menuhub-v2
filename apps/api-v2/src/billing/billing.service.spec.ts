@@ -138,6 +138,19 @@ describe('BillingService', () => {
     await expect(service.createPaymentLink('i1', 'c2')).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('busca fatura por id com escopo de empresa', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findUnique.mockResolvedValueOnce({ id: 'i1', companyId: 'c1', items: [], attempts: [], statusEvents: [] });
+    const result = await service.getInvoiceById('c1', 'i1');
+    expect(result.id).toBe('i1');
+  });
+
+  it('bloqueia busca de fatura por id fora do escopo da empresa', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findUnique.mockResolvedValueOnce({ id: 'i1', companyId: 'c2', items: [], attempts: [], statusEvents: [] });
+    await expect(service.getInvoiceById('c1', 'i1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('webhook duplicado nao processa duas vezes', async () => {
     const { service, prisma, provider } = createService();
     prisma.billingWebhookEvent.findUnique.mockResolvedValueOnce({ id: 'existing' });
