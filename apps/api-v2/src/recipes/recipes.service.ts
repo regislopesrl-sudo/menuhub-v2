@@ -260,6 +260,69 @@ export class RecipesService {
     return this.getProductComposition(ctx, productId);
   }
 
+  async estimateRecipePortioning(
+    ctx: RequestContext,
+    recipeId: string,
+    input: {
+      portionQuantity: number;
+      portionUnit?: string;
+      extraLossPercent?: number;
+    },
+  ) {
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+      include: {
+        items: {
+          include: { stockItem: true },
+        },
+      },
+    });
+    if (!recipe || recipe.companyId !== ctx.companyId) {
+      throw new NotFoundException('Ficha tecnica nao encontrada para a empresa atual.');
+    }
+
+    const portionQuantity = Number(input.portionQuantity);
+    if (!Number.isFinite(portionQuantity) || portionQuantity <= 0) {
+      throw new BadRequestException('portionQuantity deve ser maior que zero.');
+    }
+
+    const recipeView = this.mapRecipeWithCost(recipe);
+    const recipeYield = Number(recipeView.yieldQuantity);
+    if (!Number.isFinite(recipeYield) || recipeYield <= 0) {
+      throw new BadRequestException('Rendimento da ficha tecnica invalido para calculo de porcionamento.');
+    }
+
+    const extraLossPercent = input.extraLossPercent === undefined ? 0 : Number(input.extraLossPercent);
+    if (!Number.isFinite(extraLossPercent) || extraLossPercent < 0 || extraLossPercent > 100) {
+      throw new BadRequestException('extraLossPercent deve estar entre 0 e 100.');
+    }
+
+    const portionsCount = recipeYield / portionQuantity;
+    const extraLossMultiplier = 1 + extraLossPercent / 100;
+    const adjustedTotalCost = recipeView.cost.totalCost * extraLossMultiplier;
+    const costPerPortion = portionsCount > 0 ? adjustedTotalCost / portionsCount : adjustedTotalCost;
+    const portionUnit = input.portionUnit?.trim() || recipeView.yieldUnit;
+
+    return {
+      recipeId: recipeView.id,
+      recipeName: recipeView.name,
+      recipeYieldQuantity: recipeView.yieldQuantity,
+      recipeYieldUnit: recipeView.yieldUnit,
+      portionQuantity,
+      portionUnit,
+      portionsCount,
+      cost: {
+        baseTotalCost: recipeView.cost.totalCost,
+        adjustedTotalCost,
+        costPerPortion,
+      },
+      loss: {
+        recipeLossPercent: recipeView.lossPercent ?? 0,
+        extraLossPercent,
+      },
+    };
+  }
+
   private assertCreatePayload(input: {
     name: string;
     type: 'SALE' | 'PRODUCTION';

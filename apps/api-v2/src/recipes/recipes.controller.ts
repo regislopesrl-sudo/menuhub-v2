@@ -106,5 +106,20 @@ export class RecipesController {
   ) {
     return this.recipesService.setProductRecipe(ctx, productId, body.recipeId ?? null);
   }
+
+  @Post(':recipeId/portioning/estimate')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  estimatePortioning(
+    @CurrentContext() ctx: RequestContext,
+    @Param('recipeId') recipeId: string,
+    @Body()
+    body: {
+      portionQuantity: number;
+      portionUnit?: string;
+      extraLossPercent?: number;
+    },
+  ) {
+    return this.recipesService.estimateRecipePortioning(ctx, recipeId, body);
+  }
 }
 
