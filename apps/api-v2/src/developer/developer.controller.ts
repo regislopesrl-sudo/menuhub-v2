@@ -21,6 +21,7 @@ import {
   assertNonEmptyPayload,
   assertRequiredModuleKey,
   assertRequiredString,
+  assertSubscriptionDateRange,
   assertValidCompanyStatus,
   assertValidDateString,
   assertValidSubscriptionStatus,
@@ -380,14 +381,32 @@ export class DeveloperController {
     assertValidDateString(body.startsAt, 'startsAt');
     assertValidDateString(body.endsAt, 'endsAt');
     assertValidDateString(body.trialEndsAt, 'trialEndsAt');
+    assertSubscriptionDateRange(body.startsAt, body.endsAt, body.trialEndsAt);
+
+    const startsAtDate = new Date(body.startsAt);
+    const endsAtDate = body.endsAt ? new Date(body.endsAt) : null;
+    const overlappingSubscription = await this.prisma.companySubscription.findFirst({
+      where: {
+        companyId,
+        status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] },
+        OR: [
+          { endsAt: null },
+          { endsAt: { gte: startsAtDate } },
+        ],
+      },
+      orderBy: [{ startsAt: 'desc' }],
+    });
+    if (overlappingSubscription) {
+      throw new BadRequestException('Empresa ja possui assinatura ativa/suspensa no periodo informado.');
+    }
 
     const created = await this.prisma.companySubscription.create({
       data: {
         companyId,
         planId,
         status: body.status,
-        startsAt: new Date(body.startsAt),
-        endsAt: body.endsAt ? new Date(body.endsAt) : null,
+        startsAt: startsAtDate,
+        endsAt: endsAtDate,
         trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null,
       },
       include: { plan: true },
@@ -439,6 +458,11 @@ export class DeveloperController {
     }
     assertValidDateString(body.endsAt, 'endsAt');
     assertValidDateString(body.trialEndsAt, 'trialEndsAt');
+    assertSubscriptionDateRange(
+      current.startsAt.toISOString(),
+      body.endsAt ?? current.endsAt?.toISOString() ?? null,
+      body.trialEndsAt ?? current.trialEndsAt?.toISOString() ?? null,
+    );
 
     const updated = await this.prisma.companySubscription.update({
       where: { id: subscriptionId },

@@ -325,6 +325,57 @@ describe('DeveloperController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('create subscription bloqueia sobreposicao de assinatura ativa', async () => {
+    prisma.companySubscription.findFirst.mockResolvedValueOnce({
+      id: 'sub_existing',
+      companyId: 'c1',
+      status: 'ACTIVE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+    });
+
+    await expect(
+      controller.createCompanySubscription(
+        'c1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        {
+          planId: 'plan_1',
+          status: 'ACTIVE',
+          startsAt: '2026-02-01T00:00:00.000Z',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('create subscription bloqueia intervalo de datas invalido', async () => {
+    prisma.companySubscription.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      controller.createCompanySubscription(
+        'c1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        {
+          planId: 'plan_1',
+          status: 'ACTIVE',
+          startsAt: '2026-02-01T00:00:00.000Z',
+          endsAt: '2026-01-01T00:00:00.000Z',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('patch subscription com payload vazio bloqueia', async () => {
     await expect(
       controller.patchCompanySubscription(
@@ -347,6 +398,9 @@ describe('DeveloperController', () => {
       id: 'sub1',
       companyId: 'c1',
       status: 'ACTIVE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+      trialEndsAt: null,
     });
     prisma.companySubscription.update.mockResolvedValueOnce({
       id: 'sub1',
@@ -394,6 +448,32 @@ describe('DeveloperController', () => {
           permissions: ['platform:billing:manage'],
         },
         { status: 'TRIAL' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('patch subscription bloqueia datas inconsistentes', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      status: 'ACTIVE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+      trialEndsAt: null,
+    });
+
+    await expect(
+      controller.patchCompanySubscription(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { endsAt: '2025-12-01T00:00:00.000Z' },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });

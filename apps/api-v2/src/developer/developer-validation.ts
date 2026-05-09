@@ -52,3 +52,25 @@ export function assertRequiredModuleKey(moduleKey: unknown): string {
   }
   return normalized;
 }
+
+export function assertSubscriptionDateRange(
+  startsAtIso: string,
+  endsAtIso?: string | null,
+  trialEndsAtIso?: string | null,
+): void {
+  const startsAt = new Date(startsAtIso);
+  const endsAt = endsAtIso ? new Date(endsAtIso) : null;
+  const trialEndsAt = trialEndsAtIso ? new Date(trialEndsAtIso) : null;
+
+  if (endsAt && endsAt.getTime() < startsAt.getTime()) {
+    throw new BadRequestException('endsAt deve ser maior ou igual a startsAt.');
+  }
+
+  if (trialEndsAt && trialEndsAt.getTime() < startsAt.getTime()) {
+    throw new BadRequestException('trialEndsAt deve ser maior ou igual a startsAt.');
+  }
+
+  if (trialEndsAt && endsAt && trialEndsAt.getTime() > endsAt.getTime()) {
+    throw new BadRequestException('trialEndsAt deve ser menor ou igual a endsAt.');
+  }
+}

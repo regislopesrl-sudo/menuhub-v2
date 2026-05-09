@@ -3,6 +3,7 @@ import {
   assertNonEmptyPayload,
   assertRequiredModuleKey,
   assertRequiredString,
+  assertSubscriptionDateRange,
   assertValidCompanyStatus,
   assertValidDateString,
   assertValidSubscriptionStatus,
@@ -31,5 +32,39 @@ describe('developer-validation', () => {
     expect(() => assertValidDateString('nope', 'startsAt')).toThrow(BadRequestException);
     expect(assertRequiredModuleKey('delivery')).toBe('delivery');
     expect(() => assertRequiredModuleKey('')).toThrow(BadRequestException);
+  });
+
+  it('valida consistencia de datas da assinatura', () => {
+    expect(() =>
+      assertSubscriptionDateRange(
+        '2026-01-01T00:00:00.000Z',
+        '2026-02-01T00:00:00.000Z',
+        '2026-01-15T00:00:00.000Z',
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      assertSubscriptionDateRange(
+        '2026-01-10T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z',
+        null,
+      ),
+    ).toThrow(BadRequestException);
+
+    expect(() =>
+      assertSubscriptionDateRange(
+        '2026-01-10T00:00:00.000Z',
+        null,
+        '2026-01-01T00:00:00.000Z',
+      ),
+    ).toThrow(BadRequestException);
+
+    expect(() =>
+      assertSubscriptionDateRange(
+        '2026-01-01T00:00:00.000Z',
+        '2026-01-10T00:00:00.000Z',
+        '2026-01-15T00:00:00.000Z',
+      ),
+    ).toThrow(BadRequestException);
   });
 });
