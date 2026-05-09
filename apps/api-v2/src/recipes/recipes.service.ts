@@ -654,6 +654,118 @@ export class RecipesService {
     });
   }
 
+  async previewRecipeSubstitution(
+    ctx: RequestContext,
+    recipeId: string,
+    fromStockItemId: string,
+    toStockItemId: string,
+    quantityRatio?: number,
+  ) {
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+      include: { items: { include: { stockItem: true } } },
+    });
+    if (!recipe || recipe.companyId !== ctx.companyId) {
+      throw new NotFoundException('Ficha tecnica nao encontrada para a empresa atual.');
+    }
+    if (!fromStockItemId?.trim() || !toStockItemId?.trim()) {
+      throw new BadRequestException('fromStockItemId e toStockItemId sao obrigatorios.');
+    }
+
+    const item = recipe.items.find((entry) => entry.stockItemId === fromStockItemId);
+    if (!item) {
+      throw new NotFoundException('Insumo origem nao encontrado na ficha tecnica.');
+    }
+
+    const replacement = await this.prisma.stockItem.findUnique({
+      where: { id: toStockItemId },
+      select: { id: true, companyId: true, name: true, averageCost: true },
+    });
+    if (!replacement || replacement.companyId !== ctx.companyId) {
+      throw new BadRequestException('Insumo substituto invalido para a empresa atual.');
+    }
+
+    const ratio = quantityRatio === undefined ? 1 : Number(quantityRatio);
+    if (!Number.isFinite(ratio) || ratio <= 0) {
+      throw new BadRequestException('quantityRatio deve ser maior que zero.');
+    }
+
+    const current = this.mapRecipeWithCost(recipe);
+    const currentGrossCost = current.cost.grossCost;
+
+    const currentItemCost = Number(item.quantity) * Number(item.stockItem?.averageCost ?? 0);
+    const newQuantity = Number(item.quantity) * ratio;
+    const replacementItemCost = newQuantity * Number(replacement.averageCost ?? 0);
+    const newGrossCost = currentGrossCost - currentItemCost + replacementItemCost;
+    const lossMultiplier = 1 + Number(recipe.lossPercent ?? 0) / 100;
+    const newTotalCost = newGrossCost * lossMultiplier;
+
+    return {
+      recipeId: recipe.id,
+      from: {
+        stockItemId: item.stockItemId,
+        name: item.stockItem?.name ?? null,
+        quantity: Number(item.quantity),
+        unitCost: Number(item.stockItem?.averageCost ?? 0),
+        totalCost: currentItemCost,
+      },
+      to: {
+        stockItemId: replacement.id,
+        name: replacement.name,
+        quantity: newQuantity,
+        unitCost: Number(replacement.averageCost ?? 0),
+        totalCost: replacementItemCost,
+      },
+      ratio,
+      impact: {
+        grossCostBefore: currentGrossCost,
+        grossCostAfter: newGrossCost,
+        totalCostBefore: current.cost.totalCost,
+        totalCostAfter: newTotalCost,
+        deltaGrossCost: newGrossCost - currentGrossCost,
+        deltaTotalCost: newTotalCost - current.cost.totalCost,
+      },
+    };
+  }
+
+  async applyRecipeSubstitution(
+    ctx: RequestContext,
+    recipeId: string,
+    fromStockItemId: string,
+    toStockItemId: string,
+    quantityRatio?: number,
+    reason?: string,
+  ) {
+    const preview = await this.previewRecipeSubstitution(ctx, recipeId, fromStockItemId, toStockItemId, quantityRatio);
+    const recipe = await this.prisma.recipe.findUnique({
+      where: { id: recipeId },
+      include: { items: true },
+    });
+    if (!recipe || recipe.companyId !== ctx.companyId) {
+      throw new NotFoundException('Ficha tecnica nao encontrada para a empresa atual.');
+    }
+
+    const originalItem = recipe.items.find((entry) => entry.stockItemId === fromStockItemId);
+    if (!originalItem) {
+      throw new NotFoundException('Insumo origem nao encontrado na ficha tecnica.');
+    }
+
+    await this.prisma.recipeItem.update({
+      where: { id: originalItem.id },
+      data: {
+        stockItemId: toStockItemId,
+        quantity: preview.to.quantity,
+      },
+    });
+
+    return {
+      applied: true,
+      reason: reason?.trim() || null,
+      preview,
+      recipe: await this.getRecipeById(ctx, recipeId),
+    };
+  }
+
   private async assertProductionOrderScope(ctx: RequestContext, orderId: string) {
     if (!ctx.branchId) {
       throw new BadRequestException('branchId obrigatorio para producao interna.');

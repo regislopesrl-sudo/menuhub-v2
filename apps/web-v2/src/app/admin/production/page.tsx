@@ -9,12 +9,15 @@ import { Input } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
+  applyRecipeSubstitution,
   cancelProductionOrder,
   createProductionOrder,
   finishProductionOrder,
   listProductionLosses,
   registerProductionLoss,
   listProductionOrders,
+  previewRecipeSubstitution,
+  type RecipeSubstitutionPreview,
   startProductionOrder,
   type ProductionLossEvent,
   type ProductionOrder,
@@ -33,12 +36,30 @@ const INITIAL_FORM: FormState = {
   plannedQuantity: '',
 };
 
+type SubstitutionForm = {
+  recipeId: string;
+  fromStockItemId: string;
+  toStockItemId: string;
+  quantityRatio: string;
+  reason: string;
+};
+
+const INITIAL_SUBSTITUTION: SubstitutionForm = {
+  recipeId: '',
+  fromStockItemId: '',
+  toStockItemId: '',
+  quantityRatio: '1',
+  reason: '',
+};
+
 export default function AdminProductionPage() {
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [losses, setLosses] = useState<ProductionLossEvent[]>([]);
+  const [substitution, setSubstitution] = useState<SubstitutionForm>(INITIAL_SUBSTITUTION);
+  const [subPreview, setSubPreview] = useState<RecipeSubstitutionPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -160,6 +181,58 @@ export default function AdminProductionPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar perda.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onPreviewSubstitution() {
+    if (!substitution.recipeId.trim() || !substitution.fromStockItemId.trim() || !substitution.toStockItemId.trim()) {
+      setError('Informe recipeId, fromStockItemId e toStockItemId.');
+      return;
+    }
+    const quantityRatio = Number(substitution.quantityRatio || '1');
+    if (!Number.isFinite(quantityRatio) || quantityRatio <= 0) {
+      setError('quantityRatio deve ser maior que zero.');
+      return;
+    }
+    setBusyId('sub-preview');
+    setError(null);
+    try {
+      const preview = await previewRecipeSubstitution(substitution.recipeId.trim(), {
+        fromStockItemId: substitution.fromStockItemId.trim(),
+        toStockItemId: substitution.toStockItemId.trim(),
+        quantityRatio,
+      });
+      setSubPreview(preview);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao gerar preview de substituicao.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onApplySubstitution() {
+    if (!subPreview) {
+      setError('Gere preview antes de aplicar a substituicao.');
+      return;
+    }
+    setBusyId('sub-apply');
+    setError(null);
+    setSuccess(null);
+    try {
+      await applyRecipeSubstitution(substitution.recipeId.trim(), {
+        fromStockItemId: substitution.fromStockItemId.trim(),
+        toStockItemId: substitution.toStockItemId.trim(),
+        quantityRatio: Number(substitution.quantityRatio || '1'),
+        reason: substitution.reason.trim() || undefined,
+      });
+      setSuccess('Substituicao aplicada na ficha tecnica.');
+      setSubstitution(INITIAL_SUBSTITUTION);
+      setSubPreview(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao aplicar substituicao.');
     } finally {
       setBusyId(null);
     }
@@ -305,6 +378,52 @@ export default function AdminProductionPage() {
             ))
           )}
         </div>
+      </Card>
+
+      <Card className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <h2>Substituicao de insumos</h2>
+          <Badge>Bloco 27</Badge>
+        </div>
+        <div className={styles.form}>
+          <label className={styles.field}>
+            <span>Recipe ID</span>
+            <Input value={substitution.recipeId} onChange={(e) => setSubstitution((p) => ({ ...p, recipeId: e.target.value }))} />
+          </label>
+          <label className={styles.field}>
+            <span>Item origem (stockItemId)</span>
+            <Input value={substitution.fromStockItemId} onChange={(e) => setSubstitution((p) => ({ ...p, fromStockItemId: e.target.value }))} />
+          </label>
+          <label className={styles.field}>
+            <span>Item substituto (stockItemId)</span>
+            <Input value={substitution.toStockItemId} onChange={(e) => setSubstitution((p) => ({ ...p, toStockItemId: e.target.value }))} />
+          </label>
+          <label className={styles.field}>
+            <span>Fator de quantidade</span>
+            <Input type="number" min="0.001" step="0.001" value={substitution.quantityRatio} onChange={(e) => setSubstitution((p) => ({ ...p, quantityRatio: e.target.value }))} />
+          </label>
+        </div>
+        <div className={styles.form}>
+          <label className={styles.field}>
+            <span>Motivo (opcional)</span>
+            <Input value={substitution.reason} onChange={(e) => setSubstitution((p) => ({ ...p, reason: e.target.value }))} />
+          </label>
+          <Button onClick={() => void onPreviewSubstitution()} disabled={busyId === 'sub-preview'}>
+            {busyId === 'sub-preview' ? 'Processando...' : 'Gerar preview'}
+          </Button>
+          <Button variant="primary" onClick={() => void onApplySubstitution()} disabled={busyId === 'sub-apply'}>
+            {busyId === 'sub-apply' ? 'Aplicando...' : 'Aplicar substituicao'}
+          </Button>
+        </div>
+        {subPreview ? (
+          <Card className={styles.orderCard}>
+            <div className={styles.orderMeta}>
+              <span>Origem: {subPreview.from.name ?? subPreview.from.stockItemId} (R$ {subPreview.from.totalCost.toFixed(2)})</span>
+              <span>Substituto: {subPreview.to.name ?? subPreview.to.stockItemId} (R$ {subPreview.to.totalCost.toFixed(2)})</span>
+              <span>Delta custo total: R$ {subPreview.impact.deltaTotalCost.toFixed(2)}</span>
+            </div>
+          </Card>
+        ) : null}
       </Card>
     </main>
   );

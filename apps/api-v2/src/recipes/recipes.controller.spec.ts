@@ -20,6 +20,8 @@ describe('RecipesController', () => {
     cancelProductionOrder: jest.fn(),
     listProductionLosses: jest.fn(),
     registerProductionLoss: jest.fn(),
+    previewRecipeSubstitution: jest.fn(),
+    applyRecipeSubstitution: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', branchId: 'b1', userRole: 'admin', requestId: 'r1' } as any;
@@ -99,6 +101,16 @@ describe('RecipesController', () => {
     service.registerProductionLoss.mockResolvedValueOnce({ id: 'loss1' });
     await controller.registerProductionLoss(ctx, 'po1', { quantity: 1.5, reason: 'Queima no forno' });
     expect(service.registerProductionLoss).toHaveBeenCalledWith(ctx, 'po1', 1.5, 'Queima no forno');
+  });
+
+  it('gera preview de substituicao de insumo', async () => {
+    service.previewRecipeSubstitution.mockResolvedValueOnce({ impact: { deltaTotalCost: 2 } });
+    await controller.previewRecipeSubstitution(ctx, 'r1', {
+      fromStockItemId: 's-old',
+      toStockItemId: 's-new',
+      quantityRatio: 1.1,
+    });
+    expect(service.previewRecipeSubstitution).toHaveBeenCalledWith(ctx, 'r1', 's-old', 's-new', 1.1);
   });
 });
 
