@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import type { ModuleKey } from '@delivery-futuro/shared-types';
 import { ModulesController } from './modules.controller';
 
@@ -39,5 +39,15 @@ describe('ModulesController', () => {
         permissions: [],
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('bloqueia update quando enabled nao e boolean', async () => {
+    await expect(
+      controller.updateCurrentCompanyModule(
+        'delivery' as ModuleKey,
+        {} as { enabled: boolean },
+        { companyId: 'c1', userRole: 'admin', requestId: 'r1', permissions: [] },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
