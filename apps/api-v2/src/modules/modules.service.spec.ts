@@ -55,4 +55,58 @@ describe('ModulesService', () => {
     const updated = await service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'orders', enabled: true });
     expect(updated.enabled).toBe(true);
   });
+
+  it('listCurrentCompanyModules retorna planKey da chave do plano', async () => {
+    const prismaMock = {
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          planId: 'plan_pro_id',
+          plan: { key: 'pro' },
+        }),
+      },
+      companyModuleOverride: { findMany: jest.fn().mockResolvedValue([]) },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
+      },
+      plan: { findMany: jest.fn() },
+    } as any;
+
+    const service = new ModulesService(prismaMock);
+    const list = await service.listCurrentCompanyModules('c1');
+    const orders = list.find((item) => item.moduleKey === 'orders');
+    expect(orders?.planKey).toBe('pro');
+  });
+
+  it('createPlan bloqueia modulo duplicado na configuracao', async () => {
+    const prismaMock = {
+      plan: { create: jest.fn() },
+    } as any;
+    const service = new ModulesService(prismaMock);
+
+    await expect(
+      service.createPlan({
+        key: 'basic',
+        name: 'Basic',
+        modules: [
+          { moduleKey: 'orders', enabled: true },
+          { moduleKey: 'orders', enabled: false },
+        ],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('createPlan bloqueia limitValue negativo', async () => {
+    const prismaMock = {
+      plan: { create: jest.fn() },
+    } as any;
+    const service = new ModulesService(prismaMock);
+
+    await expect(
+      service.createPlan({
+        key: 'basic',
+        name: 'Basic',
+        limits: [{ limitKey: 'branches', limitValue: -1 }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
 });
