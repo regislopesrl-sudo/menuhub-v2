@@ -403,6 +403,21 @@ describe('AdminMenuService', () => {
     }));
   });
 
+  it('PATCH availableWaiter nao altera canais de delivery/pdv/kiosk', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.updateAvailability('prod_1', ctx, {
+      channels: { waiter: true },
+    });
+
+    expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        availableTable: true,
+      },
+    }));
+  });
+
   it('preview de importacao valida linhas', async () => {
     const service = new AdminMenuService(prismaMock());
     const result = await service.previewImport(ctx, {
