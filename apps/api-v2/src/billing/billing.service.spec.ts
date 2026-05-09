@@ -228,6 +228,9 @@ describe('BillingService', () => {
     expect(result.modules.length).toBeGreaterThan(0);
     expect(result.limits).toEqual(expect.any(Array));
     expect(result.billing.provider).toBeDefined();
+    expect(result.billing).toHaveProperty('isDelinquent');
+    expect(result.billing).toHaveProperty('delinquencyDays');
+    expect(result.billing).toHaveProperty('recommendedAction');
     expect(result).not.toHaveProperty('accessToken');
     expect(result).not.toHaveProperty('secret');
   });
@@ -239,5 +242,31 @@ describe('BillingService', () => {
     expect(result.subscription).toBeNull();
     expect(result.plan).toBeNull();
     expect(result.billing.status).toBe('missing_subscription');
+    expect(result.billing.isDelinquent).toBe(false);
+    expect(result.billing.delinquencyDays).toBe(0);
+    expect(result.billing.recommendedAction).toBe('none');
+  });
+
+  it('sinaliza inadimplencia quando existem faturas past_due', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      {
+        id: 'i1',
+        status: 'PAST_DUE',
+        amountCents: 19900,
+        dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        paidAt: null,
+        createdAt: new Date(),
+        attempts: [],
+      },
+    ]);
+
+    const result = await service.getCurrentBillingOverview('c1');
+
+    expect(result.billing.status).toBe('active');
+    expect(result.billing.isDelinquent).toBe(true);
+    expect(result.billing.delinquencyDays).toBeGreaterThanOrEqual(3);
+    expect(result.billing.oldestPastDueAt).toBeTruthy();
+    expect(result.billing.recommendedAction).toBe('regularize_payment');
   });
 });
