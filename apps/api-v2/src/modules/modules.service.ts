@@ -80,6 +80,8 @@ export class ModulesService {
     if (!key || !name) {
       throw new BadRequestException('key e name sao obrigatorios.');
     }
+    this.assertUniqueAndValidPlanModules(input.modules);
+    this.assertValidPlanLimits(input.limits);
 
     const created = await this.prisma.plan.create({
       data: {
@@ -139,6 +141,8 @@ export class ModulesService {
     if (!existing) {
       throw new NotFoundException(`Plano '${id}' nao encontrado.`);
     }
+    this.assertUniqueAndValidPlanModules(input.modules);
+    this.assertValidPlanLimits(input.limits);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.plan.update({
@@ -216,7 +220,7 @@ export class ModulesService {
       : [];
 
     const planSet = new Set(planModuleRows.map((item) => item.moduleKey as ModuleKey));
-    const planKey = subscription ? (subscription.planId as PlanKey) : undefined;
+    const planKey = subscription?.plan?.key ? (subscription.plan.key as PlanKey) : undefined;
 
     return modules.map((moduleDef) => {
       const fromPlan = planSet.has(moduleDef.key);
@@ -434,5 +438,46 @@ export class ModulesService {
         enabledByDefault: item.enabledByDefault,
       })),
     };
+  }
+
+  private assertUniqueAndValidPlanModules(
+    modules?: Array<{ moduleKey: ModuleKey; enabled?: boolean; adminOnly?: boolean }>,
+  ): void {
+    if (!modules) return;
+    const seen = new Set<string>();
+    for (const item of modules) {
+      const moduleKey = String(item?.moduleKey ?? '').trim() as ModuleKey;
+      if (!moduleKey) {
+        throw new BadRequestException('moduleKey obrigatorio na configuracao do plano.');
+      }
+      if (!MODULE_META[moduleKey]) {
+        throw new BadRequestException(`Modulo '${moduleKey}' nao cadastrado na V2.`);
+      }
+      if (seen.has(moduleKey)) {
+        throw new BadRequestException(`Modulo '${moduleKey}' duplicado na configuracao do plano.`);
+      }
+      seen.add(moduleKey);
+    }
+  }
+
+  private assertValidPlanLimits(
+    limits?: Array<{ limitKey: string; limitValue: number }>,
+  ): void {
+    if (!limits) return;
+    const seen = new Set<string>();
+    for (const item of limits) {
+      const key = String(item?.limitKey ?? '').trim();
+      const value = Number(item?.limitValue);
+      if (!key) {
+        throw new BadRequestException('limitKey obrigatorio na configuracao do plano.');
+      }
+      if (!Number.isFinite(value) || value < 0) {
+        throw new BadRequestException(`limitValue invalido para '${key}'.`);
+      }
+      if (seen.has(key)) {
+        throw new BadRequestException(`limitKey '${key}' duplicado na configuracao do plano.`);
+      }
+      seen.add(key);
+    }
   }
 }
