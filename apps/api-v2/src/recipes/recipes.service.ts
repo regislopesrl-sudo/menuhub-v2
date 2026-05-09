@@ -443,6 +443,147 @@ export class RecipesService {
     };
   }
 
+  async listProductionOrders(ctx: RequestContext) {
+    if (!ctx.branchId) {
+      throw new BadRequestException('branchId obrigatorio para producao interna.');
+    }
+    return this.prisma.productionOrder.findMany({
+      where: { branchId: ctx.branchId },
+      orderBy: [{ createdAt: 'desc' }],
+      include: {
+        recipe: { select: { id: true, name: true, yieldQuantity: true, yieldUnit: true } },
+        stockItem: { select: { id: true, name: true } },
+        consumptions: true,
+      },
+    });
+  }
+
+  async createProductionOrder(
+    ctx: RequestContext,
+    input: { stockItemId: string; recipeId?: string | null; plannedQuantity: number },
+  ) {
+    if (!ctx.branchId) {
+      throw new BadRequestException('branchId obrigatorio para producao interna.');
+    }
+    if (!input.stockItemId?.trim()) {
+      throw new BadRequestException('stockItemId obrigatorio.');
+    }
+    if (!Number.isFinite(input.plannedQuantity) || input.plannedQuantity <= 0) {
+      throw new BadRequestException('plannedQuantity deve ser maior que zero.');
+    }
+
+    const stockItem = await this.prisma.stockItem.findUnique({
+      where: { id: input.stockItemId },
+      select: { id: true, companyId: true },
+    });
+    if (!stockItem || stockItem.companyId !== ctx.companyId) {
+      throw new BadRequestException('stockItemId invalido para a empresa atual.');
+    }
+
+    if (input.recipeId) {
+      const recipe = await this.prisma.recipe.findUnique({
+        where: { id: input.recipeId },
+        select: { id: true, companyId: true },
+      });
+      if (!recipe || recipe.companyId !== ctx.companyId) {
+        throw new BadRequestException('recipeId invalido para a empresa atual.');
+      }
+    }
+
+    return this.prisma.productionOrder.create({
+      data: {
+        branchId: ctx.branchId,
+        stockItemId: input.stockItemId,
+        recipeId: input.recipeId ?? null,
+        plannedQuantity: input.plannedQuantity,
+        createdById: ctx.userId ?? null,
+      },
+      include: {
+        recipe: { select: { id: true, name: true, yieldQuantity: true, yieldUnit: true } },
+        stockItem: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async startProductionOrder(ctx: RequestContext, orderId: string) {
+    const order = await this.assertProductionOrderScope(ctx, orderId);
+    if (order.status !== 'PLANNED') {
+      throw new BadRequestException('Apenas ordens PLANNED podem ser iniciadas.');
+    }
+    return this.prisma.productionOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'IN_PROGRESS',
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  async finishProductionOrder(ctx: RequestContext, orderId: string, actualQuantity?: number) {
+    const order = await this.assertProductionOrderScope(ctx, orderId);
+    if (!['PLANNED', 'IN_PROGRESS'].includes(order.status)) {
+      throw new BadRequestException('Apenas ordens abertas podem ser finalizadas.');
+    }
+
+    const resolvedQuantity = actualQuantity ?? Number(order.plannedQuantity);
+    if (!Number.isFinite(resolvedQuantity) || resolvedQuantity <= 0) {
+      throw new BadRequestException('actualQuantity deve ser maior que zero.');
+    }
+
+    await this.prisma.productionOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'FINISHED',
+        actualQuantity: resolvedQuantity,
+        finishedById: ctx.userId ?? null,
+        finishedAt: new Date(),
+      },
+    });
+
+    return this.prisma.productionOrder.findUnique({
+      where: { id: orderId },
+      include: {
+        recipe: { select: { id: true, name: true } },
+        stockItem: { select: { id: true, name: true } },
+        consumptions: true,
+      },
+    });
+  }
+
+  async cancelProductionOrder(ctx: RequestContext, orderId: string, reason: string) {
+    const order = await this.assertProductionOrderScope(ctx, orderId);
+    if (order.status === 'FINISHED' || order.status === 'CANCELED') {
+      throw new BadRequestException('Ordem ja encerrada nao pode ser cancelada.');
+    }
+    if (!reason?.trim()) {
+      throw new BadRequestException('Motivo do cancelamento obrigatorio.');
+    }
+
+    return this.prisma.productionOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'CANCELED',
+        cancellationReason: reason.trim(),
+        canceledById: ctx.userId ?? null,
+        canceledAt: new Date(),
+      },
+    });
+  }
+
+  private async assertProductionOrderScope(ctx: RequestContext, orderId: string) {
+    if (!ctx.branchId) {
+      throw new BadRequestException('branchId obrigatorio para producao interna.');
+    }
+    const order = await this.prisma.productionOrder.findUnique({
+      where: { id: orderId },
+      include: { branch: { select: { id: true, companyId: true } } },
+    });
+    if (!order || order.branch.companyId !== ctx.companyId || order.branchId !== ctx.branchId) {
+      throw new NotFoundException('Ordem de producao nao encontrada para o escopo atual.');
+    }
+    return order;
+  }
+
   private assertCreatePayload(input: {
     name: string;
     type: 'SALE' | 'PRODUCTION';

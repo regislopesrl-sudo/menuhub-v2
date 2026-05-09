@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
 
 describe('RecipesService', () => {
-  const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
+  const ctx = { companyId: 'c1', branchId: 'b1', userId: 'u1', userRole: 'admin', requestId: 'r1' } as any;
 
   function createService() {
     const prisma = {
@@ -18,10 +18,17 @@ describe('RecipesService', () => {
       },
       stockItem: {
         findMany: jest.fn(),
+        findUnique: jest.fn(),
       },
       product: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      productionOrder: {
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        create: jest.fn(),
         update: jest.fn(),
       },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
@@ -276,6 +283,51 @@ describe('RecipesService', () => {
       recipe: null,
     });
     await expect(service.getProductSoldCost(ctx, 'p1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cria ordem de producao com escopo de empresa/filial', async () => {
+    const { service, prisma } = createService();
+    prisma.stockItem.findUnique = jest.fn().mockResolvedValueOnce({ id: 's1', companyId: 'c1' });
+    prisma.recipe.findUnique.mockResolvedValueOnce({ id: 'r1', companyId: 'c1' });
+    prisma.productionOrder.create.mockResolvedValueOnce({ id: 'po1', status: 'PLANNED' });
+
+    const result = await service.createProductionOrder(ctx, {
+      stockItemId: 's1',
+      recipeId: 'r1',
+      plannedQuantity: 10,
+    });
+    expect(result.id).toBe('po1');
+  });
+
+  it('inicia e finaliza ordem de producao aberta', async () => {
+    const { service, prisma } = createService();
+    prisma.productionOrder.findUnique
+      .mockResolvedValueOnce({
+        id: 'po1',
+        status: 'PLANNED',
+        branchId: 'b1',
+        plannedQuantity: 10,
+        branch: { id: 'b1', companyId: 'c1' },
+      })
+      .mockResolvedValueOnce({
+        id: 'po1',
+        status: 'IN_PROGRESS',
+        branchId: 'b1',
+        plannedQuantity: 10,
+        branch: { id: 'b1', companyId: 'c1' },
+      })
+      .mockResolvedValueOnce({
+        id: 'po1',
+        status: 'FINISHED',
+        branchId: 'b1',
+        plannedQuantity: 10,
+        branch: { id: 'b1', companyId: 'c1' },
+      });
+    prisma.productionOrder.update.mockResolvedValue({ id: 'po1' });
+
+    await service.startProductionOrder(ctx, 'po1');
+    const done = await service.finishProductionOrder(ctx, 'po1', 9.5);
+    expect(done?.id).toBe('po1');
   });
 });
 

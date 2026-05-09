@@ -249,6 +249,7 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/users" title="Usuarios" description="Acessos, roles e filiais" tone="green" />
           <ActionTile href="/admin/settings" title="Configuracoes" description="Empresa, filial, operacao e pagamentos" tone="blue" />
           <ActionTile href="/admin/billing" title="Assinatura e cobranca" description="Plano, limites e status da assinatura SaaS" tone="violet" />
+          <ActionTile href="/admin/production" title="Producao Interna" description="Ordens de preparo, execucao e finalizacao por filial" tone="orange" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
 
@@ -288,6 +289,13 @@ export default function AdminDashboardPage() {
             <Badge>Usuarios</Badge>
             <h2 className={styles.cardTitle}>Usuarios e Permissoes</h2>
             <p className={styles.cardText}>Cadastre acessos, roles efetivas e filiais permitidas por operador.</p>
+          </Card>
+        </Link>
+        <Link href="/admin/production" className={styles.cardLink}>
+          <Card className={styles.card}>
+            <Badge>Producao</Badge>
+            <h2 className={styles.cardTitle}>Producao Interna</h2>
+            <p className={styles.cardText}>Planejamento e execucao de ordens de preparo com rastreabilidade por filial.</p>
           </Card>
         </Link>
       </section>
