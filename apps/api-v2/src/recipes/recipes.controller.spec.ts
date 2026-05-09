@@ -12,6 +12,7 @@ describe('RecipesController', () => {
     setProductRecipe: jest.fn(),
     estimateRecipePortioning: jest.fn(),
     getRecipeCostBreakdown: jest.fn(),
+    getProductSoldCost: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
@@ -63,6 +64,12 @@ describe('RecipesController', () => {
     service.getRecipeCostBreakdown.mockResolvedValueOnce({ summary: { totalCost: 10 } });
     await controller.getRecipeCostBreakdown(ctx, 'r1');
     expect(service.getRecipeCostBreakdown).toHaveBeenCalledWith(ctx, 'r1');
+  });
+
+  it('retorna custo por produto vendido', async () => {
+    service.getProductSoldCost.mockResolvedValueOnce({ productId: 'p1', cost: { soldCost: 12 } });
+    await controller.getProductSoldCost(ctx, 'p1', '1');
+    expect(service.getProductSoldCost).toHaveBeenCalledWith(ctx, 'p1', { portionQuantity: 1 });
   });
 });
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import { RequireAdminGuard } from '../common/require-admin.guard';
 import { RequirePermissions } from '../common/permissions.decorator';
@@ -105,6 +105,18 @@ export class RecipesController {
     @Body() body: { recipeId: string | null },
   ) {
     return this.recipesService.setProductRecipe(ctx, productId, body.recipeId ?? null);
+  }
+
+  @Get('compositions/products/:productId/cost')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  getProductSoldCost(
+    @CurrentContext() ctx: RequestContext,
+    @Param('productId') productId: string,
+    @Query('portionQuantity') portionQuantity?: string,
+  ) {
+    return this.recipesService.getProductSoldCost(ctx, productId, {
+      portionQuantity: portionQuantity ? Number(portionQuantity) : undefined,
+    });
   }
 
   @Post(':recipeId/portioning/estimate')

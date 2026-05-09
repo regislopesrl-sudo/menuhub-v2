@@ -225,5 +225,57 @@ describe('RecipesService', () => {
     expect(result.summary.grossCost).toBeCloseTo(25);
     expect(result.summary.totalCost).toBeCloseTo(25);
   });
+
+  it('calcula custo e margem por produto vendido', async () => {
+    const { service, prisma } = createService();
+    prisma.product.findUnique.mockResolvedValueOnce({
+      id: 'p1',
+      companyId: 'c1',
+      name: 'Pizza',
+      salePrice: 50,
+      promotionalPrice: null,
+      recipe: {
+        id: 'r1',
+        companyId: 'c1',
+        name: 'Ficha Pizza',
+        type: 'SALE',
+        yieldQuantity: 2,
+        yieldUnit: 'un',
+        lossPercent: 0,
+        active: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        items: [
+          {
+            id: 'ri1',
+            stockItemId: 's1',
+            quantity: 1,
+            unit: 'kg',
+            optional: false,
+            affectsStock: true,
+            affectsCost: true,
+            stockItem: { name: 'Queijo', averageCost: 20 },
+          },
+        ],
+      },
+    });
+
+    const result = await service.getProductSoldCost(ctx, 'p1', { portionQuantity: 1 });
+    expect(result.cost.soldCost).toBeCloseTo(10);
+    expect(result.margin.grossMarginValue).toBeCloseTo(40);
+  });
+
+  it('bloqueia produto sem ficha tecnica no calculo de custo vendido', async () => {
+    const { service, prisma } = createService();
+    prisma.product.findUnique.mockResolvedValueOnce({
+      id: 'p1',
+      companyId: 'c1',
+      name: 'Pizza',
+      salePrice: 50,
+      promotionalPrice: null,
+      recipe: null,
+    });
+    await expect(service.getProductSoldCost(ctx, 'p1')).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
 
