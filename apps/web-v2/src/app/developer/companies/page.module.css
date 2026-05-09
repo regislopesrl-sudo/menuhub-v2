@@ -14,6 +14,30 @@
   border: 1px solid #dbe4f6;
 }
 
+.createCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dbe4f6;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.createGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.createActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .filterActions {
   display: flex;
   gap: 8px;
@@ -69,11 +93,25 @@
 .itemActions {
   display: flex;
   justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .stateCard {
   color: #475569;
   border: 1px dashed #c7d2fe;
+}
+
+.errorCard {
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+}
+
+.successCard {
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
 }
 
 .restrictedCard {
@@ -95,6 +133,7 @@
 }
 
 @media (max-width: 900px) {
+  .createGrid,
   .filterCard,
   .grid {
     grid-template-columns: 1fr;
