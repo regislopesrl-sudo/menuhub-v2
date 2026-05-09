@@ -78,9 +78,15 @@ describe('AdminMenuService', () => {
       productCategory: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({ id: 'cat_1' }),
-        create: jest.fn().mockResolvedValue({ id: 'cat_new', name: 'Combos', isActive: true }),
+        create: jest.fn().mockResolvedValue({ id: 'cat_new', name: 'Combos', isActive: true, sortOrder: 0 }),
         update: jest.fn().mockImplementation((args) =>
-          Promise.resolve({ id: args.where.id, name: args.data.name ?? 'Lanches', isActive: args.data.isActive ?? true, _count: { products: 3 } }),
+          Promise.resolve({
+            id: args.where.id,
+            name: args.data.name ?? 'Lanches',
+            sortOrder: args.data.sortOrder ?? 0,
+            isActive: args.data.isActive ?? true,
+            _count: { products: 3 },
+          }),
         ),
         delete: jest.fn().mockResolvedValue({ id: 'cat_1' }),
       },
@@ -147,25 +153,63 @@ describe('AdminMenuService', () => {
       data: { companyId: 'company_a', name: 'Combos' },
       include: { _count: { select: { products: true } } },
     });
-    expect(result).toEqual({ id: 'cat_new', name: 'Combos', count: 0, active: true });
+    expect(result).toEqual({ id: 'cat_new', name: 'Combos', sortOrder: 0, count: 0, active: true });
+  });
+
+  it('cria produto com ordenacao explicita', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.createProduct(ctx, {
+      name: 'Batata',
+      salePrice: 12,
+      sortOrder: 5,
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        sortOrder: 5,
+      }),
+    }));
+  });
+
+  it('cria categoria com ordenacao explicita', async () => {
+    const prisma = prismaMock();
+    prisma.productCategory.findFirst.mockResolvedValue(null);
+    prisma.productCategory.create.mockResolvedValue({
+      id: 'cat_new',
+      name: 'Combos',
+      sortOrder: 7,
+      isActive: true,
+      _count: { products: 0 },
+    });
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.createCategory(ctx, { name: 'Combos', sortOrder: 7 });
+
+    expect(prisma.productCategory.create).toHaveBeenCalledWith({
+      data: { companyId: 'company_a', name: 'Combos', sortOrder: 7 },
+      include: { _count: { select: { products: true } } },
+    });
+    expect(result).toEqual({ id: 'cat_new', name: 'Combos', sortOrder: 7, count: 0, active: true });
   });
 
   it('lista categorias com contador', async () => {
     const prisma = prismaMock();
     prisma.productCategory.findMany.mockResolvedValue([
-      { id: 'cat_1', name: 'Lanches', isActive: true, _count: { products: 3 } },
+      { id: 'cat_1', name: 'Lanches', sortOrder: 2, isActive: true, _count: { products: 3 } },
     ]);
     const service = new AdminMenuService(prisma);
 
     const result = await service.listCategories(ctx);
 
-    expect(result).toEqual([{ id: 'cat_1', name: 'Lanches', count: 3, active: true }]);
+    expect(result).toEqual([{ id: 'cat_1', name: 'Lanches', sortOrder: 2, count: 3, active: true }]);
   });
 
   it('edita categoria real isolada por empresa', async () => {
     const prisma = prismaMock();
     prisma.productCategory.findFirst
-      .mockResolvedValueOnce({ id: 'cat_1', companyId: 'company_a', _count: { products: 3 } })
+      .mockResolvedValueOnce({ id: 'cat_1', companyId: 'company_a', sortOrder: 0, _count: { products: 3 } })
       .mockResolvedValueOnce(null);
     const service = new AdminMenuService(prisma);
 
@@ -178,7 +222,21 @@ describe('AdminMenuService', () => {
       where: { id: 'cat_1' },
       data: { name: 'Combos Premium' },
     }));
-    expect(result).toEqual({ id: 'cat_1', name: 'Combos Premium', count: 3, active: true });
+    expect(result).toEqual({ id: 'cat_1', name: 'Combos Premium', sortOrder: 0, count: 3, active: true });
+  });
+
+  it('edita ordenacao da categoria', async () => {
+    const prisma = prismaMock();
+    prisma.productCategory.findFirst.mockResolvedValue({ id: 'cat_1', companyId: 'company_a', _count: { products: 3 } });
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.updateCategory('cat_1', ctx, { sortOrder: 9 });
+
+    expect(prisma.productCategory.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'cat_1' },
+      data: { sortOrder: 9 },
+    }));
+    expect(result).toEqual({ id: 'cat_1', name: 'Lanches', sortOrder: 9, count: 3, active: true });
   });
 
   it('remove categoria e desvincula produtos', async () => {
@@ -205,6 +263,21 @@ describe('AdminMenuService', () => {
     await expect(service.deleteCategory('cat_other', ctx)).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('bloqueia update de categoria sem campos', async () => {
+    const prisma = prismaMock();
+    prisma.productCategory.findFirst.mockResolvedValue({ id: 'cat_1', companyId: 'company_a', _count: { products: 1 } });
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.updateCategory('cat_1', ctx, {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('valida ordenacao inteira para categoria', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.createCategory(ctx, { name: 'Combos', sortOrder: 1.5 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateCategory('cat_1', ctx, { sortOrder: 2.2 })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('edita produto', async () => {
     const prisma = prismaMock();
     const service = new AdminMenuService(prisma);
@@ -214,6 +287,18 @@ describe('AdminMenuService', () => {
     expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'prod_1' },
       data: expect.objectContaining({ name: 'Burger Duplo', salePrice: 30 }),
+    }));
+  });
+
+  it('edita ordenacao do produto', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await service.updateProduct('prod_1', ctx, { sortOrder: 8 });
+
+    expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'prod_1' },
+      data: expect.objectContaining({ sortOrder: 8 }),
     }));
   });
 
@@ -300,6 +385,42 @@ describe('AdminMenuService', () => {
     const service = new AdminMenuService(prismaMock());
 
     await expect(service.updateProduct('prod_1', ctx, { salePrice: -1 })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('bloqueia listagem de produtos quando branch nao pertence a company', async () => {
+    const prisma = prismaMock();
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.listProducts(ctx)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia criacao de produto quando branch nao pertence a company', async () => {
+    const prisma = prismaMock();
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const service = new AdminMenuService(prisma);
+
+    await expect(
+      service.createProduct(ctx, {
+        name: 'Produto invalido',
+        salePrice: 10,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.product.create).not.toHaveBeenCalled();
+  });
+
+  it('update sem campos falha', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.updateProduct('prod_1', ctx, {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('sortOrder invalido no produto falha', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, sortOrder: -1 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateProduct('prod_1', ctx, { sortOrder: 1.25 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('patch availability bloqueia produto de outra empresa', async () => {

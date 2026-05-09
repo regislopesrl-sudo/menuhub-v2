@@ -109,7 +109,20 @@ describe('RBAC route permissions metadata', () => {
       TENANT_PERMISSIONS.CATALOG_READ,
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'get')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_READ,
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
     expect(methodPermissions(AdminMenuController.prototype, 'create')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'update')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'updateAvailability')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'duplicate')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'listCategories')).toEqual([
@@ -117,6 +130,12 @@ describe('RBAC route permissions metadata', () => {
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'createCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'updateCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'deleteCategory')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
   });

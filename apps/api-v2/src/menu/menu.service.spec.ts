@@ -29,6 +29,7 @@ describe('MenuService', () => {
         category: {
           select: {
             name: true,
+            isActive: true,
           },
         },
         addonLinks: {
@@ -194,5 +195,33 @@ describe('MenuService', () => {
 
     await expect(service.list({ companyId: '' } as any)).rejects.toBeInstanceOf(BadRequestException);
     expect(prismaMock.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('remove do menu publico produto de categoria inativa', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'prod_hidden_cat',
+            name: 'Produto categoria inativa',
+            description: null,
+            imageUrl: null,
+            salePrice: 20,
+            promotionalPrice: null,
+            deliveryPickupPrice: 20,
+            isActive: true,
+            availableDelivery: true,
+            deletedAt: null,
+            category: { name: 'Oculta', isActive: false },
+            addonLinks: [],
+          },
+        ]),
+      },
+    } as any;
+
+    const service = new MenuService(prismaMock);
+    const result = await service.list(ctx);
+
+    expect(result).toEqual([]);
   });
 });

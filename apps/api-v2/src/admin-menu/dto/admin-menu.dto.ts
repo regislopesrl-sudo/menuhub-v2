@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -77,6 +78,11 @@ export class CreateProductDto {
   @ValidateNested()
   @Type(() => ProductChannelsDto)
   channels?: ProductChannelsDto;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
 }
 
 export class UpdateProductDto extends CreateProductDto {}
@@ -85,6 +91,10 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateCategoryDto {
@@ -95,6 +105,10 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  sortOrder?: number;
 }
 
 export class UpdateAvailabilityDto {

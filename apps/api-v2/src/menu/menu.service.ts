@@ -46,6 +46,7 @@ export class MenuService {
         category: {
           select: {
             name: true,
+            isActive: true,
           },
         },
         addonLinks: {
@@ -68,6 +69,7 @@ export class MenuService {
 
     return products
       .filter((product) => isProductVisibleOnChannel(product, 'delivery'))
+      .filter((product) => product.category?.isActive !== false)
       .map((product) => {
       const resolvedPrice = resolvePublicMenuPrice({
         salePrice: product.salePrice,
