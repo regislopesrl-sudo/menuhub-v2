@@ -16,6 +16,7 @@ import { BillingModule } from './billing/billing.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { BranchesModule } from './branches/branches.module';
 import { HealthController } from './health.controller';
+import { StockItemsModule } from './stock-items/stock-items.module';
 import { AuthModuleV2 } from './auth/auth.module';
 import { AuthGuardV2 } from './common/auth.guard';
 import { PermissionGuardV2 } from './common/permission.guard';
@@ -40,6 +41,7 @@ import { RequireDeveloperGuard } from './common/require-developer.guard';
     BillingModule,
     OnboardingModule,
     BranchesModule,
+    StockItemsModule,
   ],
   controllers: [HealthController],
   providers: [
