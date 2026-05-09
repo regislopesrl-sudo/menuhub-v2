@@ -22,6 +22,12 @@ const PLAN_OPTIONS = [
   { id: 'enterprise', label: 'Enterprise' },
 ];
 
+function addOneMonthIso(baseDate: Date): string {
+  const copy = new Date(baseDate);
+  copy.setMonth(copy.getMonth() + 1);
+  return copy.toISOString();
+}
+
 export default function CompanySubscriptionPage() {
   const params = useParams<{ id: string }>();
   const companyId = params.id;
@@ -49,10 +55,12 @@ export default function CompanySubscriptionPage() {
 
   async function createSubscription() {
     try {
+      const startsAt = new Date();
       await createDeveloperCompanySubscription(companyId, {
         planId,
         status,
-        startsAt: new Date().toISOString(),
+        startsAt: startsAt.toISOString(),
+        endsAt: addOneMonthIso(startsAt),
       });
       await load();
     } catch (err) {
@@ -88,9 +96,10 @@ export default function CompanySubscriptionPage() {
 
       <section className={styles.summaryGrid}>
         <PremiumSummaryCard label="Status" value={current?.status ?? 'SEM_ASSINATURA'} />
+        <PremiumSummaryCard label="Periodicidade" value="Mensal" />
         <PremiumSummaryCard label="Plano atual" value={current?.plan?.name ?? current?.planId ?? 'Sem plano'} />
-        <PremiumSummaryCard label="Início" value={current ? new Date(current.startsAt).toLocaleDateString() : '-'} />
-        <PremiumSummaryCard label="Trial até" value={current?.trialEndsAt ? new Date(current.trialEndsAt).toLocaleDateString() : '-'} />
+        <PremiumSummaryCard label="Inicio" value={current ? new Date(current.startsAt).toLocaleDateString() : '-'} />
+        <PremiumSummaryCard label="Trial ate" value={current?.trialEndsAt ? new Date(current.trialEndsAt).toLocaleDateString() : '-'} />
       </section>
 
       <Card className={styles.card}>
