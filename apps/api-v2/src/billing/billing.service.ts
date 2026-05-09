@@ -215,6 +215,23 @@ export class BillingService {
     });
   }
 
+  async getInvoiceById(companyId: string, invoiceId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        items: true,
+        attempts: true,
+        statusEvents: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    if (!invoice || invoice.companyId !== companyId) {
+      throw new NotFoundException('Fatura nao encontrada para a empresa atual.');
+    }
+
+    return invoice;
+  }
+
   async createMockInvoice(companyId: string) {
     const subscription = await this.prisma.companySubscription.findFirst({
       where: { companyId },

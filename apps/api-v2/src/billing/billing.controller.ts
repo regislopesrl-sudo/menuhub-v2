@@ -75,6 +75,22 @@ export class BillingController {
     return this.billingService.listInvoices(companyId);
   }
 
+  @Get('companies/:companyId/invoices/:invoiceId')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.BILLING_READ,
+    TENANT_PERMISSIONS.BILLING_MANAGE,
+    PLATFORM_PERMISSIONS.BILLING_READ,
+    PLATFORM_PERMISSIONS.BILLING_MANAGE,
+  )
+  async getInvoiceById(
+    @Param('companyId') companyId: string,
+    @Param('invoiceId') invoiceId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:read');
+    return this.billingService.getInvoiceById(companyId, invoiceId);
+  }
+
   @Post('companies/:companyId/invoices/mock')
   @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
   async createMockInvoice(

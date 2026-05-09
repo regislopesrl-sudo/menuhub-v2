@@ -7,6 +7,7 @@ describe('BillingController', () => {
     getCompanyBilling: jest.fn(),
     upsertBillingAccount: jest.fn(),
     listInvoices: jest.fn(),
+    getInvoiceById: jest.fn(),
     createMockInvoice: jest.fn(),
     payMockInvoice: jest.fn(),
     createPaymentLink: jest.fn(),
@@ -39,6 +40,17 @@ describe('BillingController', () => {
       permissions: ['billing.read'],
     });
     expect(service.listInvoices).toHaveBeenCalledWith('c1');
+  });
+
+  it('consulta fatura por id respeitando escopo da empresa', async () => {
+    service.getInvoiceById.mockResolvedValueOnce({ id: 'inv_1', companyId: 'c1' });
+    await controller.getInvoiceById('c1', 'inv_1', {
+      companyId: 'c1',
+      userRole: 'developer',
+      requestId: 'r1',
+      permissions: ['billing.read'],
+    });
+    expect(service.getInvoiceById).toHaveBeenCalledWith('c1', 'inv_1');
   });
 
   it('permite contexto platform consultar billing de outra empresa', async () => {
