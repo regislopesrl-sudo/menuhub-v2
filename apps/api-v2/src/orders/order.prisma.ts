@@ -4,6 +4,7 @@ import type { RequestContext } from '../common/request-context';
 import { PrismaService } from '../database/prisma.service';
 import type { DeliveryQuoteResponse } from '../delivery/dto/delivery-quote.dto';
 import type { PixPaymentIntent } from '../payments/providers/payment-provider.interface';
+import { calculateOrderItemTotal } from './order-pricing';
 
 export interface FindManyOrdersFilters {
   status?: string;
@@ -75,13 +76,11 @@ export class OrderPrismaRepository {
                 productNameSnapshot: item.name,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
-                totalPrice: Number(
-                  (
-                    item.quantity *
-                    (item.unitPrice +
-                      (item.selectedOptions ?? []).reduce((sum, option) => sum + option.price, 0))
-                  ).toFixed(2),
-                ),
+                totalPrice: calculateOrderItemTotal({
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                  addonPrices: (item.selectedOptions ?? []).map((option) => Number(option.price || 0)),
+                }),
                 addons: {
                   create: (item.selectedOptions ?? []).map((option) => ({
                     addonItemId: option.optionId,
