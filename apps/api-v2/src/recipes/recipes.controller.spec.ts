@@ -7,6 +7,9 @@ describe('RecipesController', () => {
     createRecipe: jest.fn(),
     updateRecipe: jest.fn(),
     replaceRecipeItems: jest.fn(),
+    listProductCompositions: jest.fn(),
+    getProductComposition: jest.fn(),
+    setProductRecipe: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
@@ -31,6 +34,18 @@ describe('RecipesController', () => {
       items: [{ stockItemId: 's1', quantity: 1, unit: 'un' }],
     });
     expect(service.createRecipe).toHaveBeenCalled();
+  });
+
+  it('lista composicao por produto', async () => {
+    service.listProductCompositions.mockResolvedValueOnce([]);
+    await controller.listProductCompositions(ctx);
+    expect(service.listProductCompositions).toHaveBeenCalledWith(ctx);
+  });
+
+  it('atualiza vinculacao produto x receita', async () => {
+    service.setProductRecipe.mockResolvedValueOnce({ productId: 'p1', recipeId: 'r1' });
+    await controller.patchProductComposition(ctx, 'p1', { recipeId: 'r1' });
+    expect(service.setProductRecipe).toHaveBeenCalledWith(ctx, 'p1', 'r1');
   });
 });
 

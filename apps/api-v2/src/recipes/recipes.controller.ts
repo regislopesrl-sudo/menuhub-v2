@@ -84,5 +84,27 @@ export class RecipesController {
   ) {
     return this.recipesService.replaceRecipeItems(ctx, recipeId, body.items);
   }
+
+  @Get('compositions/products')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  listProductCompositions(@CurrentContext() ctx: RequestContext) {
+    return this.recipesService.listProductCompositions(ctx);
+  }
+
+  @Get('compositions/products/:productId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  getProductComposition(@CurrentContext() ctx: RequestContext, @Param('productId') productId: string) {
+    return this.recipesService.getProductComposition(ctx, productId);
+  }
+
+  @Patch('compositions/products/:productId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  patchProductComposition(
+    @CurrentContext() ctx: RequestContext,
+    @Param('productId') productId: string,
+    @Body() body: { recipeId: string | null },
+  ) {
+    return this.recipesService.setProductRecipe(ctx, productId, body.recipeId ?? null);
+  }
 }
 

@@ -163,6 +163,103 @@ export class RecipesService {
     return this.getRecipeById(ctx, recipeId);
   }
 
+  async listProductCompositions(ctx: RequestContext) {
+    const products = await this.prisma.product.findMany({
+      where: { companyId: ctx.companyId, deletedAt: null },
+      orderBy: [{ name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        recipeId: true,
+        recipe: {
+          select: {
+            id: true,
+            companyId: true,
+            name: true,
+            type: true,
+            yieldQuantity: true,
+            yieldUnit: true,
+            lossPercent: true,
+            active: true,
+            createdAt: true,
+            updatedAt: true,
+            items: {
+              include: { stockItem: true },
+            },
+          },
+        },
+      },
+    });
+
+    return products.map((product) => ({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku ?? null,
+      recipeId: product.recipeId,
+      recipe: product.recipe ? this.mapRecipeWithCost(product.recipe) : null,
+    }));
+  }
+
+  async getProductComposition(ctx: RequestContext, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: {
+        id: true,
+        companyId: true,
+        name: true,
+        sku: true,
+        recipeId: true,
+        recipe: {
+          include: {
+            items: {
+              include: { stockItem: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!product || product.companyId !== ctx.companyId) {
+      throw new NotFoundException('Produto nao encontrado para a empresa atual.');
+    }
+
+    return {
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku ?? null,
+      recipeId: product.recipeId,
+      recipe: product.recipe ? this.mapRecipeWithCost(product.recipe) : null,
+    };
+  }
+
+  async setProductRecipe(ctx: RequestContext, productId: string, recipeId: string | null) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true, companyId: true },
+    });
+    if (!product || product.companyId !== ctx.companyId) {
+      throw new NotFoundException('Produto nao encontrado para a empresa atual.');
+    }
+
+    if (recipeId) {
+      const recipe = await this.prisma.recipe.findUnique({
+        where: { id: recipeId },
+        select: { id: true, companyId: true },
+      });
+      if (!recipe || recipe.companyId !== ctx.companyId) {
+        throw new BadRequestException('recipeId invalido para a empresa atual.');
+      }
+    }
+
+    await this.prisma.product.update({
+      where: { id: productId },
+      data: { recipeId },
+    });
+
+    return this.getProductComposition(ctx, productId);
+  }
+
   private assertCreatePayload(input: {
     name: string;
     type: 'SALE' | 'PRODUCTION';
