@@ -1,0 +1,42 @@
+.page {
+  width: min(1000px, 100% - 32px);
+  margin: 24px auto 48px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  border: 1px solid #dbe3f0;
+  border-radius: 16px;
+  background: #fff;
+  padding: 20px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.label {
+  font-weight: 700;
+  color: #475569;
+}
+
+.value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #0f172a;
+  word-break: break-all;
+}
