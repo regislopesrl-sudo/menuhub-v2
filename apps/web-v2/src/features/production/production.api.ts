@@ -31,6 +31,21 @@ export interface ProductionLossEvent {
   createdAt: string;
 }
 
+export interface RecipeSubstitutionPreview {
+  recipeId: string;
+  from: { stockItemId: string; name: string | null; quantity: number; unitCost: number; totalCost: number };
+  to: { stockItemId: string; name: string | null; quantity: number; unitCost: number; totalCost: number };
+  ratio: number;
+  impact: {
+    grossCostBefore: number;
+    grossCostAfter: number;
+    totalCostBefore: number;
+    totalCostAfter: number;
+    deltaGrossCost: number;
+    deltaTotalCost: number;
+  };
+}
+
 function adminHeaders() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -97,4 +112,29 @@ export function registerProductionLoss(orderId: string, input: { quantity: numbe
     headers: adminHeaders(),
     body: JSON.stringify(input),
   });
+}
+
+export function previewRecipeSubstitution(
+  recipeId: string,
+  input: { fromStockItemId: string; toStockItemId: string; quantityRatio?: number },
+) {
+  return apiFetch<RecipeSubstitutionPreview>(`/v2/admin/recipes/${recipeId}/substitutions/preview`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export function applyRecipeSubstitution(
+  recipeId: string,
+  input: { fromStockItemId: string; toStockItemId: string; quantityRatio?: number; reason?: string },
+) {
+  return apiFetch<{ applied: boolean; preview: RecipeSubstitutionPreview }>(
+    `/v2/admin/recipes/${recipeId}/substitutions/apply`,
+    {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify(input),
+    },
+  );
 }

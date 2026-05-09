@@ -374,5 +374,37 @@ describe('RecipesService', () => {
     expect(result.id).toBe('loss1');
     expect(prisma.stockMovement.create).toHaveBeenCalled();
   });
+
+  it('gera preview de substituicao e calcula impacto de custo', async () => {
+    const { service, prisma } = createService();
+    prisma.recipe.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      companyId: 'c1',
+      name: 'Receita',
+      type: 'SALE',
+      yieldQuantity: 1,
+      yieldUnit: 'un',
+      lossPercent: 0,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: 'ri1',
+          stockItemId: 's-old',
+          quantity: 1,
+          unit: 'kg',
+          optional: false,
+          affectsStock: true,
+          affectsCost: true,
+          stockItem: { name: 'A', averageCost: 10 },
+        },
+      ],
+    });
+    prisma.stockItem.findUnique.mockResolvedValueOnce({ id: 's-new', companyId: 'c1', name: 'B', averageCost: 12 });
+
+    const result = await service.previewRecipeSubstitution(ctx, 'r1', 's-old', 's-new', 1);
+    expect(result.impact.deltaTotalCost).toBeCloseTo(2);
+  });
 });
 

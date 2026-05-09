@@ -205,5 +205,49 @@ export class RecipesController {
   ) {
     return this.recipesService.registerProductionLoss(ctx, orderId, body.quantity, body.reason);
   }
+
+  @Post(':recipeId/substitutions/preview')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  previewRecipeSubstitution(
+    @CurrentContext() ctx: RequestContext,
+    @Param('recipeId') recipeId: string,
+    @Body()
+    body: {
+      fromStockItemId: string;
+      toStockItemId: string;
+      quantityRatio?: number;
+    },
+  ) {
+    return this.recipesService.previewRecipeSubstitution(
+      ctx,
+      recipeId,
+      body.fromStockItemId,
+      body.toStockItemId,
+      body.quantityRatio,
+    );
+  }
+
+  @Post(':recipeId/substitutions/apply')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  applyRecipeSubstitution(
+    @CurrentContext() ctx: RequestContext,
+    @Param('recipeId') recipeId: string,
+    @Body()
+    body: {
+      fromStockItemId: string;
+      toStockItemId: string;
+      quantityRatio?: number;
+      reason?: string;
+    },
+  ) {
+    return this.recipesService.applyRecipeSubstitution(
+      ctx,
+      recipeId,
+      body.fromStockItemId,
+      body.toStockItemId,
+      body.quantityRatio,
+      body.reason,
+    );
+  }
 }
 
