@@ -324,6 +324,81 @@ export class RecipesService {
     };
   }
 
+  async listProductMargins(
+    ctx: RequestContext,
+    input?: {
+      minMarginPercent?: number;
+    },
+  ) {
+    const minMarginPercent = input?.minMarginPercent;
+    if (minMarginPercent !== undefined && (!Number.isFinite(minMarginPercent) || minMarginPercent < 0 || minMarginPercent > 100)) {
+      throw new BadRequestException('minMarginPercent deve estar entre 0 e 100.');
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: {
+        companyId: ctx.companyId,
+        deletedAt: null,
+        isActive: true,
+        recipeId: { not: null },
+      },
+      orderBy: [{ name: 'asc' }],
+      include: {
+        recipe: {
+          include: {
+            items: { include: { stockItem: true } },
+          },
+        },
+      },
+    });
+
+    const rows = products
+      .filter((product) => product.recipe)
+      .map((product) => {
+        const recipeView = this.mapRecipeWithCost(product.recipe);
+        const costUnit = Number(recipeView.cost.costPerYieldUnit);
+        const salePrice = Number(product.salePrice ?? 0);
+        const promoPrice = product.promotionalPrice === null ? null : Number(product.promotionalPrice ?? 0);
+        const effectiveSalePrice = promoPrice && promoPrice > 0 ? promoPrice : salePrice;
+        const marginValue = effectiveSalePrice - costUnit;
+        const marginPercent = effectiveSalePrice > 0 ? (marginValue / effectiveSalePrice) * 100 : null;
+
+        return {
+          productId: product.id,
+          productName: product.name,
+          recipeId: recipeView.id,
+          salePrice,
+          promotionalPrice: promoPrice,
+          effectiveSalePrice,
+          costPerUnit: costUnit,
+          marginValue,
+          marginPercent,
+          health: marginPercent === null ? 'unknown' : marginPercent < 20 ? 'critical' : marginPercent < 35 ? 'warning' : 'healthy',
+        };
+      })
+      .filter((row) => (minMarginPercent === undefined ? true : row.marginPercent !== null && row.marginPercent <= minMarginPercent))
+      .sort((a, b) => {
+        const av = a.marginPercent ?? -Infinity;
+        const bv = b.marginPercent ?? -Infinity;
+        return av - bv;
+      });
+
+    const summary = rows.reduce(
+      (acc, row) => {
+        if (row.health === 'critical') acc.critical += 1;
+        if (row.health === 'warning') acc.warning += 1;
+        if (row.health === 'healthy') acc.healthy += 1;
+        return acc;
+      },
+      { total: rows.length, critical: 0, warning: 0, healthy: 0 },
+    );
+
+    return {
+      summary,
+      items: rows,
+    };
+  }
+
   async estimateRecipePortioning(
     ctx: RequestContext,
     recipeId: string,

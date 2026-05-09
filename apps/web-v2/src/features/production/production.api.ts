@@ -46,6 +46,24 @@ export interface RecipeSubstitutionPreview {
   };
 }
 
+export interface ProductMarginItem {
+  productId: string;
+  productName: string;
+  recipeId: string;
+  salePrice: number;
+  promotionalPrice: number | null;
+  effectiveSalePrice: number;
+  costPerUnit: number;
+  marginValue: number;
+  marginPercent: number | null;
+  health: 'unknown' | 'critical' | 'warning' | 'healthy';
+}
+
+export interface ProductMarginResponse {
+  summary: { total: number; critical: number; warning: number; healthy: number };
+  items: ProductMarginItem[];
+}
+
 function adminHeaders() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -137,4 +155,12 @@ export function applyRecipeSubstitution(
       body: JSON.stringify(input),
     },
   );
+}
+
+export function listProductMargins(minMarginPercent?: number) {
+  const query = minMarginPercent === undefined ? '' : `?minMarginPercent=${encodeURIComponent(String(minMarginPercent))}`;
+  return apiFetch<ProductMarginResponse>(`/v2/admin/recipes/compositions/products/margins${query}`, {
+    method: 'GET',
+    headers: adminHeaders(),
+  });
 }

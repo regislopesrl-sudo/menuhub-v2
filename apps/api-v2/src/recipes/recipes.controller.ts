@@ -119,6 +119,17 @@ export class RecipesController {
     });
   }
 
+  @Get('compositions/products/margins')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  listProductMargins(
+    @CurrentContext() ctx: RequestContext,
+    @Query('minMarginPercent') minMarginPercent?: string,
+  ) {
+    return this.recipesService.listProductMargins(ctx, {
+      minMarginPercent: minMarginPercent ? Number(minMarginPercent) : undefined,
+    });
+  }
+
   @Post(':recipeId/portioning/estimate')
   @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
   estimatePortioning(

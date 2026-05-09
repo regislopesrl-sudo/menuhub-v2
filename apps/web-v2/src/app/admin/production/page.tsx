@@ -14,12 +14,14 @@ import {
   createProductionOrder,
   finishProductionOrder,
   listProductionLosses,
+  listProductMargins,
   registerProductionLoss,
   listProductionOrders,
   previewRecipeSubstitution,
   type RecipeSubstitutionPreview,
   startProductionOrder,
   type ProductionLossEvent,
+  type ProductMarginResponse,
   type ProductionOrder,
 } from '@/features/production/production.api';
 import styles from './page.module.css';
@@ -60,6 +62,7 @@ export default function AdminProductionPage() {
   const [losses, setLosses] = useState<ProductionLossEvent[]>([]);
   const [substitution, setSubstitution] = useState<SubstitutionForm>(INITIAL_SUBSTITUTION);
   const [subPreview, setSubPreview] = useState<RecipeSubstitutionPreview | null>(null);
+  const [margins, setMargins] = useState<ProductMarginResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -71,6 +74,8 @@ export default function AdminProductionPage() {
       setOrders(Array.isArray(data) ? data : []);
       const lossData = await listProductionLosses();
       setLosses(Array.isArray(lossData) ? lossData : []);
+      const marginData = await listProductMargins();
+      setMargins(marginData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar ordens.');
     } finally {
@@ -280,6 +285,25 @@ export default function AdminProductionPage() {
         </Card>
       </section>
 
+      <section className={styles.summaryGrid}>
+        <Card className={styles.summaryCard}>
+          <span>Margem crítica</span>
+          <strong>{margins?.summary.critical ?? 0}</strong>
+        </Card>
+        <Card className={styles.summaryCard}>
+          <span>Margem alerta</span>
+          <strong>{margins?.summary.warning ?? 0}</strong>
+        </Card>
+        <Card className={styles.summaryCard}>
+          <span>Margem saudável</span>
+          <strong>{margins?.summary.healthy ?? 0}</strong>
+        </Card>
+        <Card className={styles.summaryCard}>
+          <span>Produtos com ficha</span>
+          <strong>{margins?.summary.total ?? 0}</strong>
+        </Card>
+      </section>
+
       <Card className={styles.panel}>
         <div className={styles.panelHeader}>
           <h2>Nova ordem de produção</h2>
@@ -424,6 +448,33 @@ export default function AdminProductionPage() {
             </div>
           </Card>
         ) : null}
+      </Card>
+
+      <Card className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <h2>Margem por produto (Bloco 28)</h2>
+          <Badge>{margins?.summary.total ?? 0} produtos</Badge>
+        </div>
+        <div className={styles.list}>
+          {!margins || margins.items.length === 0 ? (
+            <Card className={styles.orderCard}>Sem produtos com ficha técnica para análise de margem.</Card>
+          ) : (
+            margins.items.map((item) => (
+              <article key={item.productId} className={styles.orderCard}>
+                <div className={styles.orderTop}>
+                  <strong>{item.productName}</strong>
+                  <Badge>{item.health}</Badge>
+                </div>
+                <div className={styles.orderMeta}>
+                  <span>Preço venda: R$ {item.effectiveSalePrice.toFixed(2)}</span>
+                  <span>Custo unitário: R$ {item.costPerUnit.toFixed(2)}</span>
+                  <span>Margem: R$ {item.marginValue.toFixed(2)}</span>
+                  <span>Margem %: {item.marginPercent === null ? '-' : `${item.marginPercent.toFixed(2)}%`}</span>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
       </Card>
     </main>
   );
