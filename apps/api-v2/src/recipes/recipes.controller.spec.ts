@@ -13,9 +13,14 @@ describe('RecipesController', () => {
     estimateRecipePortioning: jest.fn(),
     getRecipeCostBreakdown: jest.fn(),
     getProductSoldCost: jest.fn(),
+    listProductionOrders: jest.fn(),
+    createProductionOrder: jest.fn(),
+    startProductionOrder: jest.fn(),
+    finishProductionOrder: jest.fn(),
+    cancelProductionOrder: jest.fn(),
   };
   const controller = new RecipesController(service as never);
-  const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
+  const ctx = { companyId: 'c1', branchId: 'b1', userRole: 'admin', requestId: 'r1' } as any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -70,6 +75,22 @@ describe('RecipesController', () => {
     service.getProductSoldCost.mockResolvedValueOnce({ productId: 'p1', cost: { soldCost: 12 } });
     await controller.getProductSoldCost(ctx, 'p1', '1');
     expect(service.getProductSoldCost).toHaveBeenCalledWith(ctx, 'p1', { portionQuantity: 1 });
+  });
+
+  it('cria ordem de producao interna', async () => {
+    service.createProductionOrder.mockResolvedValueOnce({ id: 'po1' });
+    await controller.createProductionOrder(ctx, { stockItemId: 's1', recipeId: 'r1', plannedQuantity: 10 });
+    expect(service.createProductionOrder).toHaveBeenCalledWith(ctx, {
+      stockItemId: 's1',
+      recipeId: 'r1',
+      plannedQuantity: 10,
+    });
+  });
+
+  it('finaliza ordem de producao', async () => {
+    service.finishProductionOrder.mockResolvedValueOnce({ id: 'po1', status: 'FINISHED' });
+    await controller.finishProductionOrder(ctx, 'po1', { actualQuantity: 9.5 });
+    expect(service.finishProductionOrder).toHaveBeenCalledWith(ctx, 'po1', 9.5);
   });
 });
 

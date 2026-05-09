@@ -139,5 +139,51 @@ export class RecipesController {
   getRecipeCostBreakdown(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
     return this.recipesService.getRecipeCostBreakdown(ctx, recipeId);
   }
+
+  @Get('production-orders')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  listProductionOrders(@CurrentContext() ctx: RequestContext) {
+    return this.recipesService.listProductionOrders(ctx);
+  }
+
+  @Post('production-orders')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  createProductionOrder(
+    @CurrentContext() ctx: RequestContext,
+    @Body()
+    body: {
+      stockItemId: string;
+      recipeId?: string | null;
+      plannedQuantity: number;
+    },
+  ) {
+    return this.recipesService.createProductionOrder(ctx, body);
+  }
+
+  @Patch('production-orders/:orderId/start')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  startProductionOrder(@CurrentContext() ctx: RequestContext, @Param('orderId') orderId: string) {
+    return this.recipesService.startProductionOrder(ctx, orderId);
+  }
+
+  @Patch('production-orders/:orderId/finish')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  finishProductionOrder(
+    @CurrentContext() ctx: RequestContext,
+    @Param('orderId') orderId: string,
+    @Body() body: { actualQuantity?: number },
+  ) {
+    return this.recipesService.finishProductionOrder(ctx, orderId, body.actualQuantity);
+  }
+
+  @Patch('production-orders/:orderId/cancel')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  cancelProductionOrder(
+    @CurrentContext() ctx: RequestContext,
+    @Param('orderId') orderId: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.recipesService.cancelProductionOrder(ctx, orderId, body.reason);
+  }
 }
 
