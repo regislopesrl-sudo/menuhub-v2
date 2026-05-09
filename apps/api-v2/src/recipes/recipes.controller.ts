@@ -121,5 +121,11 @@ export class RecipesController {
   ) {
     return this.recipesService.estimateRecipePortioning(ctx, recipeId, body);
   }
+
+  @Get(':recipeId/cost-breakdown')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  getRecipeCostBreakdown(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
+    return this.recipesService.getRecipeCostBreakdown(ctx, recipeId);
+  }
 }
 

@@ -11,6 +11,7 @@ describe('RecipesController', () => {
     getProductComposition: jest.fn(),
     setProductRecipe: jest.fn(),
     estimateRecipePortioning: jest.fn(),
+    getRecipeCostBreakdown: jest.fn(),
   };
   const controller = new RecipesController(service as never);
   const ctx = { companyId: 'c1', userRole: 'admin', requestId: 'r1' } as any;
@@ -56,6 +57,12 @@ describe('RecipesController', () => {
       portionQuantity: 0.25,
       portionUnit: 'kg',
     });
+  });
+
+  it('retorna breakdown de custo da ficha tecnica', async () => {
+    service.getRecipeCostBreakdown.mockResolvedValueOnce({ summary: { totalCost: 10 } });
+    await controller.getRecipeCostBreakdown(ctx, 'r1');
+    expect(service.getRecipeCostBreakdown).toHaveBeenCalledWith(ctx, 'r1');
   });
 });
 
