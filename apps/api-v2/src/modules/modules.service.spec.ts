@@ -77,6 +77,44 @@ describe('ModulesService', () => {
     expect(orders?.planKey).toBe('pro');
   });
 
+  it('permite modulo quando assinatura está em TRIAL', async () => {
+    const prismaMock = {
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          planId: 'plan_trial',
+          plan: { key: 'basic' },
+          status: 'TRIAL',
+        }),
+      },
+      companyModuleOverride: { findMany: jest.fn().mockResolvedValue([]) },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
+      },
+      plan: { findMany: jest.fn() },
+    } as any;
+
+    const service = new ModulesService(prismaMock);
+    const access = await service.checkAccess({ companyId: 'c1', moduleKey: 'orders', isAdmin: true });
+    expect(access.allowed).toBe(true);
+  });
+
+  it('bloqueia modulo quando assinatura está PAST_DUE', async () => {
+    const prismaMock = {
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      companyModuleOverride: { findMany: jest.fn().mockResolvedValue([]) },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      plan: { findMany: jest.fn() },
+    } as any;
+
+    const service = new ModulesService(prismaMock);
+    const access = await service.checkAccess({ companyId: 'c1', moduleKey: 'orders', isAdmin: true });
+    expect(access.allowed).toBe(false);
+  });
+
   it('createPlan bloqueia modulo duplicado na configuracao', async () => {
     const prismaMock = {
       plan: { create: jest.fn() },
