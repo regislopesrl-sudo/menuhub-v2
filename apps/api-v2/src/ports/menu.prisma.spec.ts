@@ -507,4 +507,79 @@ describe('MenuPrismaPort', () => {
       price: 7,
     });
   });
+
+  it('grupo opcional permite zero selecao', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        deletedAt: null,
+        addonLinks: [
+          {
+            addonGroup: {
+              id: 'grp_optional',
+              name: 'Molhos opcionais',
+              minSelect: 0,
+              maxSelect: 2,
+              required: false,
+              allowMultiple: true,
+              items: [{ id: 'add_1', name: 'Barbecue', price: 2 }],
+            },
+          },
+        ],
+      },
+    ]);
+
+    const result = await port.validateItems({
+      companyId: 'company_a',
+      storeId: 'store_1',
+      channel: 'delivery',
+      items: [{ productId: 'p1', quantity: 1, selectedOptions: [] }],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].selectedOptions).toEqual([]);
+  });
+
+  it('PDV aplica as mesmas regras de grupos de adicionais', async () => {
+    const { port } = makePortWithProducts([
+      {
+        id: 'p1',
+        name: 'Pizza',
+        salePrice: 50,
+        promotionalPrice: null,
+        deliveryPickupPrice: 0,
+        isActive: true,
+        availableDelivery: true,
+        deletedAt: null,
+        addonLinks: [
+          {
+            addonGroup: {
+              id: 'grp_req_pdv',
+              name: 'Escolha obrigatoria',
+              minSelect: 1,
+              maxSelect: 1,
+              required: true,
+              allowMultiple: false,
+              items: [{ id: 'add_1', name: 'Cheddar', price: 4 }],
+            },
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      port.validateItems({
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'pdv',
+        items: [{ productId: 'p1', quantity: 1, selectedOptions: [] }],
+      }),
+    ).rejects.toThrow("Grupo obrigatorio 'Escolha obrigatoria'");
+  });
 });
