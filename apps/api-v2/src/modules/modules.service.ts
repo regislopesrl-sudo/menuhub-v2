@@ -445,6 +445,7 @@ export class ModulesService {
   ): void {
     if (!modules) return;
     const seen = new Set<string>();
+    let enabledCount = 0;
     for (const item of modules) {
       const moduleKey = String(item?.moduleKey ?? '').trim() as ModuleKey;
       if (!moduleKey) {
@@ -457,6 +458,12 @@ export class ModulesService {
         throw new BadRequestException(`Modulo '${moduleKey}' duplicado na configuracao do plano.`);
       }
       seen.add(moduleKey);
+      if (item.enabled ?? true) {
+        enabledCount += 1;
+      }
+    }
+    if (modules.length > 0 && enabledCount === 0) {
+      throw new BadRequestException('Plano deve possuir ao menos um modulo habilitado.');
     }
   }
 
