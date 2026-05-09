@@ -19,6 +19,18 @@ export interface ProductionOrder {
   recipe?: { id: string; name: string; yieldQuantity?: number; yieldUnit?: string } | null;
 }
 
+export interface ProductionLossEvent {
+  id: string;
+  sourceId: string | null;
+  stockItemId: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  reasonCode: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 function adminHeaders() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -69,5 +81,20 @@ export function cancelProductionOrder(orderId: string, reason: string) {
     method: 'PATCH',
     headers: adminHeaders(),
     body: JSON.stringify({ reason }),
+  });
+}
+
+export function listProductionLosses() {
+  return apiFetch<ProductionLossEvent[]>('/v2/admin/recipes/production-losses', {
+    method: 'GET',
+    headers: adminHeaders(),
+  });
+}
+
+export function registerProductionLoss(orderId: string, input: { quantity: number; reason?: string }) {
+  return apiFetch<ProductionLossEvent>(`/v2/admin/recipes/production-orders/${orderId}/loss`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(input),
   });
 }

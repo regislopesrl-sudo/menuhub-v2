@@ -570,6 +570,90 @@ export class RecipesService {
     });
   }
 
+  async listProductionLosses(ctx: RequestContext) {
+    if (!ctx.branchId) {
+      throw new BadRequestException('branchId obrigatorio para listar perdas de preparo.');
+    }
+    return this.prisma.stockMovement.findMany({
+      where: {
+        branchId: ctx.branchId,
+        movementType: 'LOSS',
+        sourceModule: 'production',
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      take: 200,
+      select: {
+        id: true,
+        sourceId: true,
+        stockItemId: true,
+        quantity: true,
+        unitCost: true,
+        totalCost: true,
+        reasonCode: true,
+        notes: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async registerProductionLoss(ctx: RequestContext, orderId: string, quantity: number, reason?: string) {
+    const order = await this.assertProductionOrderScope(ctx, orderId);
+    if (!['PLANNED', 'IN_PROGRESS', 'FINISHED'].includes(order.status)) {
+      throw new BadRequestException('Status da ordem nao permite registrar perda.');
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new BadRequestException('quantity deve ser maior que zero.');
+    }
+
+    const recipe = order.recipeId
+      ? await this.prisma.recipe.findUnique({
+          where: { id: order.recipeId },
+          include: {
+            items: {
+              include: { stockItem: true },
+            },
+          },
+        })
+      : null;
+
+    let unitCost = 0;
+    if (recipe && recipe.companyId === ctx.companyId) {
+      const mapped = this.mapRecipeWithCost(recipe);
+      const yieldQuantity = Number(mapped.yieldQuantity || 0);
+      unitCost = yieldQuantity > 0 ? mapped.cost.totalCost / yieldQuantity : 0;
+    }
+
+    const totalCost = unitCost * quantity;
+    return this.prisma.stockMovement.create({
+      data: {
+        stockItemId: order.stockItemId,
+        branchId: order.branchId,
+        movementType: 'LOSS',
+        movementTypeDetailed: 'production_loss',
+        sourceModule: 'production',
+        sourceId: order.id,
+        quantity,
+        unitCost,
+        totalCost,
+        reasonCode: 'PREP_LOSS',
+        notes: reason?.trim() ? reason.trim() : null,
+        actorId: ctx.userId ?? null,
+        requestId: ctx.requestId ?? null,
+      },
+      select: {
+        id: true,
+        sourceId: true,
+        stockItemId: true,
+        quantity: true,
+        unitCost: true,
+        totalCost: true,
+        reasonCode: true,
+        notes: true,
+        createdAt: true,
+      },
+    });
+  }
+
   private async assertProductionOrderScope(ctx: RequestContext, orderId: string) {
     if (!ctx.branchId) {
       throw new BadRequestException('branchId obrigatorio para producao interna.');

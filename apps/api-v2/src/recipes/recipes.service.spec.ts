@@ -31,6 +31,10 @@ describe('RecipesService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      stockMovement: {
+        findMany: jest.fn(),
+        create: jest.fn(),
+      },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     } as any;
 
@@ -328,6 +332,47 @@ describe('RecipesService', () => {
     await service.startProductionOrder(ctx, 'po1');
     const done = await service.finishProductionOrder(ctx, 'po1', 9.5);
     expect(done?.id).toBe('po1');
+  });
+
+  it('registra perda de preparo com custo estimado da receita', async () => {
+    const { service, prisma } = createService();
+    prisma.productionOrder.findUnique.mockResolvedValueOnce({
+      id: 'po1',
+      status: 'IN_PROGRESS',
+      branchId: 'b1',
+      stockItemId: 's-out',
+      recipeId: 'r1',
+      branch: { id: 'b1', companyId: 'c1' },
+    });
+    prisma.recipe.findUnique.mockResolvedValueOnce({
+      id: 'r1',
+      companyId: 'c1',
+      name: 'Massa',
+      type: 'PRODUCTION',
+      yieldQuantity: 10,
+      yieldUnit: 'kg',
+      lossPercent: 0,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      items: [
+        {
+          id: 'ri1',
+          stockItemId: 's1',
+          quantity: 2,
+          unit: 'kg',
+          optional: false,
+          affectsStock: true,
+          affectsCost: true,
+          stockItem: { name: 'Farinha', averageCost: 10 },
+        },
+      ],
+    });
+    prisma.stockMovement.create.mockResolvedValueOnce({ id: 'loss1', quantity: 1 });
+
+    const result = await service.registerProductionLoss(ctx, 'po1', 1, 'teste');
+    expect(result.id).toBe('loss1');
+    expect(prisma.stockMovement.create).toHaveBeenCalled();
   });
 });
 
