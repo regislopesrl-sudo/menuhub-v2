@@ -59,6 +59,18 @@
   font-weight: 800;
 }
 
+.successBox {
+  border: 1px solid #86efac;
+  background: linear-gradient(135deg, #f0fdf4, #f7fee7);
+  color: #14532d;
+  border-radius: 18px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -48,6 +48,14 @@ export interface KdsOrderCardDto {
   }>;
 }
 
+export interface KdsPrintTicketDto {
+  orderId: string;
+  orderNumber: string;
+  station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  printedAt: string;
+  content: string;
+}
+
 @Injectable()
 export class KdsService {
   constructor(
@@ -139,6 +147,32 @@ export class KdsService {
 
   async bumpOrder(id: string, ctx: RequestContext): Promise<KdsOrderCardDto> {
     return this.updateKdsOrderStatus(id, 'FINALIZED', ctx);
+  }
+
+  async printKitchenTicket(id: string, ctx: RequestContext): Promise<KdsPrintTicketDto> {
+    const detail = await this.ordersService.getById(id, ctx);
+    const station = this.resolveStation(detail.channel ?? 'unknown');
+    const lines = [
+      `COMANDA COZINHA - ${detail.orderNumber}`,
+      `Canal: ${detail.channel ?? 'unknown'}`,
+      `Status: ${detail.status}`,
+      `Estacao: ${station}`,
+      '--- Itens ---',
+      ...detail.items.map((item) => {
+        const opts = item.selectedOptions?.length
+          ? ` (+ ${item.selectedOptions.map((opt) => opt.name).join(', ')})`
+          : '';
+        return `${item.quantity}x ${item.name}${opts}`;
+      }),
+    ];
+
+    return {
+      orderId: detail.id,
+      orderNumber: detail.orderNumber,
+      station,
+      printedAt: new Date().toISOString(),
+      content: lines.join('\n'),
+    };
   }
 
   private async updateKdsOrderStatus(

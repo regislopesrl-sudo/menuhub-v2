@@ -75,6 +75,14 @@ export async function listKdsOrders(
   });
 }
 
+export interface KdsPrintTicket {
+  orderId: string;
+  orderNumber: string;
+  station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  printedAt: string;
+  content: string;
+}
+
 export async function startKdsOrder(id: string, headers: OrdersHeaders): Promise<KdsOrderCard> {
   return patchKdsOrder(`/v2/kds/orders/${id}/start`, headers);
 }
@@ -85,6 +93,13 @@ export async function readyKdsOrder(id: string, headers: OrdersHeaders): Promise
 
 export async function bumpKdsOrder(id: string, headers: OrdersHeaders): Promise<KdsOrderCard> {
   return patchKdsOrder(`/v2/kds/orders/${id}/bump`, headers);
+}
+
+export async function printKdsOrder(id: string, headers: OrdersHeaders): Promise<KdsPrintTicket> {
+  return apiFetch<KdsPrintTicket>(`/v2/kds/orders/${id}/print`, {
+    method: 'POST',
+    headers: buildHeaders(headers),
+  });
 }
 
 async function patchKdsOrder(path: string, headers: OrdersHeaders): Promise<KdsOrderCard> {
