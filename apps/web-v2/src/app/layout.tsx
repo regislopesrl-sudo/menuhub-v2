@@ -1,8 +1,10 @@
-import './globals.css';
+﻿import './globals.css';
 import type { ReactNode } from 'react';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { AppShell } from '@/components/app-shell';
 import { TopNav } from '@/components/top-nav';
+import { PwaRegister } from '@/components/pwa-register';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -10,15 +12,25 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
-export const metadata = {
-  title: 'Web V2 - Admin Orders',
-  description: 'Painel mínimo de pedidos V2',
+export const metadata: Metadata = {
+  title: 'MenuHub Platform',
+  description: 'Operacao local de restaurante com canais Totem e App Garcom.',
+  manifest: '/manifest.webmanifest',
+  applicationName: 'MenuHub',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#2557f6',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">
       <body className={inter.variable}>
+        <PwaRegister />
         <AppShell>
           <TopNav />
           {children}
@@ -27,4 +39,3 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     </html>
   );
 }
-
