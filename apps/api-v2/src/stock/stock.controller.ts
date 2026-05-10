@@ -27,6 +27,8 @@ export class StockController {
       code?: string;
       purchaseUnit?: string;
       stockUnit?: string;
+      productionUnit?: string;
+      conversionFactor?: number;
       minimumQuantity?: number;
       reorderPoint?: number;
       averageCost?: number;
@@ -43,6 +45,22 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   updateItem(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: Record<string, unknown>) {
     return this.stockService.updateItem(ctx, id, body as any);
+  }
+
+  @Get('items/:id/batches')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listBatches(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.stockService.listBatches(ctx, id);
+  }
+
+  @Post('items/:id/batches')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  createBatch(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Body() body: { batchNumber?: string; expirationDate?: string; receivedDate?: string; initialQuantity: number; unitCost?: number; notes?: string },
+  ) {
+    return this.stockService.createBatch(ctx, { ...body, stockItemId: id });
   }
 
   @Get('movements')
@@ -76,6 +94,15 @@ export class StockController {
     @Body() body: { counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>; notes?: string },
   ) {
     return this.stockService.applyInventoryCount(ctx, body);
+  }
+
+  @Post('conversions/estimate')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  estimateConversion(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { stockItemId: string; quantity: number; fromUnit: string; toUnit: string },
+  ) {
+    return this.stockService.estimateUnitConversion(ctx, body);
   }
 
   @Get('alerts/breakage')

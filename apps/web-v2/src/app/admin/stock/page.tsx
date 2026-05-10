@@ -10,7 +10,10 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
   createStockItem,
+  createStockBatch,
+  estimateStockConversion,
   listStockItems,
+  listStockBatches,
   listStockMovements,
   listStockBreakageAlerts,
   stockManualEntry,
@@ -19,6 +22,7 @@ import {
   applyInventoryCounts,
   type StockItem,
   type StockBreakageAlert,
+  type StockBatch,
   type StockMovement,
 } from '@/features/stock/stock.api';
 import styles from './page.module.css';
@@ -27,6 +31,7 @@ export default function AdminStockPage() {
   const [items, setItems] = useState<StockItem[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [alerts, setAlerts] = useState<StockBreakageAlert[]>([]);
+  const [batches, setBatches] = useState<StockBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +47,13 @@ export default function AdminStockPage() {
   const [moveReason, setMoveReason] = useState('manual');
   const [countedQty, setCountedQty] = useState('');
   const [lossQty, setLossQty] = useState('');
+  const [batchNumber, setBatchNumber] = useState('');
+  const [batchExpiration, setBatchExpiration] = useState('');
+  const [batchQty, setBatchQty] = useState('');
+  const [convQty, setConvQty] = useState('1');
+  const [convFrom, setConvFrom] = useState('un');
+  const [convTo, setConvTo] = useState('un');
+  const [convResult, setConvResult] = useState<string | null>(null);
 
   const selected = useMemo(() => items.find((it) => it.id === selectedItemId) ?? null, [items, selectedItemId]);
 
@@ -62,6 +74,19 @@ export default function AdminStockPage() {
       setError(err instanceof Error ? err.message : 'Falha ao carregar estoque.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadBatches(itemId: string) {
+    if (!itemId) {
+      setBatches([]);
+      return;
+    }
+    try {
+      const list = await listStockBatches(itemId);
+      setBatches(list);
+    } catch {
+      setBatches([]);
     }
   }
 
@@ -101,6 +126,11 @@ export default function AdminStockPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (!selectedItemId) return;
+    void loadBatches(selectedItemId);
+  }, [selectedItemId]);
+
   async function onCreateItem(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -110,6 +140,8 @@ export default function AdminStockPage() {
         name: itemName,
         stockUnit: itemUnit,
         purchaseUnit: itemUnit,
+        productionUnit: itemUnit,
+        conversionFactor: 1,
         averageCost: Number(itemCost || '0'),
       });
       setItems((prev) => [created, ...prev]);
@@ -118,6 +150,52 @@ export default function AdminStockPage() {
       setNotice('Item de estoque criado.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar item.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitBatch() {
+    if (!selectedItemId) return setError('Selecione um item.');
+    const quantity = Number(batchQty || '0');
+    if (!Number.isFinite(quantity) || quantity <= 0) return setError('Quantidade de lote invalida.');
+    setSaving(true);
+    setError(null);
+    try {
+      await createStockBatch(selectedItemId, {
+        batchNumber: batchNumber || undefined,
+        expirationDate: batchExpiration || undefined,
+        initialQuantity: quantity,
+        unitCost: Number(moveCost || '0') || undefined,
+      });
+      setBatchNumber('');
+      setBatchExpiration('');
+      setBatchQty('');
+      await load();
+      await loadBatches(selectedItemId);
+      setNotice('Lote registrado com sucesso.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registrar lote.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runConversionEstimate() {
+    if (!selectedItemId) return setError('Selecione um item.');
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await estimateStockConversion({
+        stockItemId: selectedItemId,
+        quantity: Number(convQty || '0'),
+        fromUnit: convFrom,
+        toUnit: convTo,
+      });
+      setConvResult(`${result.inputQuantity} ${result.fromUnit} = ${result.convertedQuantity} ${result.toUnit}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao estimar conversao.');
+      setConvResult(null);
     } finally {
       setSaving(false);
     }
@@ -269,6 +347,43 @@ export default function AdminStockPage() {
               </div>
             ))}
           </div>
+        </Card>
+
+        <Card className={styles.card}>
+          <h2>Lotes e validade</h2>
+          <div className={styles.formRow}>
+            <Input placeholder="Numero do lote" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} />
+            <Input placeholder="Validade (YYYY-MM-DD)" value={batchExpiration} onChange={(e) => setBatchExpiration(e.target.value)} />
+            <Input placeholder="Quantidade lote" value={batchQty} onChange={(e) => setBatchQty(e.target.value)} />
+            <Button disabled={saving || !selectedItemId} onClick={() => void submitBatch()}>
+              Registrar lote
+            </Button>
+          </div>
+          <div className={styles.itemsList}>
+            {batches.length === 0 ? <EmptyState title="Sem lotes" description="Cadastre o primeiro lote do item." /> : null}
+            {batches.map((batch) => (
+              <div key={batch.id} className={styles.row}>
+                <strong>Lote {batch.batchNumber ?? '-'}</strong>
+                <div className={styles.meta}>
+                  <span>Validade: {batch.expirationDate ? new Date(batch.expirationDate).toLocaleDateString('pt-BR') : '-'}</span>
+                  <span>Inicial: {Number(batch.initialQuantity).toFixed(3)}</span>
+                  <span>Saldo: {Number(batch.quantityRemaining).toFixed(3)}</span>
+                  <span>Status: {batch.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h3>Conversao de unidade</h3>
+          <div className={styles.formRow}>
+            <Input placeholder="Quantidade" value={convQty} onChange={(e) => setConvQty(e.target.value)} />
+            <Input placeholder="De unidade" value={convFrom} onChange={(e) => setConvFrom(e.target.value)} />
+            <Input placeholder="Para unidade" value={convTo} onChange={(e) => setConvTo(e.target.value)} />
+            <Button disabled={saving || !selectedItemId} onClick={() => void runConversionEstimate()}>
+              Estimar
+            </Button>
+          </div>
+          {convResult ? <Badge tone="success">{convResult}</Badge> : null}
         </Card>
       </section>
     </main>

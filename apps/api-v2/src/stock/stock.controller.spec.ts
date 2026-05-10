@@ -9,6 +9,9 @@ describe('StockController', () => {
     manualEntry: jest.fn(),
     manualExit: jest.fn(),
     applyInventoryCount: jest.fn(),
+    listBatches: jest.fn(),
+    createBatch: jest.fn(),
+    estimateUnitConversion: jest.fn(),
     listBreakageAlerts: jest.fn(),
     registerLoss: jest.fn(),
   };
@@ -45,5 +48,28 @@ describe('StockController', () => {
     service.listBreakageAlerts.mockResolvedValueOnce([{ stockItemId: 's1' }]);
     const result = await controller.listBreakageAlerts(ctx);
     expect(result).toEqual([{ stockItemId: 's1' }]);
+  });
+
+  it('lista lotes de item', async () => {
+    service.listBatches.mockResolvedValueOnce([{ id: 'b1' }]);
+    const result = await controller.listBatches(ctx, 's1');
+    expect(result).toEqual([{ id: 'b1' }]);
+    expect(service.listBatches).toHaveBeenCalledWith(ctx, 's1');
+  });
+
+  it('cria lote de item', async () => {
+    const payload = { initialQuantity: 4, unitCost: 2 };
+    service.createBatch.mockResolvedValueOnce({ id: 'b1' });
+    const result = await controller.createBatch(ctx, 's1', payload as any);
+    expect(result).toEqual({ id: 'b1' });
+    expect(service.createBatch).toHaveBeenCalledWith(ctx, { ...payload, stockItemId: 's1' });
+  });
+
+  it('estima conversao de unidade', async () => {
+    const payload = { stockItemId: 's1', quantity: 2, fromUnit: 'cx', toUnit: 'un' };
+    service.estimateUnitConversion.mockResolvedValueOnce({ convertedQuantity: 24 });
+    const result = await controller.estimateConversion(ctx, payload);
+    expect(result).toEqual({ convertedQuantity: 24 });
+    expect(service.estimateUnitConversion).toHaveBeenCalledWith(ctx, payload);
   });
 });

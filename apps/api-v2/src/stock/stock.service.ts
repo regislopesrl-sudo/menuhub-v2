@@ -7,6 +7,8 @@ export type StockItemInput = {
   code?: string;
   purchaseUnit?: string;
   stockUnit?: string;
+  productionUnit?: string;
+  conversionFactor?: number;
   minimumQuantity?: number;
   reorderPoint?: number;
   averageCost?: number;
@@ -29,6 +31,16 @@ export type StockLossInput = {
   quantity: number;
   unitCost?: number;
   reasonCode?: string;
+  notes?: string;
+};
+
+export type StockBatchInput = {
+  stockItemId: string;
+  batchNumber?: string;
+  expirationDate?: string;
+  receivedDate?: string;
+  initialQuantity: number;
+  unitCost?: number;
   notes?: string;
 };
 
@@ -70,6 +82,11 @@ export class StockService {
     const name = String(input.name ?? '').trim();
     if (!name) throw new BadRequestException('name obrigatorio.');
 
+    const conversionFactor = input.conversionFactor === undefined ? 1 : Number(input.conversionFactor);
+    if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+      throw new BadRequestException('conversionFactor deve ser maior que zero.');
+    }
+
     return this.prisma.stockItem.create({
       data: {
         companyId: ctx.companyId,
@@ -77,6 +94,8 @@ export class StockService {
         code: this.clean(input.code),
         purchaseUnit: this.clean(input.purchaseUnit),
         stockUnit: this.clean(input.stockUnit) ?? 'un',
+        productionUnit: this.clean(input.productionUnit),
+        conversionFactor: this.decimal(conversionFactor),
         minimumQuantity: this.decimal(input.minimumQuantity ?? 0),
         reorderPoint: this.decimal(input.reorderPoint ?? 0),
         averageCost: this.decimal(input.averageCost ?? 0),
@@ -103,6 +122,14 @@ export class StockService {
     if (input.code !== undefined) payload.code = this.clean(input.code);
     if (input.purchaseUnit !== undefined) payload.purchaseUnit = this.clean(input.purchaseUnit);
     if (input.stockUnit !== undefined) payload.stockUnit = this.clean(input.stockUnit);
+    if (input.productionUnit !== undefined) payload.productionUnit = this.clean(input.productionUnit);
+    if (input.conversionFactor !== undefined) {
+      const conversionFactor = Number(input.conversionFactor);
+      if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+        throw new BadRequestException('conversionFactor deve ser maior que zero.');
+      }
+      payload.conversionFactor = this.decimal(conversionFactor);
+    }
     if (input.minimumQuantity !== undefined) payload.minimumQuantity = this.decimal(input.minimumQuantity);
     if (input.reorderPoint !== undefined) payload.reorderPoint = this.decimal(input.reorderPoint);
     if (input.averageCost !== undefined) payload.averageCost = this.decimal(input.averageCost);
@@ -165,6 +192,150 @@ export class StockService {
       movementType: 'LOSS',
     });
     return result;
+  }
+
+  async listBatches(ctx: RequestContext, stockItemId: string) {
+    const item = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
+    if (!item || item.companyId !== ctx.companyId) throw new NotFoundException('Item de estoque nao encontrado.');
+
+    return this.prisma.stockBatch.findMany({
+      where: { stockItemId },
+      orderBy: [{ expirationDate: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        stockItemId: true,
+        batchNumber: true,
+        receivedDate: true,
+        expirationDate: true,
+        initialQuantity: true,
+        quantityRemaining: true,
+        unitCost: true,
+        status: true,
+        sanitaryNotes: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async createBatch(ctx: RequestContext, input: StockBatchInput) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio.');
+    const initialQuantity = Number(input.initialQuantity ?? 0);
+    if (!Number.isFinite(initialQuantity) || initialQuantity <= 0) {
+      throw new BadRequestException('initialQuantity deve ser maior que zero.');
+    }
+
+    const item = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
+    if (!item || item.companyId !== ctx.companyId) throw new NotFoundException('Item de estoque nao encontrado.');
+
+    const unitCost = Number(input.unitCost ?? item.averageCost ?? 0);
+    if (!Number.isFinite(unitCost) || unitCost < 0) throw new BadRequestException('unitCost invalido.');
+
+    const expirationDate = input.expirationDate ? new Date(input.expirationDate) : null;
+    const receivedDate = input.receivedDate ? new Date(input.receivedDate) : new Date();
+    if (expirationDate && Number.isNaN(expirationDate.getTime())) throw new BadRequestException('expirationDate invalida.');
+    if (receivedDate && Number.isNaN(receivedDate.getTime())) throw new BadRequestException('receivedDate invalida.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.stockBatch.create({
+        data: {
+          stockItemId,
+          branchId: ctx.branchId,
+          batchNumber: this.clean(input.batchNumber),
+          receivedDate,
+          expirationDate,
+          initialQuantity: this.decimal(initialQuantity),
+          quantityRemaining: this.decimal(initialQuantity),
+          unitCost: this.decimal(unitCost),
+          sanitaryNotes: this.clean(input.notes),
+        },
+      });
+
+      const previous = Number(item.currentQuantity);
+      const next = previous + initialQuantity;
+      await tx.stockItem.update({
+        where: { id: stockItemId },
+        data: {
+          currentQuantity: this.decimal(next),
+          averageCost: this.decimal(unitCost),
+          lastCost: this.decimal(unitCost),
+          controlsBatch: true,
+        },
+      });
+
+      if (ctx.branchId) {
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId: ctx.branchId, stockItemId } },
+          update: { currentQuantity: this.decimal(next), companyId: ctx.companyId },
+          create: { branchId: ctx.branchId, stockItemId, companyId: ctx.companyId, currentQuantity: this.decimal(next) },
+        });
+      }
+
+      await tx.stockMovement.create({
+        data: {
+          stockItemId,
+          branchId: ctx.branchId,
+          batchId: batch.id,
+          movementType: 'ENTRY',
+          movementTypeDetailed: 'batch_entry',
+          sourceModule: 'admin_stock_batch',
+          sourceId: ctx.requestId,
+          actorId: ctx.userId,
+          requestId: ctx.requestId,
+          quantity: this.decimal(initialQuantity),
+          unitCost: this.decimal(unitCost),
+          totalCost: this.decimal(initialQuantity * unitCost),
+          previousStock: this.decimal(previous),
+          newStock: this.decimal(next),
+          reasonCode: 'batch_entry',
+          notes: this.clean(input.notes),
+        },
+      });
+
+      return batch;
+    });
+  }
+
+  async estimateUnitConversion(ctx: RequestContext, input: { stockItemId: string; quantity: number; fromUnit: string; toUnit: string }) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    const fromUnit = String(input.fromUnit ?? '').trim().toLowerCase();
+    const toUnit = String(input.toUnit ?? '').trim().toLowerCase();
+    const quantity = Number(input.quantity ?? 0);
+    if (!stockItemId || !fromUnit || !toUnit) throw new BadRequestException('stockItemId, fromUnit e toUnit obrigatorios.');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('quantity deve ser maior que zero.');
+
+    const item = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
+    if (!item || item.companyId !== ctx.companyId) throw new NotFoundException('Item de estoque nao encontrado.');
+    const purchaseUnit = String(item.purchaseUnit ?? '').trim().toLowerCase();
+    const stockUnit = String(item.stockUnit ?? '').trim().toLowerCase();
+    const productionUnit = String(item.productionUnit ?? '').trim().toLowerCase();
+    const conversionFactor = Number(item.conversionFactor ?? 1);
+
+    const toStock = (qty: number, unit: string): number => {
+      if (unit === stockUnit) return qty;
+      if (purchaseUnit && unit === purchaseUnit) return qty * conversionFactor;
+      if (productionUnit && unit === productionUnit) return qty;
+      throw new BadRequestException('Unidade origem nao suportada para este item.');
+    };
+
+    const fromStock = (qty: number, unit: string): number => {
+      if (unit === stockUnit) return qty;
+      if (purchaseUnit && unit === purchaseUnit) return qty / conversionFactor;
+      if (productionUnit && unit === productionUnit) return qty;
+      throw new BadRequestException('Unidade destino nao suportada para este item.');
+    };
+
+    const stockQty = toStock(quantity, fromUnit);
+    const converted = fromStock(stockQty, toUnit);
+
+    return {
+      stockItemId,
+      fromUnit,
+      toUnit,
+      inputQuantity: quantity,
+      convertedQuantity: Number(converted.toFixed(6)),
+      conversionFactor,
+    };
   }
 
   async listBreakageAlerts(ctx: RequestContext) {

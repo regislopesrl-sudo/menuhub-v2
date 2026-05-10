@@ -6,6 +6,8 @@ export type StockItem = {
   code: string | null;
   stockUnit: string | null;
   purchaseUnit: string | null;
+  productionUnit?: string | null;
+  conversionFactor?: number;
   currentQuantity: number;
   minimumQuantity: number;
   reorderPoint: number;
@@ -43,6 +45,20 @@ export type StockBreakageAlert = {
   type: 'stockout' | 'below_minimum' | 'below_reorder';
 };
 
+export type StockBatch = {
+  id: string;
+  stockItemId: string;
+  batchNumber: string | null;
+  receivedDate: string | null;
+  expirationDate: string | null;
+  initialQuantity: number;
+  quantityRemaining: number;
+  unitCost: number;
+  status: string;
+  sanitaryNotes: string | null;
+  createdAt: string;
+};
+
 export function listStockItems() {
   return apiFetch<StockItem[]>('/v2/admin/stock/items', { method: 'GET' });
 }
@@ -52,6 +68,8 @@ export function createStockItem(input: {
   code?: string;
   stockUnit?: string;
   purchaseUnit?: string;
+  productionUnit?: string;
+  conversionFactor?: number;
   minimumQuantity?: number;
   reorderPoint?: number;
   averageCost?: number;
@@ -123,4 +141,28 @@ export function applyInventoryCounts(input: {
 
 export function listStockBreakageAlerts() {
   return apiFetch<StockBreakageAlert[]>('/v2/admin/stock/alerts/breakage', { method: 'GET' });
+}
+
+export function listStockBatches(stockItemId: string) {
+  return apiFetch<StockBatch[]>(`/v2/admin/stock/items/${stockItemId}/batches`, { method: 'GET' });
+}
+
+export function createStockBatch(
+  stockItemId: string,
+  input: { batchNumber?: string; expirationDate?: string; receivedDate?: string; initialQuantity: number; unitCost?: number; notes?: string },
+) {
+  return apiFetch<StockBatch>(`/v2/admin/stock/items/${stockItemId}/batches`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function estimateStockConversion(input: { stockItemId: string; quantity: number; fromUnit: string; toUnit: string }) {
+  return apiFetch<{ stockItemId: string; fromUnit: string; toUnit: string; inputQuantity: number; convertedQuantity: number; conversionFactor: number }>(
+    '/v2/admin/stock/conversions/estimate',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
 }

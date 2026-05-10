@@ -25,6 +25,10 @@ describe('StockService', () => {
     stockLocationBalance: {
       upsert: jest.fn(),
     },
+    stockBatch: {
+      findMany: jest.fn(),
+      create: jest.fn(),
+    },
     $transaction: jest.fn(),
   } as any;
 
@@ -37,6 +41,7 @@ describe('StockService', () => {
         stockItem: prisma.stockItem,
         stockMovement: prisma.stockMovement,
         stockLocationBalance: prisma.stockLocationBalance,
+        stockBatch: prisma.stockBatch,
       }),
     );
   });
@@ -92,5 +97,43 @@ describe('StockService', () => {
     const alerts = await service.listBreakageAlerts(ctx);
     expect(alerts.length).toBe(2);
     expect(alerts[0].type).toBe('stockout');
+  });
+
+  it('cria lote e gera movimento de entrada', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 's1', companyId: 'company-demo', currentQuantity: 2, averageCost: 3 });
+    prisma.stockBatch.create.mockResolvedValue({ id: 'b1', stockItemId: 's1' });
+    prisma.stockItem.update.mockResolvedValue({ id: 's1' });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'm1' });
+
+    const result = await service.createBatch(ctx, { stockItemId: 's1', initialQuantity: 5, unitCost: 4 });
+    expect(result.id).toBe('b1');
+    expect(prisma.stockBatch.create).toHaveBeenCalled();
+    expect(prisma.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('lista lotes do item', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 's1', companyId: 'company-demo' });
+    prisma.stockBatch.findMany.mockResolvedValue([{ id: 'b1' }]);
+    const batches = await service.listBatches(ctx, 's1');
+    expect(batches).toEqual([{ id: 'b1' }]);
+  });
+
+  it('estima conversao entre unidades', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({
+      id: 's1',
+      companyId: 'company-demo',
+      purchaseUnit: 'cx',
+      stockUnit: 'un',
+      productionUnit: 'un',
+      conversionFactor: 12,
+    });
+
+    const result = await service.estimateUnitConversion(ctx, {
+      stockItemId: 's1',
+      quantity: 2,
+      fromUnit: 'cx',
+      toUnit: 'un',
+    });
+    expect(result.convertedQuantity).toBe(24);
   });
 });
