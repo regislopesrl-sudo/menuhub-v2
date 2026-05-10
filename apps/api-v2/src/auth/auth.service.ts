@@ -382,7 +382,7 @@ export class AuthServiceV2 {
       waiter: ['orders.read', 'waiter.operate'],
       delivery_operator: ['delivery.operate', 'orders.read'],
       finance: ['orders.read', 'settings.read', 'billing.read', 'billing.manage'],
-      inventory: ['orders.read'],
+      inventory: ['orders.read', 'inventory.read', 'inventory.manage'],
       support: ['orders.read'],
       admin: allTenantPermissions,
       master: allTenantPermissions,
