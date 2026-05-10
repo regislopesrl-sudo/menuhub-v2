@@ -3,6 +3,7 @@ import { OrderStatus } from '@prisma/client';
 import type { RequestContext } from '../common/request-context';
 import { OrderPrismaRepository, type FindManyOrdersFilters } from './order.prisma';
 import { OrdersEventsService } from './orders-events.service';
+import { StockService } from '../stock/stock.service';
 
 export interface OrderReadDto {
   id: string;
@@ -76,6 +77,7 @@ export class OrdersService {
   constructor(
     private readonly orderRepository: OrderPrismaRepository,
     private readonly ordersEvents: OrdersEventsService,
+    private readonly stockService: StockService,
   ) {}
 
   async getById(id: string, ctx: RequestContext): Promise<OrderReadDto> {
@@ -117,7 +119,25 @@ export class OrdersService {
       }
     }
 
+    if (this.shouldConsumeStockOnStatus(status)) {
+      try {
+        await this.stockService.consumeByOrder(ctx, order.id);
+      } catch {
+        // non-blocking consumption integration for now
+      }
+    }
+
     return this.toOrderReadDto(order);
+  }
+
+  private shouldConsumeStockOnStatus(status: string): boolean {
+    return (
+      status === 'IN_PREPARATION' ||
+      status === 'READY' ||
+      status === 'OUT_FOR_DELIVERY' ||
+      status === 'DELIVERED' ||
+      status === 'FINALIZED'
+    );
   }
 
   private toOrderReadDto(order: any): OrderReadDto {

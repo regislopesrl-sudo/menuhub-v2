@@ -7,8 +7,10 @@ import { OrdersEventsService } from './orders-events.service';
 import { OrdersGateway } from './orders.gateway';
 import { InMemoryOrdersEventPublisher } from './orders-in-memory.publisher';
 import { ORDERS_EVENT_PUBLISHER } from './orders-event-publisher';
+import { StockModule } from '../stock/stock.module';
 
 @Module({
+  imports: [StockModule],
   controllers: [OrdersController],
   providers: [
     PrismaService,
