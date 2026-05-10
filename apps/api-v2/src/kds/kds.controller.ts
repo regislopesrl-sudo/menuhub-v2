@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { RequirePermissions } from '../common/permissions.decorator';
@@ -15,8 +15,12 @@ export class KdsController {
   constructor(private readonly kdsService: KdsService) {}
 
   @Get('orders')
-  async listOrders(@CurrentContext() ctx: RequestContext) {
-    return this.kdsService.listOrders(ctx);
+  async listOrders(
+    @CurrentContext() ctx: RequestContext,
+    @Query('station') station?: string,
+    @Query('channel') channel?: string,
+  ) {
+    return this.kdsService.listOrders(ctx, { station, channel });
   }
 
   @Patch('orders/:id/start')

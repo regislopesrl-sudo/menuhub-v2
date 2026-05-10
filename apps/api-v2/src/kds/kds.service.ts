@@ -14,6 +14,10 @@ export interface KdsOrderCardDto {
   preparationStartedAt?: string;
   readyAt?: string;
   elapsedMinutes: number;
+  prepTargetMinutes: number;
+  lateMinutes: number;
+  priorityLevel: 'normal' | 'attention' | 'urgent';
+  station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
   totals: {
     subtotal: number;
     discount: number;
@@ -51,7 +55,10 @@ export class KdsService {
     private readonly ordersEvents: OrdersEventsService,
   ) {}
 
-  async listOrders(ctx: RequestContext): Promise<{
+  async listOrders(
+    ctx: RequestContext,
+    filters?: { station?: string; channel?: string },
+  ): Promise<{
     data: KdsOrderCardDto[];
     columns: {
       new: KdsOrderCardDto[];
@@ -74,26 +81,43 @@ export class KdsService {
     const details = await Promise.all(uniqueIds.map((id) => this.ordersService.getById(id, ctx)));
 
     const data = details
-      .map<KdsOrderCardDto>((detail) => ({
-        id: detail.id,
-        orderNumber: detail.orderNumber,
-        channel: detail.channel ?? 'unknown',
-        status: detail.status,
-        createdAt: detail.createdAt,
-        preparationStartedAt: detail.preparationStartedAt,
-        readyAt: detail.readyAt,
-        elapsedMinutes: this.calcElapsedMinutes(detail.createdAt),
-        totals: detail.totals,
-        customer: detail.customer,
-        deliveryAddress: detail.deliveryAddress,
-        items: detail.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          selectedOptions: item.selectedOptions,
-        })),
-      }))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      .map<KdsOrderCardDto>((detail) => {
+        const station = this.resolveStation(detail.channel ?? 'unknown');
+        const elapsed = this.calcElapsedMinutes(detail.createdAt);
+        const prepTargetMinutes = this.resolvePrepTargetMinutes(station);
+        return {
+          id: detail.id,
+          orderNumber: detail.orderNumber,
+          channel: detail.channel ?? 'unknown',
+          status: detail.status,
+          createdAt: detail.createdAt,
+          preparationStartedAt: detail.preparationStartedAt,
+          readyAt: detail.readyAt,
+          elapsedMinutes: elapsed,
+          prepTargetMinutes,
+          lateMinutes: Math.max(0, elapsed - prepTargetMinutes),
+          priorityLevel: this.resolvePriority(elapsed, prepTargetMinutes),
+          station,
+          totals: detail.totals,
+          customer: detail.customer,
+          deliveryAddress: detail.deliveryAddress,
+          items: detail.items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            selectedOptions: item.selectedOptions,
+          })),
+        };
+      })
+      .filter((order) => {
+        if (filters?.channel && order.channel.toLowerCase() !== filters.channel.toLowerCase()) return false;
+        if (filters?.station && order.station.toLowerCase() !== filters.station.toLowerCase()) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (b.lateMinutes !== a.lateMinutes) return b.lateMinutes - a.lateMinutes;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
 
     return {
       data,
@@ -146,6 +170,17 @@ export class KdsService {
       preparationStartedAt: updated.preparationStartedAt,
       readyAt: updated.readyAt,
       elapsedMinutes: this.calcElapsedMinutes(updated.createdAt),
+      prepTargetMinutes: this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
+      lateMinutes: Math.max(
+        0,
+        this.calcElapsedMinutes(updated.createdAt) -
+          this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
+      ),
+      priorityLevel: this.resolvePriority(
+        this.calcElapsedMinutes(updated.createdAt),
+        this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
+      ),
+      station: this.resolveStation(updated.channel ?? 'unknown'),
       totals: updated.totals,
       customer: updated.customer,
       deliveryAddress: updated.deliveryAddress,
@@ -161,5 +196,28 @@ export class KdsService {
   private calcElapsedMinutes(createdAt: string): number {
     const diffMs = Date.now() - new Date(createdAt).getTime();
     return Math.max(0, Math.floor(diffMs / 60000));
+  }
+
+  private resolveStation(channel: string): 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition' {
+    const normalized = String(channel).toUpperCase();
+    if (normalized === 'PDV' || normalized === 'KIOSK' || normalized === 'WAITER_APP') return 'hot_kitchen';
+    if (normalized === 'WEB' || normalized === 'WHATSAPP') return 'assembly';
+    return 'expedition';
+  }
+
+  private resolvePrepTargetMinutes(station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'): number {
+    if (station === 'hot_kitchen') return 20;
+    if (station === 'cold_kitchen') return 12;
+    if (station === 'assembly') return 10;
+    return 8;
+  }
+
+  private resolvePriority(
+    elapsedMinutes: number,
+    prepTargetMinutes: number,
+  ): 'normal' | 'attention' | 'urgent' {
+    if (elapsedMinutes > prepTargetMinutes + 5) return 'urgent';
+    if (elapsedMinutes >= prepTargetMinutes) return 'attention';
+    return 'normal';
   }
 }
