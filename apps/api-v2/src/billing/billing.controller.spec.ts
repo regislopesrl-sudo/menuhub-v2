@@ -5,6 +5,7 @@ import * as auditRecorder from '../common/audit-log-recorder';
 describe('BillingController', () => {
   const service = {
     getCompanyBilling: jest.fn(),
+    getCommercialHistory: jest.fn(),
     upsertBillingAccount: jest.fn(),
     listInvoices: jest.fn(),
     getInvoiceById: jest.fn(),
@@ -42,6 +43,17 @@ describe('BillingController', () => {
       permissions: ['billing.read'],
     });
     expect(service.listInvoices).toHaveBeenCalledWith('c1');
+  });
+
+  it('consulta historico comercial respeitando escopo da empresa', async () => {
+    service.getCommercialHistory.mockResolvedValueOnce({ companyId: 'c1', subscriptions: [], invoices: [], payments: [] });
+    await controller.getCommercialHistory('c1', {
+      companyId: 'c1',
+      userRole: 'developer',
+      requestId: 'r1',
+      permissions: ['billing.read'],
+    });
+    expect(service.getCommercialHistory).toHaveBeenCalledWith('c1');
   });
 
   it('consulta fatura por id respeitando escopo da empresa', async () => {
