@@ -51,6 +51,8 @@ export const TENANT_PERMISSIONS = {
   KDS_OPERATE: 'kds.operate',
   WAITER_OPERATE: 'waiter.operate',
   DELIVERY_OPERATE: 'delivery.operate',
+  INVENTORY_READ: 'inventory.read',
+  INVENTORY_MANAGE: 'inventory.manage',
   PROCUREMENT_READ: 'procurement.read',
   PROCUREMENT_MANAGE: 'procurement.manage',
   SUPPLIERS_READ: 'suppliers.read',

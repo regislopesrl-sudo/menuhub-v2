@@ -87,6 +87,8 @@ describe('BillingService', () => {
             provider: 'mock',
             providerPaymentId: 'mock_payment_1',
             invoice: { id: 'i1', companyId: 'c1', subscriptionId: 's1' },
+            status: 'SUCCEEDED',
+            createdAt: new Date('2026-05-01T10:00:00.000Z'),
           },
         ]),
         update: jest.fn().mockResolvedValue({ id: 'pa1', status: 'SUCCEEDED' }),
@@ -97,11 +99,29 @@ describe('BillingService', () => {
       },
       invoiceStatusEvent: {
         create: jest.fn().mockResolvedValue({ id: 'ise1' }),
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ise1',
+            invoiceId: 'i1',
+            fromStatus: 'OPEN',
+            toStatus: 'PAID',
+            reason: 'MOCK_PAYMENT',
+            createdAt: new Date('2026-05-01T11:00:00.000Z'),
+          },
+        ]),
       },
       subscriptionStatusEvent: {
         create: jest.fn().mockResolvedValue({ id: 'sse1' }),
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'sse1',
+            subscriptionId: 's1',
+            fromStatus: 'TRIAL',
+            toStatus: 'ACTIVE',
+            reason: 'INVOICE_PAID',
+            createdAt: new Date('2026-05-01T12:00:00.000Z'),
+          },
+        ]),
       },
       companyModuleAuditLog: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -248,6 +268,9 @@ describe('BillingService', () => {
     expect(result.modules.length).toBeGreaterThan(0);
     expect(result.limits).toEqual(expect.any(Array));
     expect(result.billing.provider).toBeDefined();
+    expect(result.billing).toHaveProperty('isDelinquent');
+    expect(result.billing).toHaveProperty('delinquencyDays');
+    expect(result.billing).toHaveProperty('recommendedAction');
     expect(result).not.toHaveProperty('accessToken');
     expect(result).not.toHaveProperty('secret');
   });
@@ -259,6 +282,32 @@ describe('BillingService', () => {
     expect(result.subscription).toBeNull();
     expect(result.plan).toBeNull();
     expect(result.billing.status).toBe('missing_subscription');
+    expect(result.billing.isDelinquent).toBe(false);
+    expect(result.billing.delinquencyDays).toBe(0);
+    expect(result.billing.recommendedAction).toBe('none');
+  });
+
+  it('sinaliza inadimplencia quando existem faturas past_due', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      {
+        id: 'i1',
+        status: 'PAST_DUE',
+        amountCents: 19900,
+        dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        paidAt: null,
+        createdAt: new Date(),
+        attempts: [],
+      },
+    ]);
+
+    const result = await service.getCurrentBillingOverview('c1');
+
+    expect(result.billing.status).toBe('active');
+    expect(result.billing.isDelinquent).toBe(true);
+    expect(result.billing.delinquencyDays).toBeGreaterThanOrEqual(3);
+    expect(result.billing.oldestPastDueAt).toBeTruthy();
+    expect(result.billing.recommendedAction).toBe('regularize_payment');
   });
 
   it('troca plano da assinatura em modo mock (upgrade/downgrade)', async () => {
@@ -286,7 +335,7 @@ describe('BillingService', () => {
     );
   });
 
-  it('retorna historico comercial consolidado da empresa', async () => {
+  it('retorna historico comercial consolidado da empresa (com dados sobrescritos)', async () => {
     const { service, prisma } = createService();
     prisma.subscriptionStatusEvent.findMany.mockResolvedValueOnce([
       {
@@ -322,5 +371,14 @@ describe('BillingService', () => {
     expect(result.companyId).toBe('c1');
     expect(result.timeline.length).toBeGreaterThan(0);
     expect(result.summary.subscriptionEvents).toBe(1);
+  });
+
+  it('retorna historico comercial consolidado da empresa (dados default)', async () => {
+    const { service } = createService();
+    const result = await service.getCommercialHistory('c1');
+    expect(result.companyId).toBe('c1');
+    expect(result.subscriptions[0]).toMatchObject({ subscriptionId: 's1', toStatus: 'ACTIVE' });
+    expect(result.invoices[0]).toMatchObject({ invoiceId: 'i1', toStatus: 'PAID' });
+    expect(result.payments[0]).toMatchObject({ invoiceId: 'i1', status: 'SUCCEEDED' });
   });
 });

@@ -249,6 +249,7 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/users" title="Usuarios" description="Acessos, roles e filiais" tone="green" />
           <ActionTile href="/admin/settings" title="Configuracoes" description="Empresa, filial, operacao e pagamentos" tone="blue" />
           <ActionTile href="/admin/billing" title="Assinatura e cobranca" description="Plano, limites e status da assinatura SaaS" tone="violet" />
+          <ActionTile href="/admin/stock" title="Estoque" description="Itens, entrada e saida manual de estoque" tone="orange" />
           <ActionTile href="/admin/procurement" title="Compras e fornecedores" description="Fornecedores, pedidos, recebimento e contas a pagar" tone="blue" />
           <ActionTile href="/admin/production" title="Producao Interna" description="Ordens de preparo, execucao e finalizacao por filial" tone="orange" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
@@ -297,6 +298,13 @@ export default function AdminDashboardPage() {
             <Badge>Producao</Badge>
             <h2 className={styles.cardTitle}>Producao Interna</h2>
             <p className={styles.cardText}>Planejamento e execucao de ordens de preparo com rastreabilidade por filial.</p>
+          </Card>
+        </Link>
+        <Link href="/admin/stock" className={styles.cardLink}>
+          <Card className={styles.card}>
+            <Badge>Estoque</Badge>
+            <h2 className={styles.cardTitle}>Estoque</h2>
+            <p className={styles.cardText}>Cadastro de itens, entrada manual e saida manual de estoque.</p>
           </Card>
         </Link>
         <Link href="/admin/procurement" className={styles.cardLink}>
