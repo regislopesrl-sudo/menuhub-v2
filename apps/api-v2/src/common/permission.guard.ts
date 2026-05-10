@@ -25,9 +25,9 @@ export class PermissionGuardV2 implements CanActivate {
       return true;
     }
 
-    const denied = required.filter((permission) => !granted.includes(permission));
-    if (denied.length > 0) {
-      throw new ForbiddenException(`Permissoes ausentes: ${denied.join(', ')}`);
+    const hasRequiredPermission = required.some((permission) => granted.includes(permission));
+    if (!hasRequiredPermission) {
+      throw new ForbiddenException(`Permissoes ausentes: ${required.join(', ')}`);
     }
     return true;
   }
