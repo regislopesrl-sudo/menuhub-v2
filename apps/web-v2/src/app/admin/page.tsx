@@ -14,11 +14,18 @@ import { apiFetch, getApiBase } from '@/lib/api-fetch';
 import type { OrderListItem, OrdersHeaders, OrdersListResponse } from '@/features/orders/orders.api';
 
 const MODULE_CARDS: Array<{
-  key: 'orders' | 'kds' | 'pdv' | 'delivery' | 'menu';
+  key: string;
   title: string;
   href: string;
   description: string;
+  status?: string;
 }> = [
+  {
+    key: 'admin_panel',
+    title: 'Painel Admin',
+    href: '/admin',
+    description: 'Acesso administrativo central da empresa, indicadores e atalhos operacionais.',
+  },
   {
     key: 'orders',
     title: 'Pedidos',
@@ -38,6 +45,12 @@ const MODULE_CARDS: Array<{
     description: 'Operacao de caixa e venda rapida no balcao.',
   },
   {
+    key: 'payments',
+    title: 'Pagamentos',
+    href: '/admin/finance',
+    description: 'Pagamentos locais, status, conciliacao mock e lancamentos financeiros.',
+  },
+  {
     key: 'menu',
     title: 'Cardapio / Catalogo',
     href: '/admin/menu',
@@ -48,6 +61,53 @@ const MODULE_CARDS: Array<{
     title: 'Delivery / Cardapio',
     href: '/delivery',
     description: 'Canal online do cliente para pedidos digitais.',
+  },
+  {
+    key: 'stock',
+    title: 'Estoque',
+    href: '/admin/stock',
+    description: 'Itens, movimentacoes, inventario, lotes e alertas de ruptura.',
+  },
+  {
+    key: 'financial',
+    title: 'Financeiro',
+    href: '/admin/finance',
+    description: 'Fluxo de caixa, contas, DRE simplificada e conciliacao operacional.',
+  },
+  {
+    key: 'reports',
+    title: 'Relatorios',
+    href: '/admin',
+    description: 'Indicadores consolidados e visoes gerenciais da operacao.',
+    status: 'Em evolucao',
+  },
+  {
+    key: 'fiscal',
+    title: 'Fiscal',
+    href: '/admin/settings',
+    description: 'Dados fiscais e preparacao para rotinas de nota futura.',
+    status: 'Preparado',
+  },
+  {
+    key: 'whatsapp',
+    title: 'WhatsApp',
+    href: '/admin/settings',
+    description: 'Canal futuro de atendimento e notificacoes operacionais.',
+    status: 'Futuro',
+  },
+  {
+    key: 'kiosk',
+    title: 'Totem / Kiosk',
+    href: '/delivery',
+    description: 'Autoatendimento preparado para fluxo dedicado de totem.',
+    status: 'Futuro',
+  },
+  {
+    key: 'waiter_app',
+    title: 'App Garcom',
+    href: '/admin/orders',
+    description: 'Fluxo de garcom digital integrado a pedidos, mesas e comandas.',
+    status: 'Futuro',
   },
 ];
 
@@ -267,7 +327,7 @@ export default function AdminDashboardPage() {
         {cards.map((card) => (
           <Link key={card.key} href={card.href} className={styles.cardLink}>
             <Card className={styles.card}>
-              <Badge>{card.title}</Badge>
+              <Badge>{card.status ?? 'Modulo ativo'}</Badge>
               <h2 className={styles.cardTitle}>{card.title}</h2>
               <p className={styles.cardText}>{card.description}</p>
             </Card>
@@ -301,25 +361,11 @@ export default function AdminDashboardPage() {
             <p className={styles.cardText}>Planejamento e execucao de ordens de preparo com rastreabilidade por filial.</p>
           </Card>
         </Link>
-        <Link href="/admin/stock" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Estoque</Badge>
-            <h2 className={styles.cardTitle}>Estoque</h2>
-            <p className={styles.cardText}>Cadastro de itens, entrada manual e saida manual de estoque.</p>
-          </Card>
-        </Link>
         <Link href="/admin/procurement" className={styles.cardLink}>
           <Card className={styles.card}>
             <Badge>Compras</Badge>
             <h2 className={styles.cardTitle}>Compras e Fornecedores</h2>
             <p className={styles.cardText}>Pedidos de compra, recebimento, cotacao e contas a pagar geradas por compra.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/finance" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Financeiro</Badge>
-            <h2 className={styles.cardTitle}>Financeiro Operacional</h2>
-            <p className={styles.cardText}>Fluxo de caixa, contas, DRE simplificada e conciliacao do restaurante.</p>
           </Card>
         </Link>
       </section>

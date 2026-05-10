@@ -30,6 +30,11 @@ describe('PermissionGuardV2', () => {
     expect(guard.canActivate(ctx(['*']))).toBe(true);
   });
 
+  it('permite quando usuario possui uma das permissoes alternativas', () => {
+    const guard = createGuard(['settings.read', 'settings.write']);
+    expect(guard.canActivate(ctx(['settings.read']))).toBe(true);
+  });
+
   it('bloqueia quando permissao obrigatoria esta ausente', () => {
     const guard = createGuard(['settings.write']);
     expect(() => guard.canActivate(ctx(['settings.read']))).toThrow(ForbiddenException);
