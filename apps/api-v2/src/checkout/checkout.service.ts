@@ -121,26 +121,31 @@ export class CheckoutService {
   }
 
   async runDeliveryCheckout(input: DeliveryCheckoutInput, ctx: RequestContext): Promise<CheckoutResult> {
-    this.validateCustomerAndAddress(input);
+    const fulfillmentType = input.fulfillmentType === 'TAKEOUT' ? 'TAKEOUT' : 'DELIVERY';
+    this.validateCustomerAndAddress(input, fulfillmentType);
+    this.validateScheduledAt(input.scheduledAt);
 
-    const preview = await this.quoteDeliveryCheckout(
-      {
-        storeId: input.storeId,
-        items: input.items,
-        couponCode: input.couponCode,
-        deliveryAddress: {
-          cep: input.deliveryAddress.cep ?? '',
-          number: input.deliveryAddress.number,
-        },
-      },
-      ctx,
-    );
+    const preview =
+      fulfillmentType === 'TAKEOUT'
+        ? null
+        : await this.quoteDeliveryCheckout(
+            {
+              storeId: input.storeId,
+              items: input.items,
+              couponCode: input.couponCode,
+              deliveryAddress: {
+                cep: input.deliveryAddress.cep ?? '',
+                number: input.deliveryAddress.number,
+              },
+            },
+            ctx,
+          );
 
     const checkoutResult = await orderCore.checkout(
       {
         ...input,
         companyId: ctx.companyId,
-        deliveryFee: preview.deliveryFee,
+        deliveryFee: preview?.deliveryFee ?? 0,
       },
       {
         menuPort: this.menuPort,
@@ -148,7 +153,13 @@ export class CheckoutService {
       },
     );
 
-    const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, preview.deliveryQuote);
+    const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, preview?.deliveryQuote, {
+      orderTypeOverride: fulfillmentType === 'TAKEOUT' ? 'PICKUP' : 'DELIVERY',
+      checkoutMetadata: {
+        fulfillmentType,
+        scheduledAt: input.scheduledAt ?? null,
+      },
+    });
     try {
       await this.ordersEvents.emitOrderCreated(
         {
@@ -311,7 +322,7 @@ export class CheckoutService {
     }
   }
 
-  private validateCustomerAndAddress(input: DeliveryCheckoutInput): void {
+  private validateCustomerAndAddress(input: DeliveryCheckoutInput, fulfillmentType: 'DELIVERY' | 'TAKEOUT'): void {
     const { customer, deliveryAddress } = input;
     if (!customer?.name?.trim()) {
       throw new BadRequestException('Nome do cliente e obrigatorio.');
@@ -319,17 +330,30 @@ export class CheckoutService {
     if (!customer?.phone?.trim()) {
       throw new BadRequestException('Telefone do cliente e obrigatorio.');
     }
-    if (!deliveryAddress?.cep?.trim()) {
-      throw new BadRequestException('CEP e obrigatorio.');
+    if (fulfillmentType === 'DELIVERY') {
+      if (!deliveryAddress?.cep?.trim()) {
+        throw new BadRequestException('CEP e obrigatorio.');
+      }
+      if (!deliveryAddress?.street?.trim()) {
+        throw new BadRequestException('Rua e obrigatoria.');
+      }
+      if (!deliveryAddress?.number?.trim()) {
+        throw new BadRequestException('Numero e obrigatorio.');
+      }
+      if (!deliveryAddress?.neighborhood?.trim()) {
+        throw new BadRequestException('Bairro e obrigatorio.');
+      }
     }
-    if (!deliveryAddress?.street?.trim()) {
-      throw new BadRequestException('Rua e obrigatoria.');
+  }
+
+  private validateScheduledAt(scheduledAt?: string): void {
+    if (!scheduledAt?.trim()) return;
+    const dt = new Date(scheduledAt);
+    if (Number.isNaN(dt.getTime())) {
+      throw new BadRequestException('scheduledAt invalido.');
     }
-    if (!deliveryAddress?.number?.trim()) {
-      throw new BadRequestException('Numero e obrigatorio.');
-    }
-    if (!deliveryAddress?.neighborhood?.trim()) {
-      throw new BadRequestException('Bairro e obrigatorio.');
+    if (dt.getTime() < Date.now() - 60_000) {
+      throw new BadRequestException('scheduledAt deve estar no futuro.');
     }
   }
 
