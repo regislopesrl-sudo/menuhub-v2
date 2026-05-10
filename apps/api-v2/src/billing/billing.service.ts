@@ -135,6 +135,15 @@ export class BillingService {
 
     const nextOpenInvoice = invoices.find((item: { status: InvoiceStatus }) => item.status === InvoiceStatus.OPEN);
     const lastPaidInvoice = invoices.find((item: { status: InvoiceStatus }) => item.status === InvoiceStatus.PAID);
+    const now = new Date();
+    const pastDueInvoices = invoices.filter((item: { status: InvoiceStatus }) => item.status === InvoiceStatus.PAST_DUE);
+    const oldestPastDue = pastDueInvoices
+      .map((item: { dueDate: Date }) => item.dueDate)
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+    const delinquencyDays = oldestPastDue
+      ? Math.max(0, Math.floor((now.getTime() - oldestPastDue.getTime()) / (24 * 60 * 60 * 1000)))
+      : 0;
+    const isDelinquent = status === 'past_due' || pastDueInvoices.length > 0;
     const providerName = (process.env.BILLING_PROVIDER ?? 'mock').trim().toLowerCase() || 'mock';
 
     return {
@@ -163,6 +172,10 @@ export class BillingService {
       limits,
       billing: {
         status,
+        isDelinquent,
+        delinquencyDays,
+        oldestPastDueAt: oldestPastDue?.toISOString() ?? null,
+        recommendedAction: isDelinquent ? 'regularize_payment' : 'none',
         nextBillingAt: nextOpenInvoice?.dueDate?.toISOString() ?? null,
         lastPaymentAt: lastPaidInvoice?.paidAt?.toISOString() ?? null,
         provider: providerName,
