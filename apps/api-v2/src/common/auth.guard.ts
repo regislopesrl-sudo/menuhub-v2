@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtServiceV2 } from '../auth/jwt.service';
 import {
@@ -24,6 +24,8 @@ function hasCompanyHeader(headers: Record<string, string | string[] | undefined>
 
 @Injectable()
 export class AuthGuardV2 implements CanActivate {
+  private readonly logger = new Logger(AuthGuardV2.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtService: JwtServiceV2,
@@ -52,8 +54,8 @@ export class AuthGuardV2 implements CanActivate {
     if (isPublic) {
       if (allowFallback) {
         if (hasCompanyHeader(request.headers)) {
-          console.warn(
-            '[AuthGuardV2] Header context fallback ativo para rota publica. Use Authorization Bearer token.',
+          this.logger.warn(
+            'Header context fallback ativo para rota publica. Use Authorization Bearer token.',
           );
           request.context = buildRequestContextFromHeaders(request.headers);
         }
@@ -62,7 +64,7 @@ export class AuthGuardV2 implements CanActivate {
     }
 
     if (allowFallback) {
-      console.warn('[AuthGuardV2] Header context fallback ativo. Use Authorization Bearer token.');
+      this.logger.warn('Header context fallback ativo. Use Authorization Bearer token.');
       request.context = buildRequestContextFromHeaders(request.headers);
       return true;
     }
