@@ -53,6 +53,10 @@ export const TENANT_PERMISSIONS = {
   DELIVERY_OPERATE: 'delivery.operate',
   INVENTORY_READ: 'inventory.read',
   INVENTORY_MANAGE: 'inventory.manage',
+  PROCUREMENT_READ: 'procurement.read',
+  PROCUREMENT_MANAGE: 'procurement.manage',
+  SUPPLIERS_READ: 'suppliers.read',
+  SUPPLIERS_MANAGE: 'suppliers.manage',
 } as const;
 
 export type TenantPermission = (typeof TENANT_PERMISSIONS)[keyof typeof TENANT_PERMISSIONS];
