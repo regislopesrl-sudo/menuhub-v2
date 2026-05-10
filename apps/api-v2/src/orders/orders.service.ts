@@ -130,6 +130,54 @@ export class OrdersService {
     return this.toOrderReadDto(order);
   }
 
+  async getTimeline(id: string, ctx: RequestContext) {
+    return this.orderRepository.listTimeline(id, ctx);
+  }
+
+  async cancelOrder(
+    id: string,
+    input: { reasonCode: string; reasonText?: string; internalNote?: string },
+    ctx: RequestContext,
+  ): Promise<OrderReadDto> {
+    const reasonCode = String(input.reasonCode ?? '').trim();
+    if (!reasonCode) throw new BadRequestException('reasonCode obrigatorio para cancelamento.');
+    const order = await this.orderRepository.cancelOrder(id, ctx, {
+      reasonCode,
+      reasonText: input.reasonText,
+      internalNote: input.internalNote,
+    });
+    if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    return this.toOrderReadDto(order);
+  }
+
+  async addInternalNote(id: string, note: string, ctx: RequestContext): Promise<OrderReadDto> {
+    const text = String(note ?? '').trim();
+    if (!text) throw new BadRequestException('note obrigatoria.');
+    const order = await this.orderRepository.addInternalNote(id, ctx, text);
+    if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    return this.toOrderReadDto(order);
+  }
+
+  async refundMock(
+    id: string,
+    input: { amount: number; reasonCode: string; reasonText?: string },
+    ctx: RequestContext,
+  ): Promise<OrderReadDto> {
+    const amount = Number(input.amount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('amount deve ser maior que zero.');
+    const reasonCode = String(input.reasonCode ?? '').trim();
+    if (!reasonCode) throw new BadRequestException('reasonCode obrigatorio para reembolso.');
+    let order: any;
+    try {
+      order = await this.orderRepository.applyRefundMock(id, ctx, { amount, reasonCode, reasonText: input.reasonText });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao processar reembolso.';
+      throw new BadRequestException(message);
+    }
+    if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    return this.toOrderReadDto(order);
+  }
+
   private shouldConsumeStockOnStatus(status: string): boolean {
     return (
       status === 'IN_PREPARATION' ||

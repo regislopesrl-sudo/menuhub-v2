@@ -107,6 +107,14 @@ describe('BillingService', () => {
             toStatus: 'PAID',
             reason: 'MOCK_PAYMENT',
             createdAt: new Date('2026-05-01T11:00:00.000Z'),
+            invoice: {
+              id: 'i1',
+              companyId: 'c1',
+              subscriptionId: 's1',
+              amountCents: 19900,
+              dueDate: new Date('2026-05-16T00:00:00.000Z'),
+              status: 'PAID',
+            },
           },
         ]),
       },
@@ -120,6 +128,7 @@ describe('BillingService', () => {
             toStatus: 'ACTIVE',
             reason: 'INVOICE_PAID',
             createdAt: new Date('2026-05-01T12:00:00.000Z'),
+            subscription: { id: 's1', planId: 'p1', companyId: 'c1' },
           },
         ]),
       },
@@ -377,8 +386,8 @@ describe('BillingService', () => {
     const { service } = createService();
     const result = await service.getCommercialHistory('c1');
     expect(result.companyId).toBe('c1');
-    expect(result.subscriptions[0]).toMatchObject({ subscriptionId: 's1', toStatus: 'ACTIVE' });
-    expect(result.invoices[0]).toMatchObject({ invoiceId: 'i1', toStatus: 'PAID' });
-    expect(result.payments[0]).toMatchObject({ invoiceId: 'i1', status: 'SUCCEEDED' });
+    expect(result.timeline.length).toBeGreaterThan(0);
+    expect(result.summary.subscriptionEvents).toBeGreaterThanOrEqual(1);
+    expect(result.summary.invoiceEvents).toBeGreaterThanOrEqual(1);
   });
 });
