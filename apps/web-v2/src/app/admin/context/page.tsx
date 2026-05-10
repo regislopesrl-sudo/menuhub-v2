@@ -1,9 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import styles from './page.module.css';
+import { Card } from '@/components/ui/Card';
+import { PremiumPageHeader, PremiumSummaryCard } from '@/components/premium';
 import { getAuthSession } from '@/lib/auth-session';
 import { readJwtPayload } from '@/lib/auth-claims';
+import styles from './page.module.css';
 
 export default function AdminContextPage() {
   const session = getAuthSession();
@@ -18,8 +20,20 @@ export default function AdminContextPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.card}>
-        <h1 className={styles.title}>Contexto atual de acesso</h1>
+      <PremiumPageHeader
+        title="Contexto atual de acesso"
+        subtitle="Confira empresa, filial, perfil e permissoes ativas nesta sessao."
+      />
+
+      <section className={styles.summaryGrid}>
+        <PremiumSummaryCard label="Empresa" value={String(payload?.companyId ?? '-')} />
+        <PremiumSummaryCard label="Filial" value={String(payload?.branchId ?? '-')} />
+        <PremiumSummaryCard label="Perfil" value={String(payload?.role ?? '-')} />
+        <PremiumSummaryCard label="Permissoes" value={permissions.length} />
+      </section>
+
+      <Card className={styles.card}>
+        <h2 className={styles.title}>Detalhes da sessao</h2>
         <div className={styles.row}>
           <span className={styles.label}>Empresa</span>
           <span className={styles.value}>{String(payload?.companyId ?? '-')}</span>
@@ -33,14 +47,14 @@ export default function AdminContextPage() {
           <span className={styles.value}>{String(payload?.role ?? '-')}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Permissões</span>
+          <span className={styles.label}>Permissoes</span>
           <span className={styles.value}>{permissions.length ? permissions.join(', ') : '-'}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Sessão</span>
+          <span className={styles.label}>Sessao</span>
           <span className={styles.value}>{String(payload?.sessionId ?? '-')}</span>
         </div>
-      </section>
+      </Card>
     </main>
   );
 }
