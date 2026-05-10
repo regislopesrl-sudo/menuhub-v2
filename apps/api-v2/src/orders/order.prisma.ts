@@ -45,8 +45,8 @@ export class OrderPrismaRepository {
             branchId,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
-            orderType: result.order.channel === 'pdv' ? (options?.pdvOrderType ?? 'COUNTER') : 'DELIVERY',
-            channel: result.order.channel === 'pdv' ? 'PDV' : 'WEB',
+            orderType: this.mapOrderType(result.order.channel, options?.pdvOrderType),
+            channel: this.mapChannel(result.order.channel),
             status: this.mapOrderStatus(result.order.status),
             paymentStatus: result.payment.status === 'APPROVED' ? 'PAID' : 'UNPAID',
             subtotal: result.order.totals.subtotal,
@@ -626,6 +626,45 @@ export class OrderPrismaRepository {
       default:
         return 'PENDING_CONFIRMATION';
     }
+  }
+
+  private mapOrderType(channel: string, pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND'):
+    | 'DELIVERY'
+    | 'COUNTER'
+    | 'PICKUP'
+    | 'TABLE'
+    | 'COMMAND'
+    | 'WHATSAPP'
+    | 'KIOSK'
+    | 'QR' {
+    if (channel === 'pdv') {
+      return pdvOrderType ?? 'COUNTER';
+    }
+    if (channel === 'waiter_app') {
+      return pdvOrderType ?? 'TABLE';
+    }
+    if (channel === 'kiosk') {
+      return 'KIOSK';
+    }
+    return 'DELIVERY';
+  }
+
+  private mapChannel(channel: string):
+    | 'ADMIN'
+    | 'PDV'
+    | 'WEB'
+    | 'WHATSAPP'
+    | 'KIOSK'
+    | 'QR'
+    | 'WAITER_APP'
+    | 'ERP'
+    | 'MARKETPLACE'
+    | 'CUSTOMER_APP'
+    | 'INTEGRATION' {
+    if (channel === 'pdv') return 'PDV';
+    if (channel === 'waiter_app') return 'WAITER_APP';
+    if (channel === 'kiosk') return 'KIOSK';
+    return 'WEB';
   }
 
   private buildOrderNumber(): string {
