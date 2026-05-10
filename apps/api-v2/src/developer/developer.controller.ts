@@ -487,6 +487,65 @@ export class DeveloperController {
     return mapped;
   }
 
+  @Post('companies/:companyId/subscription/:subscriptionId/change-plan')
+  @UseGuards(RequireDeveloperGuard)
+  @RequirePermissions(PLATFORM_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_UPDATE)
+  async changeCompanySubscriptionPlan(
+    @Param('companyId') companyId: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body()
+    body: {
+      planId: string;
+    },
+  ) {
+    assertCanPerformPlatformBillingAction(ctx, 'subscription:manage');
+    assertCompanyScope(ctx, companyId);
+    const nextPlanId = assertRequiredString(body?.planId, 'planId');
+    const current = await this.prisma.companySubscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: true },
+    });
+
+    if (!current || current.companyId !== companyId) {
+      throw new BadRequestException('Assinatura nao encontrada para a empresa.');
+    }
+    if (current.planId === nextPlanId) {
+      throw new BadRequestException('Assinatura ja esta no plano informado.');
+    }
+
+    const nextPlan = await this.prisma.plan.findUnique({
+      where: { id: nextPlanId },
+      select: { id: true, key: true, name: true, isActive: true },
+    });
+    if (!nextPlan || !nextPlan.isActive) {
+      throw new BadRequestException('Plano de destino invalido ou inativo.');
+    }
+
+    const updated = await this.prisma.companySubscription.update({
+      where: { id: subscriptionId },
+      data: { planId: nextPlanId },
+      include: { plan: true },
+    });
+
+    const mapped = this.mapSubscription(updated);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.SUBSCRIPTION_PATCH,
+      outcome: 'success',
+      ctx,
+      target: { type: 'subscription', id: mapped.id, label: mapped.plan.key },
+      metadata: {
+        companyId,
+        subscriptionId: mapped.id,
+        previousPlanId: current.planId,
+        previousPlanKey: current.plan.key,
+        nextPlanId: mapped.planId,
+        nextPlanKey: mapped.plan.key,
+      },
+    });
+    return mapped;
+  }
+
   @Patch('companies/:companyId/modules/:moduleKey')
   @UseGuards(RequireDeveloperGuard)
   @RequirePermissions(PLATFORM_PERMISSIONS.MODULES_MANAGE, PLATFORM_PERMISSIONS.COMPANIES_UPDATE)

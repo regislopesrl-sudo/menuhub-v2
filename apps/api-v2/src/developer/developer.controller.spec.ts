@@ -18,6 +18,7 @@ describe('DeveloperController', () => {
     company: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     companySubscription: { findFirst: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
     companyModuleOverride: { count: jest.fn() },
+    plan: { findUnique: jest.fn() },
   };
 
   const controller = new DeveloperController(modulesService as any, authService as any, prisma as any);
@@ -519,5 +520,119 @@ describe('DeveloperController', () => {
         { enabled: true },
       ),
     ).toThrow(BadRequestException);
+  });
+
+  it('change plan bloqueia quando assinatura nao existe', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      controller.changeCompanySubscriptionPlan(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { planId: 'plan_2' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('change plan bloqueia quando plano destino invalido', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      planId: 'plan_1',
+      plan: { id: 'plan_1', key: 'basic', name: 'Basic' },
+    });
+    prisma.plan.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      controller.changeCompanySubscriptionPlan(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { planId: 'plan_2' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('change plan bloqueia quando plano atual e igual ao destino', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      planId: 'plan_1',
+      plan: { id: 'plan_1', key: 'basic', name: 'Basic' },
+    });
+
+    await expect(
+      controller.changeCompanySubscriptionPlan(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { planId: 'plan_1' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('change plan permite upgrade/downgrade mock com billing manage', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      planId: 'plan_1',
+      plan: { id: 'plan_1', key: 'basic', name: 'Basic' },
+    });
+    prisma.plan.findUnique.mockResolvedValueOnce({
+      id: 'plan_2',
+      key: 'pro',
+      name: 'Pro',
+      isActive: true,
+    });
+    prisma.companySubscription.update.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      planId: 'plan_2',
+      status: 'ACTIVE',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: null,
+      trialEndsAt: null,
+      plan: { id: 'plan_2', key: 'pro', name: 'Pro' },
+    });
+
+    const result = await controller.changeCompanySubscriptionPlan(
+      'c1',
+      'sub1',
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'technical-admin',
+        requestId: 'r1',
+        permissions: ['*'],
+      },
+      { planId: 'plan_2' },
+    );
+
+    expect(result).toMatchObject({ id: 'sub1', planId: 'plan_2', plan: { key: 'pro' } });
+    expect(auditSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'platform.subscription.patch',
+        outcome: 'success',
+      }),
+    );
   });
 });
