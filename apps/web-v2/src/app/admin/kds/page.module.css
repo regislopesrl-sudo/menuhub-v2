@@ -37,10 +37,32 @@
   flex-wrap: wrap;
 }
 
+.filterSelect {
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 700;
+}
+
 .errorBox {
   border: 1px solid #fca5a5;
   background: linear-gradient(135deg, #fff1f2, #fff7f7);
   color: #9f1239;
+  border-radius: 18px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+}
+
+.successBox {
+  border: 1px solid #86efac;
+  background: linear-gradient(135deg, #f0fdf4, #f7fee7);
+  color: #14532d;
   border-radius: 18px;
   padding: 12px;
   display: flex;

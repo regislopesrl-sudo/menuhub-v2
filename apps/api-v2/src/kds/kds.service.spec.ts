@@ -148,4 +148,27 @@ describe('KdsService', () => {
       emitEvent: false,
     });
   });
+
+  it('builds a printable kitchen ticket payload', async () => {
+    (ordersServiceMock.getById as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'PDV',
+      items: [
+        {
+          id: 'item-1',
+          name: 'Pizza',
+          quantity: 2,
+          unitPrice: 30,
+          totalPrice: 60,
+          selectedOptions: [{ optionId: 'opt-1', name: 'Borda', price: 5, quantity: 1 }],
+        },
+      ],
+    });
+
+    const ticket = await service.printKitchenTicket('ord-1', ctx);
+    expect(ticket.orderId).toBe('ord-1');
+    expect(ticket.station).toBe('hot_kitchen');
+    expect(ticket.content).toContain('COMANDA COZINHA');
+    expect(ticket.content).toContain('2x Pizza');
+  });
 });

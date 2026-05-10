@@ -10,7 +10,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { connectOrdersSocket, type OrdersEventPayload } from '@/features/orders/orders.socket';
 import { getOrderById, type OrdersHeaders } from '@/features/orders/orders.api';
-import { bumpKdsOrder, listKdsOrders, readyKdsOrder, startKdsOrder, type KdsOrderCard } from '@/features/kds/kds.api';
+import { bumpKdsOrder, listKdsOrders, printKdsOrder, readyKdsOrder, startKdsOrder, type KdsOrderCard } from '@/features/kds/kds.api';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
 
@@ -49,6 +49,8 @@ function urgencyLabel(minutes: number): string {
 }
 
 function mapOrderDetailToKds(detail: Awaited<ReturnType<typeof getOrderById>>): KdsOrderCard {
+  const elapsed = elapsedMinutes(detail.createdAt);
+  const prepTargetMinutes = 20;
   return {
     id: detail.id,
     orderNumber: detail.orderNumber,
@@ -57,7 +59,11 @@ function mapOrderDetailToKds(detail: Awaited<ReturnType<typeof getOrderById>>): 
     createdAt: detail.createdAt,
     preparationStartedAt: detail.preparationStartedAt,
     readyAt: detail.readyAt,
-    elapsedMinutes: elapsedMinutes(detail.createdAt),
+    elapsedMinutes: elapsed,
+    prepTargetMinutes,
+    lateMinutes: Math.max(0, elapsed - prepTargetMinutes),
+    priorityLevel: elapsed > prepTargetMinutes + 5 ? 'urgent' : elapsed >= prepTargetMinutes ? 'attention' : 'normal',
+    station: 'hot_kitchen',
     totals: detail.totals,
     customer: detail.customer,
     deliveryAddress: detail.deliveryAddress,
@@ -84,7 +90,10 @@ export default function KdsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
+  const [stationFilter, setStationFilter] = useState<'all' | 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'PDV' | 'WEB' | 'WHATSAPP' | 'KIOSK' | 'WAITER_APP'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [printFeedback, setPrintFeedback] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [soundArmed, setSoundArmed] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -95,14 +104,17 @@ export default function KdsPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await listKdsOrders(headers);
+      const data = await listKdsOrders(headers, {
+        station: stationFilter === 'all' ? undefined : stationFilter,
+        channel: channelFilter === 'all' ? undefined : channelFilter,
+      });
       setOrders(data.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar KDS.');
     } finally {
       setLoading(false);
     }
-  }, [headers]);
+  }, [headers, stationFilter, channelFilter]);
 
   const upsertOrder = useCallback((order: KdsOrderCard) => {
     setOrders((prev) => {
@@ -191,6 +203,19 @@ export default function KdsPage() {
     }
   };
 
+  const printTicket = async (orderId: string) => {
+    setActionLoading(`print-${orderId}`);
+    setPrintFeedback(null);
+    try {
+      const ticket = await printKdsOrder(orderId, headers);
+      setPrintFeedback(`Comanda ${ticket.orderNumber} preparada para impressao (${ticket.station}).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao gerar comanda.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
@@ -245,6 +270,21 @@ export default function KdsPage() {
             <Button onClick={() => setSoundEnabled((v) => !v)}>{soundEnabled ? 'Som ligado' : 'Som desligado'}</Button>
           )}
           <Button onClick={() => void load()}>Atualizar</Button>
+          <select value={stationFilter} onChange={(e) => setStationFilter(e.target.value as any)} className={styles.filterSelect}>
+            <option value="all">Todas estacoes</option>
+            <option value="hot_kitchen">Cozinha quente</option>
+            <option value="cold_kitchen">Cozinha fria</option>
+            <option value="assembly">Montagem</option>
+            <option value="expedition">Expedicao</option>
+          </select>
+          <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value as any)} className={styles.filterSelect}>
+            <option value="all">Todos canais</option>
+            <option value="PDV">PDV</option>
+            <option value="WEB">Web</option>
+            <option value="WHATSAPP">WhatsApp</option>
+            <option value="KIOSK">Totem</option>
+            <option value="WAITER_APP">Garcom</option>
+          </select>
           <Button variant="primary" onClick={() => void toggleFullscreen()}>
             {isFullscreen ? 'Sair de tela cheia' : 'Tela cheia'}
           </Button>
@@ -257,6 +297,12 @@ export default function KdsPage() {
         <div className={styles.errorBox}>
           <span>{error}</span>
           <Button onClick={() => void load()}>Tentar novamente</Button>
+        </div>
+      ) : null}
+      {printFeedback ? (
+        <div className={styles.successBox}>
+          <span>{printFeedback}</span>
+          <Button onClick={() => setPrintFeedback(null)}>Fechar</Button>
         </div>
       ) : null}
 
@@ -277,6 +323,9 @@ export default function KdsPage() {
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   onActionLabel={actionLoading === `start-${order.id}` ? 'Iniciando...' : 'Iniciar preparo'}
                   onAction={() => void withAction(`start-${order.id}`, () => startKdsOrder(order.id, headers))}
+                  onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
+                  onPrint={() => void printTicket(order.id)}
+                  printDisabled={actionLoading === `print-${order.id}`}
                   disabled={actionLoading === `start-${order.id}`}
                   emphasis="default"
                 />
@@ -299,6 +348,9 @@ export default function KdsPage() {
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   onActionLabel={actionLoading === `ready-${order.id}` ? 'Atualizando...' : 'Marcar pronto'}
                   onAction={() => void withAction(`ready-${order.id}`, () => readyKdsOrder(order.id, headers))}
+                  onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
+                  onPrint={() => void printTicket(order.id)}
+                  printDisabled={actionLoading === `print-${order.id}`}
                   disabled={actionLoading === `ready-${order.id}`}
                   emphasis="ready"
                 />
@@ -321,6 +373,9 @@ export default function KdsPage() {
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   onActionLabel={actionLoading === `bump-${order.id}` ? 'Finalizando...' : 'Finalizar'}
                   onAction={() => void withAction(`bump-${order.id}`, () => bumpKdsOrder(order.id, headers))}
+                  onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
+                  onPrint={() => void printTicket(order.id)}
+                  printDisabled={actionLoading === `print-${order.id}`}
                   disabled={actionLoading === `bump-${order.id}`}
                   emphasis="default"
                 />
@@ -339,6 +394,9 @@ function OrderCard({
   urgencyLabel,
   onActionLabel,
   onAction,
+  onPrintLabel,
+  onPrint,
+  printDisabled,
   disabled,
   emphasis,
 }: {
@@ -347,6 +405,9 @@ function OrderCard({
   urgencyLabel: string;
   onActionLabel: string;
   onAction: () => void;
+  onPrintLabel: string;
+  onPrint: () => void;
+  printDisabled: boolean;
   disabled: boolean;
   emphasis: 'default' | 'ready';
 }) {
@@ -367,6 +428,11 @@ function OrderCard({
         <Badge tone="warning">{channelLabel(order.channel)}</Badge>
         <strong className={styles.timeBadge}>{totalMinutes} min</strong>
       </div>
+      <div className={styles.row}>
+        <small className={styles.meta}>Estacao: {order.station}</small>
+        <small className={styles.meta}>SLA: {order.prepTargetMinutes} min</small>
+      </div>
+      {order.lateMinutes > 0 ? <small className={styles.meta}>Atraso: {order.lateMinutes} min</small> : null}
       {prepMinutes !== null ? <small className={styles.meta}>Tempo em preparo: {prepMinutes} min</small> : null}
       <small className={styles.meta}>Total: {formatCurrency(order.totals.total)}</small>
       {order.customer ? <small className={styles.meta}>Cliente: {order.customer.name}</small> : null}
@@ -390,6 +456,13 @@ function OrderCard({
         onClick={onAction}
       >
         {onActionLabel}
+      </Button>
+      <Button
+        className={styles.actionBtn}
+        disabled={printDisabled}
+        onClick={onPrint}
+      >
+        {onPrintLabel}
       </Button>
     </Card>
   );
