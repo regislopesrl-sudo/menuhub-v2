@@ -183,6 +183,47 @@ describe('PaymentsService webhook', () => {
     );
   });
 
+  it('salva payload de webhook sanitizado sem dados sensiveis', async () => {
+    const { service, prisma } = build({
+      provider: {
+        providerName: 'mock',
+        createPixPayment: jest.fn(),
+        getPaymentStatus: jest.fn(),
+        handleWebhook: jest.fn().mockResolvedValue({
+          provider: 'mock',
+          providerPaymentId: 'pay_safe',
+          eventId: 'evt_safe',
+          status: 'PENDING',
+          processed: true,
+        }),
+      },
+    });
+
+    await service.handleWebhook('mock', {
+      eventId: 'evt_safe',
+      providerPaymentId: 'pay_safe',
+      status: 'PENDING',
+      cardNumber: '4111111111111111',
+      cvv: '123',
+      customer: { email: 'cliente@local.test', phone: '11999999999' },
+    });
+
+    expect(prisma.billingWebhookEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payloadJson: expect.objectContaining({
+            cardNumber: '[REDACTED]',
+            cvv: '[REDACTED]',
+            customer: {
+              email: '[REDACTED]',
+              phone: '[REDACTED]',
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
   it('falha do provider nao queima evento e libera retry', async () => {
     const provider = {
       providerName: 'mock',

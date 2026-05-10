@@ -252,6 +252,7 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/stock" title="Estoque" description="Itens, entrada e saida manual de estoque" tone="orange" />
           <ActionTile href="/admin/procurement" title="Compras e fornecedores" description="Fornecedores, pedidos, recebimento e contas a pagar" tone="blue" />
           <ActionTile href="/admin/production" title="Producao Interna" description="Ordens de preparo, execucao e finalizacao por filial" tone="orange" />
+          <ActionTile href="/admin/finance" title="Financeiro" description="Fluxo de caixa, DRE e conciliacao local" tone="green" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
 
@@ -312,6 +313,13 @@ export default function AdminDashboardPage() {
             <Badge>Compras</Badge>
             <h2 className={styles.cardTitle}>Compras e Fornecedores</h2>
             <p className={styles.cardText}>Pedidos de compra, recebimento, cotacao e contas a pagar geradas por compra.</p>
+          </Card>
+        </Link>
+        <Link href="/admin/finance" className={styles.cardLink}>
+          <Card className={styles.card}>
+            <Badge>Financeiro</Badge>
+            <h2 className={styles.cardTitle}>Financeiro Operacional</h2>
+            <p className={styles.cardText}>Fluxo de caixa, contas, DRE simplificada e conciliacao do restaurante.</p>
           </Card>
         </Link>
       </section>
