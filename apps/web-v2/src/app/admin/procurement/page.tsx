@@ -18,7 +18,6 @@ import {
   type PurchaseOrder,
   type Supplier,
 } from '@/features/procurement/procurement.api';
-import { listStockItems, type StockItem } from '@/features/stock/stock.api';
 import styles from './page.module.css';
 
 export default function AdminProcurementPage() {
@@ -28,7 +27,6 @@ export default function AdminProcurementPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [payables, setPayables] = useState<Array<{ id: string; description: string; amount: number; status: string; dueDate: string; supplier?: { id: string; name: string } }>>([]);
 
   const [supplierName, setSupplierName] = useState('');
@@ -48,13 +46,11 @@ export default function AdminProcurementPage() {
     setLoading(true);
     setError(null);
     try {
-      const [sup, ord, stk, ap] = await Promise.all([listSuppliers(), listPurchaseOrders(), listStockItems(), listAccountsPayable()]);
+      const [sup, ord, ap] = await Promise.all([listSuppliers(), listPurchaseOrders(), listAccountsPayable()]);
       setSuppliers(sup);
       setOrders(ord);
-      setStockItems(stk);
       setPayables(ap);
       if (!poSupplierId && sup[0]?.id) setPoSupplierId(sup[0].id);
-      if (!poStockItemId && stk[0]?.id) setPoStockItemId(stk[0].id);
       if (!receiveOrderId && ord[0]?.id) setReceiveOrderId(ord[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar compras.');
@@ -172,9 +168,7 @@ export default function AdminProcurementPage() {
             <select value={poSupplierId} onChange={(e) => setPoSupplierId(e.target.value)}>
               {suppliers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
             </select>
-            <select value={poStockItemId} onChange={(e) => setPoStockItemId(e.target.value)}>
-              {stockItems.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
-            </select>
+            <Input placeholder="Stock item ID" value={poStockItemId} onChange={(e) => setPoStockItemId(e.target.value)} />
             <Input placeholder="Quantidade" value={poQty} onChange={(e) => setPoQty(e.target.value)} />
             <Input placeholder="Custo unitario" value={poUnitCost} onChange={(e) => setPoUnitCost(e.target.value)} />
             <Button type="submit" disabled={saving}>Criar pedido</Button>
