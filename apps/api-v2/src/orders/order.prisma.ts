@@ -22,7 +22,7 @@ export class OrderPrismaRepository {
     result: CheckoutResult,
     ctx: RequestContext,
     deliveryQuote?: DeliveryQuoteResponse,
-    options?: { pdvSessionId?: string },
+    options?: { pdvSessionId?: string; pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND'; commandReference?: string },
   ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
@@ -45,7 +45,7 @@ export class OrderPrismaRepository {
             branchId,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
-            orderType: result.order.channel === 'pdv' ? 'COUNTER' : 'DELIVERY',
+            orderType: result.order.channel === 'pdv' ? (options?.pdvOrderType ?? 'COUNTER') : 'DELIVERY',
             channel: result.order.channel === 'pdv' ? 'PDV' : 'WEB',
             status: this.mapOrderStatus(result.order.status),
             paymentStatus: result.payment.status === 'APPROVED' ? 'PAID' : 'UNPAID',
@@ -66,6 +66,8 @@ export class OrderPrismaRepository {
               pdv: options?.pdvSessionId
                 ? {
                     sessionId: options.pdvSessionId,
+                    saleType: options.pdvOrderType ?? 'COUNTER',
+                    commandReference: options.commandReference,
                   }
                 : undefined,
               checkoutSnapshot: customerSnapshot,

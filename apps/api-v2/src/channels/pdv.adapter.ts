@@ -3,6 +3,8 @@ import type { RequestContext } from '../common/request-context';
 
 export interface PdvCheckoutRequestBody {
   storeId: string;
+  saleType?: 'COUNTER' | 'TABLE' | 'COMMAND';
+  commandReference?: string;
   customerId?: string;
   customer?: {
     name: string;
@@ -31,12 +33,14 @@ export function mapPdvRequestToCheckoutInput(
     companyId: ctx.companyId,
     channel: 'pdv',
     storeId: body.storeId,
+    saleType: body.saleType,
+    commandReference: body.commandReference,
     customerId: body.customerId,
     customer: body.customer,
     items: body.items,
     couponCode: body.couponCode,
     paymentMethod: body.paymentMethod,
     startInPreparation: body.startInPreparation,
-  };
+  } as PdvCheckoutInput;
 }
 
