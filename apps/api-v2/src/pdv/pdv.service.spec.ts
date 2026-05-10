@@ -172,4 +172,16 @@ describe('PdvService', () => {
     expect(movements).toHaveLength(1);
     expect(movements[0].type).toBe('SUPPLY');
   });
+
+  it('returns null current summary when there is no open session', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValueOnce(null);
+    const summary = await service.getCurrentSessionSummary(ctx);
+    expect(summary).toBeNull();
+  });
+
+  it('returns empty current movements when there is no open session', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValueOnce(null);
+    const movements = await service.getCurrentSessionMovements(ctx);
+    expect(movements).toEqual([]);
+  });
 });

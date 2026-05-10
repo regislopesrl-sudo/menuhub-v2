@@ -37,6 +37,16 @@ export class PdvController {
     return this.pdvService.getOpenSession(ctx);
   }
 
+  @Get('current/summary')
+  async currentSummary(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getCurrentSessionSummary(ctx);
+  }
+
+  @Get('current/movements')
+  async currentMovements(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getCurrentSessionMovements(ctx);
+  }
+
   @Post(':id/movements')
   async createMovement(
     @Param('id') id: string,

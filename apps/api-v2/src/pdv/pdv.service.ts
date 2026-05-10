@@ -285,6 +285,18 @@ export class PdvService {
     });
   }
 
+  async getCurrentSessionSummary(ctx: RequestContext): Promise<PdvSessionSummary | null> {
+    const open = await this.getOpenSession(ctx);
+    if (!open) return null;
+    return this.getSessionSummary(open.id, ctx);
+  }
+
+  async getCurrentSessionMovements(ctx: RequestContext): Promise<PdvSessionMovement[]> {
+    const open = await this.getOpenSession(ctx);
+    if (!open) return [];
+    return this.listMovements(open.id, ctx);
+  }
+
   async getOpenSessionOrThrow(ctx: RequestContext): Promise<{ id: string; branchId: string }> {
     const open = await this.getOpenSession(ctx);
     if (!open) {
