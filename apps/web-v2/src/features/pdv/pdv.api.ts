@@ -6,6 +6,8 @@ export type PdvPaymentMethod = 'CASH' | 'PIX' | 'CREDIT_CARD';
 
 export interface PdvCheckoutPayload {
   storeId: string;
+  saleType?: 'COUNTER' | 'TABLE' | 'COMMAND';
+  commandReference?: string;
   items: Array<{
     productId: string;
     quantity: number;
@@ -91,6 +93,37 @@ export interface PdvOpenSession {
   status: 'OPEN' | 'CLOSED';
   openedAt: string;
   openingBalance: number;
+}
+
+export interface PdvOperatorSummary {
+  sessionId: string;
+  branchId: string;
+  operator: {
+    userId: string | null;
+    label: string;
+  };
+  ordersCount: number;
+  totalSales: number;
+  avgTicket: number;
+  movementsCount: number;
+  movementTotals: {
+    supply: number;
+    withdrawal: number;
+    sale: number;
+    adjustment: number;
+  };
+}
+
+export interface PdvSessionDivergence {
+  sessionId: string;
+  branchId: string;
+  status: 'OPEN' | 'CLOSED';
+  expectedCashAmount: number;
+  declaredCashAmount: number | null;
+  cashDifference: number | null;
+  absoluteDifference: number | null;
+  divergenceLevel: 'none' | 'shortage' | 'overage';
+  closureNotes?: string;
 }
 
 export async function fetchPdvMenu(input: { companyId: string; branchId?: string }): Promise<MenuProduct[]> {
@@ -216,6 +249,32 @@ export async function listCurrentPdvMovements(input: {
   return Array.isArray(payload) ? payload.map(normalizeMovement) : [];
 }
 
+export async function getPdvOperatorSummary(input: {
+  companyId: string;
+  branchId?: string;
+  sessionId: string;
+  userId?: string;
+}): Promise<PdvOperatorSummary> {
+  const search = input.userId ? `?userId=${encodeURIComponent(input.userId)}` : '';
+  const payload = await apiFetch<unknown>(`/v2/pdv/sessions/${input.sessionId}/operators/summary${search}`, {
+    method: 'GET',
+    headers: pdvHeaders(input),
+  });
+  return normalizeOperatorSummary(payload, input.sessionId);
+}
+
+export async function getPdvSessionDivergence(input: {
+  companyId: string;
+  branchId?: string;
+  sessionId: string;
+}): Promise<PdvSessionDivergence> {
+  const payload = await apiFetch<unknown>(`/v2/pdv/sessions/${input.sessionId}/divergence`, {
+    method: 'GET',
+    headers: pdvHeaders(input),
+  });
+  return normalizeSessionDivergence(payload, input.sessionId);
+}
+
 function pdvHeaders(input: { companyId: string; branchId?: string }): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -281,5 +340,49 @@ function normalizeMovement(payload: unknown): PdvSessionMovement {
     amount: toNumber(data.amount),
     reason: typeof data.reason === 'string' ? data.reason : undefined,
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString(),
+  };
+}
+
+function normalizeOperatorSummary(payload: unknown, sessionId: string): PdvOperatorSummary {
+  const data = payload && typeof payload === 'object' ? (payload as Partial<PdvOperatorSummary>) : {};
+  return {
+    sessionId: typeof data.sessionId === 'string' ? data.sessionId : sessionId,
+    branchId: typeof data.branchId === 'string' ? data.branchId : '',
+    operator: {
+      userId: typeof data.operator?.userId === 'string' ? data.operator.userId : null,
+      label: typeof data.operator?.label === 'string' ? data.operator.label : 'unassigned',
+    },
+    ordersCount: toNumber(data.ordersCount),
+    totalSales: toNumber(data.totalSales),
+    avgTicket: toNumber(data.avgTicket),
+    movementsCount: toNumber(data.movementsCount),
+    movementTotals: {
+      supply: toNumber(data.movementTotals?.supply),
+      withdrawal: toNumber(data.movementTotals?.withdrawal),
+      sale: toNumber(data.movementTotals?.sale),
+      adjustment: toNumber(data.movementTotals?.adjustment),
+    },
+  };
+}
+
+function normalizeSessionDivergence(payload: unknown, sessionId: string): PdvSessionDivergence {
+  const data = payload && typeof payload === 'object' ? (payload as Partial<PdvSessionDivergence>) : {};
+  const rawDiff = (data as any).cashDifference;
+  const cashDifference = rawDiff === null || rawDiff === undefined ? null : toNumber(rawDiff);
+  const rawDeclared = (data as any).declaredCashAmount;
+  const declaredCashAmount = rawDeclared === null || rawDeclared === undefined ? null : toNumber(rawDeclared);
+  const rawAbs = (data as any).absoluteDifference;
+  const absoluteDifference = rawAbs === null || rawAbs === undefined ? null : toNumber(rawAbs);
+
+  return {
+    sessionId: typeof data.sessionId === 'string' ? data.sessionId : sessionId,
+    branchId: typeof data.branchId === 'string' ? data.branchId : '',
+    status: data.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
+    expectedCashAmount: toNumber(data.expectedCashAmount),
+    declaredCashAmount,
+    cashDifference,
+    absoluteDifference,
+    divergenceLevel: data.divergenceLevel === 'shortage' || data.divergenceLevel === 'overage' ? data.divergenceLevel : 'none',
+    closureNotes: typeof data.closureNotes === 'string' ? data.closureNotes : undefined,
   };
 }

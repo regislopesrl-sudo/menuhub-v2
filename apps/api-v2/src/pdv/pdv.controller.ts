@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { RequirePermissions } from '../common/permissions.decorator';
@@ -37,6 +37,16 @@ export class PdvController {
     return this.pdvService.getOpenSession(ctx);
   }
 
+  @Get('current/summary')
+  async currentSummary(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getCurrentSessionSummary(ctx);
+  }
+
+  @Get('current/movements')
+  async currentMovements(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getCurrentSessionMovements(ctx);
+  }
+
   @Post(':id/movements')
   async createMovement(
     @Param('id') id: string,
@@ -49,5 +59,19 @@ export class PdvController {
   @Get(':id/movements')
   async listMovements(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
     return this.pdvService.listMovements(id, ctx);
+  }
+
+  @Get(':id/operators/summary')
+  async operatorSummary(
+    @Param('id') id: string,
+    @CurrentContext() ctx: RequestContext,
+    @Query('userId') userId?: string,
+  ) {
+    return this.pdvService.getOperatorSummary(id, ctx, userId);
+  }
+
+  @Get(':id/divergence')
+  async divergence(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getSessionDivergence(id, ctx);
   }
 }

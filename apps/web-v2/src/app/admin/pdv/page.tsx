@@ -15,7 +15,9 @@ import {
   createPdvOrder,
   fetchPdvMenu,
   getCurrentOpenPdvSession,
+  getPdvOperatorSummary,
   getCurrentPdvSessionSummary,
+  getPdvSessionDivergence,
   getPdvSessionSummary,
   listCurrentPdvMovements,
   listPdvMovements,
@@ -24,6 +26,8 @@ import {
   type PdvSessionMovement,
   type PdvPaymentMethod,
   type PdvSessionSummary,
+  type PdvOperatorSummary,
+  type PdvSessionDivergence,
 } from '@/features/pdv/pdv.api';
 import type { MenuProduct } from '@/features/menu/menu.mock';
 import { Input, Select } from '@/components/ui/Input';
@@ -61,6 +65,8 @@ export default function AdminPdvPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PdvPaymentMethod>('CASH');
+  const [saleType, setSaleType] = useState<'COUNTER' | 'TABLE' | 'COMMAND'>('COUNTER');
+  const [commandReference, setCommandReference] = useState('');
   const [startInPreparation, setStartInPreparation] = useState(true);
   const [lastOrder, setLastOrder] = useState<{
     id: string;
@@ -86,6 +92,8 @@ export default function AdminPdvPage() {
   const [openingBalanceInput, setOpeningBalanceInput] = useState('0');
   const [declaredCashInput, setDeclaredCashInput] = useState('');
   const [movements, setMovements] = useState<PdvSessionMovement[]>([]);
+  const [operatorSummary, setOperatorSummary] = useState<PdvOperatorSummary | null>(null);
+  const [sessionDivergence, setSessionDivergence] = useState<PdvSessionDivergence | null>(null);
   const [movementType, setMovementType] = useState<PdvMovementType>('SUPPLY');
   const [movementAmount, setMovementAmount] = useState('');
   const [movementReason, setMovementReason] = useState('');
@@ -154,20 +162,40 @@ export default function AdminPdvPage() {
         const current = await getCurrentOpenPdvSession({ companyId, branchId });
         if (current) {
           setOpenSession(current);
-          const summary = await getCurrentPdvSessionSummary({
-            companyId,
-            branchId,
-          });
+          const [summary, movementList] = await Promise.all([
+            getCurrentPdvSessionSummary({
+              companyId,
+              branchId,
+            }),
+            listCurrentPdvMovements({
+              companyId,
+              branchId,
+            }),
+          ]);
           setSessionSummary(summary);
-          const movementList = await listCurrentPdvMovements({
-            companyId,
-            branchId,
-          });
           setMovements(movementList);
+          if (summary?.sessionId) {
+            const [operator, divergence] = await Promise.all([
+              getPdvOperatorSummary({
+                companyId,
+                branchId,
+                sessionId: summary.sessionId,
+              }),
+              getPdvSessionDivergence({
+                companyId,
+                branchId,
+                sessionId: summary.sessionId,
+              }),
+            ]);
+            setOperatorSummary(operator);
+            setSessionDivergence(divergence);
+          }
         } else {
           setOpenSession(null);
           setSessionSummary(null);
           setMovements([]);
+          setOperatorSummary(null);
+          setSessionDivergence(null);
         }
       } catch (err) {
         setSessionError(err instanceof Error ? err.message : 'Falha ao carregar sessao de caixa.');
@@ -188,12 +216,26 @@ export default function AdminPdvPage() {
           sessionId: openSession.id,
         });
         setSessionSummary(summary);
-        const movementList = await listPdvMovements({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        });
+        const [movementList, operator, divergence] = await Promise.all([
+          listPdvMovements({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+          getPdvOperatorSummary({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+          getPdvSessionDivergence({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+        ]);
         setMovements(movementList);
+        setOperatorSummary(operator);
+        setSessionDivergence(divergence);
       } catch {
         // non-blocking polling
       }
@@ -300,11 +342,13 @@ export default function AdminPdvPage() {
     setCheckoutError(null);
     setFinishing(true);
     try {
-      const result = await createPdvOrder({
+        const result = await createPdvOrder({
         companyId,
         branchId,
           payload: {
           storeId,
+          saleType,
+          commandReference: commandReference.trim() || undefined,
           paymentMethod,
           startInPreparation,
           items: cart.map((item) => ({
@@ -322,12 +366,26 @@ export default function AdminPdvPage() {
       });
       setCart([]);
       if (openSession?.id) {
-        const summary = await getPdvSessionSummary({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        });
+        const [summary, operator, divergence] = await Promise.all([
+          getPdvSessionSummary({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+          getPdvOperatorSummary({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+          getPdvSessionDivergence({
+            companyId,
+            branchId,
+            sessionId: openSession.id,
+          }),
+        ]);
         setSessionSummary(summary);
+        setOperatorSummary(operator);
+        setSessionDivergence(divergence);
       }
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Falha ao finalizar pedido.');
@@ -358,6 +416,20 @@ export default function AdminPdvPage() {
         sessionId: opened.id,
       });
       setMovements(movementList);
+      const [operator, divergence] = await Promise.all([
+        getPdvOperatorSummary({
+          companyId,
+          branchId,
+          sessionId: opened.id,
+        }),
+        getPdvSessionDivergence({
+          companyId,
+          branchId,
+          sessionId: opened.id,
+        }),
+      ]);
+      setOperatorSummary(operator);
+      setSessionDivergence(divergence);
       setDeclaredCashInput(String(summary.expectedCashAmount));
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : 'Falha ao abrir caixa.');
@@ -380,6 +452,8 @@ export default function AdminPdvPage() {
       setOpenSession(null);
       setSessionSummary(null);
       setMovements([]);
+      setOperatorSummary(null);
+      setSessionDivergence(null);
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : 'Falha ao fechar caixa.');
     } finally {
@@ -416,6 +490,20 @@ export default function AdminPdvPage() {
       ]);
       setSessionSummary(summary);
       setMovements(movementList);
+      const [operator, divergence] = await Promise.all([
+        getPdvOperatorSummary({
+          companyId,
+          branchId,
+          sessionId: openSession.id,
+        }),
+        getPdvSessionDivergence({
+          companyId,
+          branchId,
+          sessionId: openSession.id,
+        }),
+      ]);
+      setOperatorSummary(operator);
+      setSessionDivergence(divergence);
       setDeclaredCashInput(String(summary.expectedCashAmount));
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : 'Falha ao registrar movimentacao.');
@@ -622,6 +710,19 @@ export default function AdminPdvPage() {
             </div>
 
             <div className={styles.payment}>
+              <label>Tipo de venda</label>
+              <select value={saleType} onChange={(e) => setSaleType(e.target.value as 'COUNTER' | 'TABLE' | 'COMMAND')}>
+                <option value="COUNTER">Balcao</option>
+                <option value="TABLE">Mesa</option>
+                <option value="COMMAND">Comanda</option>
+              </select>
+              {saleType !== 'COUNTER' ? (
+                <Input
+                  value={commandReference}
+                  onChange={(e) => setCommandReference(e.target.value)}
+                  placeholder={saleType === 'TABLE' ? 'Identificador da mesa (ex: M12)' : 'Referencia da comanda'}
+                />
+              ) : null}
               <label>Pagamento</label>
               <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PdvPaymentMethod)}>
                 <option value="CASH">Dinheiro</option>
@@ -660,6 +761,42 @@ export default function AdminPdvPage() {
             </Button>
             <small className={styles.shortcutHint}>Atalhos: F2 busca, F4 finalizar venda, Esc limpar/fechar modal, Enter confirma modal.</small>
           </Card>
+        </section>
+      ) : null}
+
+      {openSession && (operatorSummary || sessionDivergence) ? (
+        <section className={styles.grid}>
+          {operatorSummary ? (
+            <Card className={styles.cashBox}>
+              <h2 className={styles.sectionTitle}>Resumo por operador</h2>
+              <div className={styles.summaryGrid}>
+                <div><small>Operador</small><strong>{operatorSummary.operator.label}</strong></div>
+                <div><small>Pedidos</small><strong>{operatorSummary.ordersCount}</strong></div>
+                <div><small>Vendas</small><strong>{currency(operatorSummary.totalSales)}</strong></div>
+                <div><small>Ticket medio</small><strong>{currency(operatorSummary.avgTicket)}</strong></div>
+                <div><small>Movimentos</small><strong>{operatorSummary.movementsCount}</strong></div>
+                <div><small>Suprimentos</small><strong>{currency(operatorSummary.movementTotals.supply)}</strong></div>
+                <div><small>Sangrias</small><strong>{currency(operatorSummary.movementTotals.withdrawal)}</strong></div>
+                <div><small>Ajustes</small><strong>{currency(operatorSummary.movementTotals.adjustment)}</strong></div>
+              </div>
+            </Card>
+          ) : null}
+          {sessionDivergence ? (
+            <Card className={styles.cashBox}>
+              <h2 className={styles.sectionTitle}>Divergencia de caixa</h2>
+              <div className={styles.summaryGrid}>
+                <div><small>Nivel</small><strong>{sessionDivergence.divergenceLevel}</strong></div>
+                <div><small>Esperado</small><strong>{currency(sessionDivergence.expectedCashAmount)}</strong></div>
+                <div><small>Declarado</small><strong>{currency(sessionDivergence.declaredCashAmount ?? 0)}</strong></div>
+                <div><small>Diferenca</small><strong>{currency(sessionDivergence.cashDifference ?? 0)}</strong></div>
+                <div><small>Diferenca abs.</small><strong>{currency(sessionDivergence.absoluteDifference ?? 0)}</strong></div>
+                <div><small>Status</small><strong>{sessionDivergence.status}</strong></div>
+                {sessionDivergence.closureNotes ? (
+                  <div><small>Obs. fechamento</small><strong>{sessionDivergence.closureNotes}</strong></div>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
         </section>
       ) : null}
 

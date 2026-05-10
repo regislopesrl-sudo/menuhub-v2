@@ -10,6 +10,11 @@ import { DeliveryQuoteService } from '../delivery/delivery-quote.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PdvService } from '../pdv/pdv.service';
 
+type PdvCheckoutInputExtended = PdvCheckoutInput & {
+  saleType?: 'COUNTER' | 'TABLE' | 'COMMAND';
+  commandReference?: string;
+};
+
 export interface CheckoutQuoteInput {
   storeId: string;
   items: DeliveryCheckoutInput['items'];
@@ -197,7 +202,7 @@ export class CheckoutService {
     };
   }
 
-  async runPdvCheckout(input: PdvCheckoutInput, ctx: RequestContext): Promise<CheckoutResult> {
+  async runPdvCheckout(input: PdvCheckoutInputExtended, ctx: RequestContext): Promise<CheckoutResult> {
     this.validatePdvInput(input);
 
     const validated = await this.menuPort.validateItems({
@@ -235,8 +240,11 @@ export class CheckoutService {
     };
 
     const session = await this.pdvService.getOpenSessionOrThrow(ctx);
+    const pdvOrderType = input.saleType === 'TABLE' ? 'TABLE' : input.saleType === 'COMMAND' ? 'COMMAND' : 'COUNTER';
     const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, undefined, {
       pdvSessionId: session.id,
+      pdvOrderType,
+      commandReference: input.commandReference,
     });
     try {
       await this.ordersEvents.emitOrderCreated(

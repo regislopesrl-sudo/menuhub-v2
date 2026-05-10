@@ -159,4 +159,42 @@ describe('CheckoutService', () => {
     expect(result.payment.qrCodeText).toBeTruthy();
     expect(result.payment.expiresAt).toBeTruthy();
   });
+
+  it('PDV aceita venda por mesa/comanda e persiste tipo de ordem', async () => {
+    const menuPort: MenuPort = {
+      validateItems: jest.fn().mockResolvedValue({
+        storeId: 'pdv_store',
+        items: [{ productId: 'p1', name: 'Prato', quantity: 1, unitPrice: 40, selectedOptions: [] }],
+      }),
+    };
+    const repo = {
+      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-2', status: 'CONFIRMED' }),
+      attachPaymentIntent: jest.fn().mockResolvedValue({ id: 'order_db' }),
+    };
+    const service = build(menuPort, { quoteByAddress: jest.fn() }, repo);
+
+    await service.runPdvCheckout(
+      {
+        companyId: 'company_a',
+        channel: 'pdv',
+        storeId: 'pdv_store',
+        items: [{ productId: 'p1', quantity: 1 }],
+        paymentMethod: 'CASH',
+        saleType: 'TABLE',
+        commandReference: 'MESA-12',
+      },
+      ctx,
+    );
+
+    expect(repo.createOrder).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      undefined,
+      expect.objectContaining({
+        pdvSessionId: 'session_1',
+        pdvOrderType: 'TABLE',
+        commandReference: 'MESA-12',
+      }),
+    );
+  });
 });
