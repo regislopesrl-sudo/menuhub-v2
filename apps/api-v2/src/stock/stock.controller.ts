@@ -77,4 +77,19 @@ export class StockController {
   ) {
     return this.stockService.applyInventoryCount(ctx, body);
   }
+
+  @Get('alerts/breakage')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listBreakageAlerts(@CurrentContext() ctx: RequestContext) {
+    return this.stockService.listBreakageAlerts(ctx);
+  }
+
+  @Post('movements/loss')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  registerLoss(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+  ) {
+    return this.stockService.registerLoss(ctx, body);
+  }
 }

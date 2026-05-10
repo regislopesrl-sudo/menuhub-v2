@@ -12,10 +12,13 @@ import {
   createStockItem,
   listStockItems,
   listStockMovements,
+  listStockBreakageAlerts,
   stockManualEntry,
   stockManualExit,
+  stockRegisterLoss,
   applyInventoryCounts,
   type StockItem,
+  type StockBreakageAlert,
   type StockMovement,
 } from '@/features/stock/stock.api';
 import styles from './page.module.css';
@@ -23,6 +26,7 @@ import styles from './page.module.css';
 export default function AdminStockPage() {
   const [items, setItems] = useState<StockItem[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [alerts, setAlerts] = useState<StockBreakageAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +41,7 @@ export default function AdminStockPage() {
   const [moveCost, setMoveCost] = useState('0');
   const [moveReason, setMoveReason] = useState('manual');
   const [countedQty, setCountedQty] = useState('');
+  const [lossQty, setLossQty] = useState('');
 
   const selected = useMemo(() => items.find((it) => it.id === selectedItemId) ?? null, [items, selectedItemId]);
 
@@ -44,14 +49,51 @@ export default function AdminStockPage() {
     setLoading(true);
     setError(null);
     try {
-      const [stockItems, stockMovements] = await Promise.all([listStockItems(), listStockMovements()]);
+      const [stockItems, stockMovements, stockAlerts] = await Promise.all([
+        listStockItems(),
+        listStockMovements(),
+        listStockBreakageAlerts(),
+      ]);
       setItems(stockItems);
       setMovements(stockMovements);
+      setAlerts(stockAlerts);
       if (!selectedItemId && stockItems[0]?.id) setSelectedItemId(stockItems[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar estoque.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function submitLoss() {
+    if (!selectedItemId) {
+      setError('Selecione um item.');
+      return;
+    }
+    const qty = Number(lossQty || '0');
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('Quantidade de perda invalida.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await stockRegisterLoss({
+        stockItemId: selectedItemId,
+        quantity: qty,
+        unitCost: Number(moveCost || '0'),
+        reasonCode: 'breakage_manual',
+      });
+      setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
+      setMovements((prev) => [result.movement, ...prev]);
+      setLossQty('');
+      setNotice('Perda/quebra registrada.');
+      const refreshedAlerts = await listStockBreakageAlerts();
+      setAlerts(refreshedAlerts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao registrar perda.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -145,6 +187,22 @@ export default function AdminStockPage() {
 
       {error ? <Card className={styles.card}><Badge tone="danger">Erro</Badge><span>{error}</span></Card> : null}
       {notice ? <Card className={styles.card}><Badge tone="success">OK</Badge><span>{notice}</span></Card> : null}
+      <Card className={styles.card}>
+        <h2>Alertas de ruptura</h2>
+        {alerts.length === 0 ? <span>Sem alertas no momento.</span> : null}
+        {alerts.map((alert) => (
+          <div key={alert.stockItemId} className={styles.row}>
+            <strong>{alert.name}</strong>
+            <div className={styles.meta}>
+              <span>Tipo: {alert.type}</span>
+              <span>Severidade: {alert.severity}</span>
+              <span>Atual: {alert.currentQuantity}</span>
+              <span>Min: {alert.minimumQuantity}</span>
+              <span>Reorder: {alert.reorderPoint}</span>
+            </div>
+          </div>
+        ))}
+      </Card>
 
       <section className={styles.grid}>
         <Card className={styles.card}>
@@ -187,6 +245,12 @@ export default function AdminStockPage() {
             <Input placeholder="Quantidade contada (inventario)" value={countedQty} onChange={(e) => setCountedQty(e.target.value)} />
             <Button disabled={saving || !selectedItemId} onClick={() => void submitInventoryCount()}>
               Aplicar inventario
+            </Button>
+          </div>
+          <div className={styles.formRow}>
+            <Input placeholder="Quantidade perda/quebra" value={lossQty} onChange={(e) => setLossQty(e.target.value)} />
+            <Button variant="danger" disabled={saving || !selectedItemId} onClick={() => void submitLoss()}>
+              Registrar perda/quebra
             </Button>
           </div>
 

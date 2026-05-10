@@ -32,6 +32,17 @@ export type StockMovement = {
   createdAt: string;
 };
 
+export type StockBreakageAlert = {
+  stockItemId: string;
+  name: string;
+  stockUnit: string | null;
+  currentQuantity: number;
+  minimumQuantity: number;
+  reorderPoint: number;
+  severity: 'medium' | 'high' | 'critical';
+  type: 'stockout' | 'below_minimum' | 'below_reorder';
+};
+
 export function listStockItems() {
   return apiFetch<StockItem[]>('/v2/admin/stock/items', { method: 'GET' });
 }
@@ -82,6 +93,19 @@ export function stockManualExit(input: {
   });
 }
 
+export function stockRegisterLoss(input: {
+  stockItemId: string;
+  quantity: number;
+  unitCost?: number;
+  reasonCode?: string;
+  notes?: string;
+}) {
+  return apiFetch<{ item: StockItem; movement: StockMovement }>('/v2/admin/stock/movements/loss', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function applyInventoryCounts(input: {
   counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>;
   notes?: string;
@@ -95,4 +119,8 @@ export function applyInventoryCounts(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function listStockBreakageAlerts() {
+  return apiFetch<StockBreakageAlert[]>('/v2/admin/stock/alerts/breakage', { method: 'GET' });
 }

@@ -24,6 +24,14 @@ export type StockMovementInput = {
   notes?: string;
 };
 
+export type StockLossInput = {
+  stockItemId: string;
+  quantity: number;
+  unitCost?: number;
+  reasonCode?: string;
+  notes?: string;
+};
+
 export type InventoryCountInput = {
   stockItemId: string;
   countedQuantity: number;
@@ -141,6 +149,59 @@ export class StockService {
 
   async manualExit(ctx: RequestContext, input: StockMovementInput) {
     return this.applyManualMovement(ctx, 'EXIT', input);
+  }
+
+  async registerLoss(ctx: RequestContext, input: StockLossInput) {
+    const payload: StockMovementInput = {
+      stockItemId: input.stockItemId,
+      quantity: input.quantity,
+      unitCost: input.unitCost,
+      reasonCode: input.reasonCode ?? 'loss_manual',
+      notes: input.notes,
+    };
+    const result = await this.applyManualMovement(ctx, 'EXIT', payload, {
+      movementTypeDetailed: 'manual_loss',
+      sourceModule: 'admin_stock_loss',
+      movementType: 'LOSS',
+    });
+    return result;
+  }
+
+  async listBreakageAlerts(ctx: RequestContext) {
+    const items = await this.prisma.stockItem.findMany({
+      where: { companyId: ctx.companyId, isActive: true, controlsStock: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        stockUnit: true,
+        currentQuantity: true,
+        minimumQuantity: true,
+        reorderPoint: true,
+        isCritical: true,
+      },
+    });
+
+    return items
+      .map((item) => {
+        const current = Number(item.currentQuantity);
+        const minimum = Number(item.minimumQuantity);
+        const reorder = Number(item.reorderPoint);
+        const threshold = reorder > 0 ? reorder : minimum;
+        const level = current <= 0 ? 'critical' : current <= minimum ? 'high' : current <= threshold ? 'medium' : null;
+        if (!level) return null;
+        return {
+          stockItemId: item.id,
+          name: item.name,
+          stockUnit: item.stockUnit,
+          currentQuantity: current,
+          minimumQuantity: minimum,
+          reorderPoint: reorder,
+          severity: item.isCritical || level === 'critical' ? 'critical' : level,
+          type: current <= 0 ? 'stockout' : current <= minimum ? 'below_minimum' : 'below_reorder',
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
   }
 
   async applyInventoryCount(ctx: RequestContext, input: { counts: InventoryCountInput[]; notes?: string }) {
@@ -335,6 +396,7 @@ export class StockService {
     ctx: RequestContext,
     movementType: 'ENTRY' | 'EXIT',
     input: StockMovementInput,
+    options?: { movementTypeDetailed?: string; sourceModule?: string; movementType?: 'ENTRY' | 'EXIT' | 'LOSS' },
   ) {
     const stockItemId = String(input.stockItemId ?? '').trim();
     if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio.');
@@ -388,9 +450,9 @@ export class StockService {
         data: {
           stockItemId,
           branchId: ctx.branchId,
-          movementType,
-          movementTypeDetailed: movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit',
-          sourceModule: 'admin_stock',
+          movementType: options?.movementType ?? movementType,
+          movementTypeDetailed: options?.movementTypeDetailed ?? (movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit'),
+          sourceModule: options?.sourceModule ?? 'admin_stock',
           sourceId: ctx.requestId,
           actorId: ctx.userId,
           requestId: ctx.requestId,

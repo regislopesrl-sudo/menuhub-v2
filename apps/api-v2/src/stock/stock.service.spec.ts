@@ -83,4 +83,14 @@ describe('StockService', () => {
     const result = await service.consumeByOrder(ctx, 'order-1');
     expect(result).toEqual({ orderId: 'order-1', consumed: false, reason: 'already_consumed' });
   });
+
+  it('gera alertas de ruptura', async () => {
+    prisma.stockItem.findMany.mockResolvedValue([
+      { id: 's1', name: 'A', stockUnit: 'kg', currentQuantity: 0, minimumQuantity: 2, reorderPoint: 5, isCritical: false },
+      { id: 's2', name: 'B', stockUnit: 'kg', currentQuantity: 3, minimumQuantity: 4, reorderPoint: 10, isCritical: false },
+    ]);
+    const alerts = await service.listBreakageAlerts(ctx);
+    expect(alerts.length).toBe(2);
+    expect(alerts[0].type).toBe('stockout');
+  });
 });

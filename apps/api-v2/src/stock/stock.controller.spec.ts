@@ -9,6 +9,8 @@ describe('StockController', () => {
     manualEntry: jest.fn(),
     manualExit: jest.fn(),
     applyInventoryCount: jest.fn(),
+    listBreakageAlerts: jest.fn(),
+    registerLoss: jest.fn(),
   };
 
   const controller = new StockController(service as any);
@@ -37,5 +39,11 @@ describe('StockController', () => {
     const result = await controller.applyInventoryCount(ctx, payload);
     expect(result).toEqual({ changedItems: 1 });
     expect(service.applyInventoryCount).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('lista alertas de ruptura', async () => {
+    service.listBreakageAlerts.mockResolvedValueOnce([{ stockItemId: 's1' }]);
+    const result = await controller.listBreakageAlerts(ctx);
+    expect(result).toEqual([{ stockItemId: 's1' }]);
   });
 });
