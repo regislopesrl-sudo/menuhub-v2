@@ -6,6 +6,7 @@ describe('PdvService', () => {
     branch: { findFirst: jest.fn() },
     cashRegister: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     cashMovement: { findMany: jest.fn(), create: jest.fn() },
+    order: { findMany: jest.fn() },
   };
   const orderRepoMock: any = {
     findPdvOrdersForSession: jest.fn(),
@@ -25,6 +26,7 @@ describe('PdvService', () => {
     service = new PdvService(prismaMock, orderRepoMock);
     prismaMock.branch.findFirst.mockResolvedValue({ id: 'branch_1' });
     prismaMock.cashMovement.findMany.mockResolvedValue([]);
+    prismaMock.order.findMany.mockResolvedValue([]);
   });
 
   it('does not allow opening two sessions for same branch', async () => {
@@ -183,5 +185,53 @@ describe('PdvService', () => {
     prismaMock.cashRegister.findFirst.mockResolvedValueOnce(null);
     const movements = await service.getCurrentSessionMovements(ctx);
     expect(movements).toEqual([]);
+  });
+
+  it('returns operator summary for current user', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_1',
+      branchId: 'branch_1',
+      status: 'OPEN',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: null,
+      openingBalance: 0,
+      declaredClosingBalance: null,
+      differenceAmount: null,
+      closureNotes: null,
+    });
+    prismaMock.order.findMany.mockResolvedValue([{ totalAmount: 30 }, { totalAmount: 10 }]);
+    prismaMock.cashMovement.findMany.mockResolvedValue([
+      { movementType: 'DEPOSIT', amount: 20 },
+      { movementType: 'WITHDRAWAL', amount: 5 },
+    ]);
+
+    const summary = await service.getOperatorSummary('session_1', { ...ctx, userId: 'u1' });
+    expect(summary.operator.userId).toBe('u1');
+    expect(summary.ordersCount).toBe(2);
+    expect(summary.totalSales).toBe(40);
+    expect(summary.movementTotals.supply).toBe(20);
+    expect(summary.movementTotals.withdrawal).toBe(5);
+  });
+
+  it('returns divergence snapshot for closed session', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_1',
+      branchId: 'branch_1',
+      status: 'CLOSED',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: new Date('2026-04-30T12:00:00.000Z'),
+      openingBalance: 100,
+      declaredClosingBalance: 90,
+      differenceAmount: -10,
+      closureNotes: 'Quebra de caixa',
+    });
+    orderRepoMock.findPdvOrdersForSession.mockResolvedValue([]);
+    prismaMock.cashMovement.findMany.mockResolvedValue([]);
+
+    const divergence = await service.getSessionDivergence('session_1', ctx);
+    expect(divergence.status).toBe('CLOSED');
+    expect(divergence.cashDifference).toBe(-10);
+    expect(divergence.divergenceLevel).toBe('shortage');
+    expect(divergence.absoluteDifference).toBe(10);
   });
 });

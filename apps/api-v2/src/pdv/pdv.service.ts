@@ -39,6 +39,37 @@ export interface PdvSessionSummary {
   movementsCount: number;
 }
 
+export interface PdvOperatorSummary {
+  sessionId: string;
+  branchId: string;
+  operator: {
+    userId: string | null;
+    label: string;
+  };
+  ordersCount: number;
+  totalSales: number;
+  avgTicket: number;
+  movementsCount: number;
+  movementTotals: {
+    supply: number;
+    withdrawal: number;
+    sale: number;
+    adjustment: number;
+  };
+}
+
+export interface PdvSessionDivergence {
+  sessionId: string;
+  branchId: string;
+  status: 'OPEN' | 'CLOSED';
+  expectedCashAmount: number;
+  declaredCashAmount: number | null;
+  cashDifference: number | null;
+  absoluteDifference: number | null;
+  divergenceLevel: 'none' | 'shortage' | 'overage';
+  closureNotes?: string;
+}
+
 @Injectable()
 export class PdvService {
   constructor(
@@ -227,6 +258,7 @@ export class PdvService {
       data: {
         branchId: session.branchId,
         cashRegisterId: session.id,
+        createdById: ctx.userId ?? null,
         movementType,
         amount,
         notes: body.reason?.trim() || undefined,
@@ -297,6 +329,104 @@ export class PdvService {
     return this.listMovements(open.id, ctx);
   }
 
+  async getOperatorSummary(
+    id: string,
+    ctx: RequestContext,
+    operatorUserId?: string,
+  ): Promise<PdvOperatorSummary> {
+    const session = await this.findSessionOrThrow(id, ctx);
+    const targetUserId = operatorUserId?.trim() || ctx.userId || null;
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        companyId: ctx.companyId,
+        branchId: session.branchId,
+        createdById: targetUserId,
+        channel: 'PDV',
+        createdAt: {
+          gte: session.openedAt,
+          ...(session.closedAt ? { lte: session.closedAt } : {}),
+        },
+        deletedAt: null,
+      },
+      select: {
+        totalAmount: true,
+      },
+    });
+
+    const movements = await this.prisma.cashMovement.findMany({
+      where: {
+        cashRegisterId: session.id,
+        branchId: session.branchId,
+        createdById: targetUserId,
+        reversedAt: null,
+      },
+      select: {
+        movementType: true,
+        amount: true,
+      },
+    });
+
+    const movementTotals = { supply: 0, withdrawal: 0, sale: 0, adjustment: 0 };
+    for (const movement of movements) {
+      const amount = Number(movement.amount);
+      if (movement.movementType === 'DEPOSIT') movementTotals.supply += amount;
+      else if (movement.movementType === 'WITHDRAWAL') movementTotals.withdrawal += amount;
+      else if (movement.movementType === 'SALE') movementTotals.sale += amount;
+      else if (movement.movementType === 'ADJUSTMENT') movementTotals.adjustment += amount;
+    }
+
+    const totalSales = orders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
+    const ordersCount = orders.length;
+    return {
+      sessionId: session.id,
+      branchId: session.branchId,
+      operator: {
+        userId: targetUserId,
+        label: targetUserId ? targetUserId : 'unassigned',
+      },
+      ordersCount,
+      totalSales: Number(totalSales.toFixed(2)),
+      avgTicket: ordersCount > 0 ? Number((totalSales / ordersCount).toFixed(2)) : 0,
+      movementsCount: movements.length,
+      movementTotals: {
+        supply: Number(movementTotals.supply.toFixed(2)),
+        withdrawal: Number(movementTotals.withdrawal.toFixed(2)),
+        sale: Number(movementTotals.sale.toFixed(2)),
+        adjustment: Number(movementTotals.adjustment.toFixed(2)),
+      },
+    };
+  }
+
+  async getSessionDivergence(id: string, ctx: RequestContext): Promise<PdvSessionDivergence> {
+    const session = await this.findSessionOrThrow(id, ctx);
+    const summary = await this.getSessionSummary(id, ctx);
+
+    const declared =
+      session.status === 'CLOSED' && session.declaredClosingBalance !== null && session.declaredClosingBalance !== undefined
+        ? Number(session.declaredClosingBalance)
+        : null;
+    const diff =
+      session.status === 'CLOSED' && session.differenceAmount !== null && session.differenceAmount !== undefined
+        ? Number(session.differenceAmount)
+        : null;
+
+    const divergenceLevel: 'none' | 'shortage' | 'overage' =
+      diff === null || diff === 0 ? 'none' : diff < 0 ? 'shortage' : 'overage';
+
+    return {
+      sessionId: session.id,
+      branchId: session.branchId,
+      status: session.status === 'OPEN' ? 'OPEN' : 'CLOSED',
+      expectedCashAmount: Number(summary.expectedCashAmount.toFixed(2)),
+      declaredCashAmount: declared,
+      cashDifference: diff,
+      absoluteDifference: diff === null ? null : Number(Math.abs(diff).toFixed(2)),
+      divergenceLevel,
+      closureNotes: session.closureNotes ?? undefined,
+    };
+  }
+
   async getOpenSessionOrThrow(ctx: RequestContext): Promise<{ id: string; branchId: string }> {
     const open = await this.getOpenSession(ctx);
     if (!open) {
@@ -319,6 +449,9 @@ export class PdvService {
         openedAt: true,
         closedAt: true,
         openingBalance: true,
+        declaredClosingBalance: true,
+        differenceAmount: true,
+        closureNotes: true,
       },
     });
     if (!session) {

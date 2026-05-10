@@ -43,6 +43,7 @@ export class OrderPrismaRepository {
           data: {
             companyId: ctx.companyId,
             branchId,
+            createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
             orderType: result.order.channel === 'pdv' ? 'COUNTER' : 'DELIVERY',
             channel: result.order.channel === 'pdv' ? 'PDV' : 'WEB',
