@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
@@ -492,7 +492,7 @@ export default function DeliveryPage() {
             {featuredProducts.length > 0 ? (
               <Card className={styles.section}>
                 <div className={styles.row}>
-                  <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Destaques</h2>
+                  <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Destaques</h2>
                   <Badge tone="warning">{featuredProducts.length}</Badge>
                 </div>
                 <div className={styles.productsGrid}>
@@ -513,7 +513,7 @@ export default function DeliveryPage() {
 
             <Card className={styles.section}>
               <div className={styles.row}>
-                <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Cardápio</h2>
+                <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Cardápio</h2>
                 <Badge tone="default">{visibleProducts.length} itens</Badge>
               </div>
               <div className={styles.menuTools}>
@@ -612,7 +612,7 @@ export default function DeliveryPage() {
           <aside className={styles.rightCol}>
             <Card className={styles.section}>
               <div className={styles.row}>
-                <h2 className={styles.sectionTitle} style={{ marginBottom: 0 }}>Seu carrinho</h2>
+                <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Seu carrinho</h2>
                 <Badge tone="default">{totalItems} itens</Badge>
               </div>
 
@@ -633,7 +633,7 @@ export default function DeliveryPage() {
                     ) : null}
                     <div className={styles.row}>
                       <small className={styles.muted}>{brl(item.unitPrice + addonPrice)} cada</small>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div className={styles.quantityActions}>
                         <Button onClick={() => updateQuantity(index, item.quantity - 1)}>-</Button>
                         <Badge>{item.quantity}</Badge>
                         <Button onClick={() => updateQuantity(index, item.quantity + 1)}>+</Button>
@@ -742,7 +742,7 @@ export default function DeliveryPage() {
                       <strong>Aguardando pagamento PIX</strong>
                       <div className={styles.muted}>Expira em: {success.expiresAt ? new Date(success.expiresAt).toLocaleString('pt-BR') : '-'}</div>
                       {success.qrCode ? <img src={success.qrCode} alt="QR Code PIX" className={styles.qrImage} /> : null}
-                      <div style={{ wordBreak: 'break-all', marginTop: 8 }}>{success.qrCodeText}</div>
+                      <div className={styles.breakText}>{success.qrCodeText}</div>
                       <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.qrCodeText ?? '')}>Copiar codigo PIX</Button>
                     </div>
                   ) : null}
@@ -782,7 +782,7 @@ export default function DeliveryPage() {
                 const localErrors = validateGroups(customizingProduct, selectedAddons);
                 return (
                   <>
-                    <h3 style={{ margin: 0 }}>{customizingProduct.name}</h3>
+                    <h3 className={styles.modalTitle}>{customizingProduct.name}</h3>
                     <p className={styles.muted}>{customizingProduct.description}</p>
 
                     {(customizingProduct.addonGroups ?? []).length === 0 ? (
@@ -824,7 +824,7 @@ export default function DeliveryPage() {
 
                     <div className={styles.row}>
                       <strong>Total unitário: {brl(customizingProduct.price + addonTotal(customizingProduct, selectedAddons))}</strong>
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div className={styles.modalActions}>
                         <Button onClick={() => setCustomizingProduct(null)}>Cancelar</Button>
                         <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0}>
                           Adicionar ao carrinho
