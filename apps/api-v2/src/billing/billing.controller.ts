@@ -222,4 +222,62 @@ export class BillingController {
       throw error;
     }
   }
+
+  @Get('companies/:companyId/commercial-history')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.BILLING_READ,
+    TENANT_PERMISSIONS.BILLING_MANAGE,
+    PLATFORM_PERMISSIONS.BILLING_READ,
+    PLATFORM_PERMISSIONS.BILLING_MANAGE,
+  )
+  async getCommercialHistory(
+    @Param('companyId') companyId: string,
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:read');
+    const result = await this.billingService.getCommercialHistory(companyId);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.COMMERCIAL_HISTORY_READ,
+      outcome: 'success',
+      ctx,
+      target: { type: 'company', id: companyId },
+      metadata: { companyId, timelineItems: result.timeline.length },
+    });
+    return result;
+  }
+
+  @Post('companies/:companyId/subscription/change-plan')
+  @RequirePermissions(TENANT_PERMISSIONS.BILLING_MANAGE, PLATFORM_PERMISSIONS.BILLING_MANAGE)
+  async changeSubscriptionPlanMock(
+    @Param('companyId') companyId: string,
+    @Body() body: { targetPlanId: string; effectiveAt?: string; reason?: string },
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    try {
+      assertCanAccessCompanyBillingAction(ctx, companyId, 'billing:manage');
+      const result = await this.billingService.changeSubscriptionPlanMock(companyId, body);
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SUBSCRIPTION_PLAN_CHANGE,
+        outcome: 'success',
+        ctx,
+        target: { type: 'subscription', id: result.subscriptionId },
+        metadata: {
+          companyId,
+          changeType: result.changeType,
+          fromPlan: result.fromPlan.key,
+          toPlan: result.toPlan.key,
+        },
+      });
+      return result;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.SUBSCRIPTION_PLAN_CHANGE,
+        outcome: error instanceof ForbiddenException ? 'blocked' : 'failure',
+        ctx,
+        target: { type: 'company', id: companyId },
+        metadata: { companyId, error: error instanceof Error ? error.message : String(error) },
+      });
+      throw error;
+    }
+  }
 }

@@ -7,6 +7,7 @@ import styles from './top-nav.module.css';
 import { useModules } from '@/features/modules/use-modules';
 import { getAuthSession } from '@/lib/auth-session';
 import { logoutCurrentSession } from '@/lib/auth-api';
+import { readJwtPayload } from '@/lib/auth-claims';
 
 export function TopNav() {
   const pathname = usePathname();
@@ -20,6 +21,14 @@ export function TopNav() {
   }, []);
 
   const session = mounted ? getAuthSession() : null;
+  const contextLabel = useMemo(() => {
+    if (!session?.accessToken) return null;
+    const payload = readJwtPayload(session.accessToken);
+    const company = String(payload?.companyId ?? '-');
+    const branch = String(payload?.branchId ?? '-');
+    const role = String(payload?.role ?? 'user');
+    return `Empresa: ${company} | Filial: ${branch} | Perfil: ${role}`;
+  }, [session?.accessToken]);
 
   const links = useMemo(
     () =>
@@ -31,8 +40,9 @@ export function TopNav() {
     mounted && modules.isEnabled('pdv') ? { href: '/admin/pdv', label: 'PDV' } : null,
     mounted && modules.isEnabled('menu') ? { href: '/admin/menu', label: 'Cardapio' } : null,
     mounted && modules.isEnabled('delivery') ? { href: '/delivery', label: 'Delivery' } : null,
+    session?.accessToken ? { href: '/admin/context', label: 'Contexto' } : null,
       ].filter(Boolean) as Array<{ href: string; label: string }>,
-    [mounted, modules],
+    [mounted, modules, session?.accessToken],
   );
 
   return (
@@ -63,6 +73,7 @@ export function TopNav() {
           ) : null}
         </div>
       </nav>
+      {contextLabel ? <div className={styles.contextBar}>{contextLabel}</div> : null}
     </header>
   );
 }

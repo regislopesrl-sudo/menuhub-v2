@@ -27,6 +27,7 @@ describe('AuthServiceV2', () => {
       },
     ],
     memberships: [{ companyId: 'company_a', roleKey: 'owner', isActive: true }],
+    companyUserRoles: [],
   };
 
   afterEach(() => {
@@ -164,6 +165,74 @@ describe('AuthServiceV2', () => {
 
     expect(jwtMock.signAccessToken).toHaveBeenCalledWith(
       expect.objectContaining({ companyId: 'company-demo', role: 'developer', permissions: ['*'] }),
+    );
+  });
+
+  it('permissao curinga de role tenant vira conjunto explicito sem "*" no token', async () => {
+    const prismaMock = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...baseUser,
+          roles: [{ role: { name: 'owner', permissions: [] } }],
+          memberships: [{ companyId: 'company_a', roleKey: 'owner', isActive: true }],
+          companyUserRoles: [
+            {
+              companyId: 'company_a',
+              role: {
+                permissions: [{ permission: { key: '*' } }],
+              },
+            },
+          ],
+        }),
+      },
+      refreshToken: { create: jest.fn() },
+    } as any;
+    const service = new AuthServiceV2(prismaMock, jwtMock as any);
+
+    await service.login({ email: 'owner@local.test', password: '123456' });
+
+    expect(jwtMock.signAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'owner',
+        permissions: expect.arrayContaining([
+          'kds.operate',
+          'pdv.operate',
+          'admin.users.write',
+          'settings.write',
+        ]),
+      }),
+    );
+    const call = (jwtMock.signAccessToken as jest.Mock).mock.calls.slice(-1)[0]?.[0] as
+      | { permissions?: string[] }
+      | undefined;
+    expect(call?.permissions?.includes('*')).toBe(false);
+  });
+
+  it('admin recebe acesso tenant completo no fallback estatico', async () => {
+    const prismaMock = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...baseUser,
+          roles: [{ role: { name: 'admin', permissions: [] } }],
+          memberships: [{ companyId: 'company_a', roleKey: 'admin', isActive: true }],
+          companyUserRoles: [],
+        }),
+      },
+      refreshToken: { create: jest.fn() },
+    } as any;
+    const service = new AuthServiceV2(prismaMock, jwtMock as any);
+
+    await service.login({ email: 'admin@local.test', password: '123456' });
+    const call = (jwtMock.signAccessToken as jest.Mock).mock.calls.slice(-1)[0]?.[0] as
+      | { permissions?: string[] }
+      | undefined;
+    expect(call?.permissions).toEqual(
+      expect.arrayContaining([
+        'kds.operate',
+        'pdv.operate',
+        'modules.manage',
+        'settings.write',
+      ]),
     );
   });
 });

@@ -41,6 +41,7 @@ describe('BillingService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: 's1',
           companyId: 'c1',
+          planId: 'p1',
           status: 'ACTIVE',
           startsAt: new Date('2026-05-01T00:00:00.000Z'),
           endsAt: null,
@@ -48,7 +49,21 @@ describe('BillingService', () => {
           plan: { id: 'p1', key: 'pro', name: 'Pro' },
         }),
         findUnique: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
-        update: jest.fn().mockResolvedValue({ id: 's1', status: 'ACTIVE' }),
+        update: jest.fn().mockResolvedValue({
+          id: 's1',
+          companyId: 'c1',
+          planId: 'p2',
+          status: 'ACTIVE',
+          plan: { id: 'p2', key: 'enterprise', name: 'Enterprise' },
+        }),
+      },
+      plan: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'p2',
+          key: 'enterprise',
+          name: 'Enterprise',
+          isActive: true,
+        }),
       },
       branch: {
         count: jest.fn().mockResolvedValue(1),
@@ -107,6 +122,9 @@ describe('BillingService', () => {
             createdAt: new Date('2026-05-01T12:00:00.000Z'),
           },
         ]),
+      },
+      companyModuleAuditLog: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
 
@@ -250,6 +268,9 @@ describe('BillingService', () => {
     expect(result.modules.length).toBeGreaterThan(0);
     expect(result.limits).toEqual(expect.any(Array));
     expect(result.billing.provider).toBeDefined();
+    expect(result.billing).toHaveProperty('isDelinquent');
+    expect(result.billing).toHaveProperty('delinquencyDays');
+    expect(result.billing).toHaveProperty('recommendedAction');
     expect(result).not.toHaveProperty('accessToken');
     expect(result).not.toHaveProperty('secret');
   });
@@ -261,9 +282,98 @@ describe('BillingService', () => {
     expect(result.subscription).toBeNull();
     expect(result.plan).toBeNull();
     expect(result.billing.status).toBe('missing_subscription');
+    expect(result.billing.isDelinquent).toBe(false);
+    expect(result.billing.delinquencyDays).toBe(0);
+    expect(result.billing.recommendedAction).toBe('none');
   });
 
-  it('retorna historico comercial consolidado da empresa', async () => {
+  it('sinaliza inadimplencia quando existem faturas past_due', async () => {
+    const { service, prisma } = createService();
+    prisma.invoice.findMany.mockResolvedValueOnce([
+      {
+        id: 'i1',
+        status: 'PAST_DUE',
+        amountCents: 19900,
+        dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        paidAt: null,
+        createdAt: new Date(),
+        attempts: [],
+      },
+    ]);
+
+    const result = await service.getCurrentBillingOverview('c1');
+
+    expect(result.billing.status).toBe('active');
+    expect(result.billing.isDelinquent).toBe(true);
+    expect(result.billing.delinquencyDays).toBeGreaterThanOrEqual(3);
+    expect(result.billing.oldestPastDueAt).toBeTruthy();
+    expect(result.billing.recommendedAction).toBe('regularize_payment');
+  });
+
+  it('troca plano da assinatura em modo mock (upgrade/downgrade)', async () => {
+    const { service, prisma } = createService();
+    const result = await service.changeSubscriptionPlanMock('c1', { targetPlanId: 'p2' });
+    expect(result.changeType).toBe('upgrade');
+    expect(prisma.companySubscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 's1' },
+        data: { planId: 'p2' },
+      }),
+    );
+  });
+
+  it('bloqueia troca para mesmo plano', async () => {
+    const { service, prisma } = createService();
+    prisma.plan.findUnique.mockResolvedValueOnce({
+      id: 'p1',
+      key: 'pro',
+      name: 'Pro',
+      isActive: true,
+    });
+    await expect(service.changeSubscriptionPlanMock('c1', { targetPlanId: 'p1' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('retorna historico comercial consolidado da empresa (com dados sobrescritos)', async () => {
+    const { service, prisma } = createService();
+    prisma.subscriptionStatusEvent.findMany.mockResolvedValueOnce([
+      {
+        id: 'sse_1',
+        subscriptionId: 's1',
+        fromStatus: 'TRIAL',
+        toStatus: 'ACTIVE',
+        reason: 'TRIAL_CONVERTED',
+        createdAt: new Date('2026-05-09T00:00:00.000Z'),
+        subscription: { id: 's1', planId: 'p1', companyId: 'c1' },
+      },
+    ]);
+    prisma.invoiceStatusEvent.findMany.mockResolvedValueOnce([
+      {
+        id: 'ise_1',
+        invoiceId: 'i1',
+        fromStatus: 'OPEN',
+        toStatus: 'PAID',
+        reason: 'MOCK_PAYMENT',
+        createdAt: new Date('2026-05-09T01:00:00.000Z'),
+        invoice: {
+          id: 'i1',
+          companyId: 'c1',
+          subscriptionId: 's1',
+          amountCents: 19900,
+          dueDate: new Date('2026-05-16T00:00:00.000Z'),
+          status: 'PAID',
+        },
+      },
+    ]);
+
+    const result = await service.getCommercialHistory('c1');
+    expect(result.companyId).toBe('c1');
+    expect(result.timeline.length).toBeGreaterThan(0);
+    expect(result.summary.subscriptionEvents).toBe(1);
+  });
+
+  it('retorna historico comercial consolidado da empresa (dados default)', async () => {
     const { service } = createService();
     const result = await service.getCommercialHistory('c1');
     expect(result.companyId).toBe('c1');
