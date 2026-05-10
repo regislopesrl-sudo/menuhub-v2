@@ -239,4 +239,70 @@ describe('OrdersService', () => {
       quantity: 1,
     });
   });
+
+  it('cancela pedido com motivo', async () => {
+    const repoMock = {
+      cancelOrder: jest.fn().mockResolvedValue({
+        id: 'order_1',
+        orderNumber: 'V2-1',
+        status: 'CANCELED',
+        subtotal: 50,
+        discountAmount: 0,
+        deliveryFee: 0,
+        totalAmount: 50,
+        paymentStatus: 'UNPAID',
+        paidAmount: 0,
+        refundedAmount: 0,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        items: [],
+      }),
+    } as any;
+    const service = createService(repoMock);
+    const result = await service.cancelOrder('order_1', { reasonCode: 'customer_request' }, ctxBase);
+    expect(result.status).toBe('CANCELED');
+  });
+
+  it('adiciona observacao interna', async () => {
+    const repoMock = {
+      addInternalNote: jest.fn().mockResolvedValue({
+        id: 'order_1',
+        orderNumber: 'V2-1',
+        status: 'CONFIRMED',
+        subtotal: 50,
+        discountAmount: 0,
+        deliveryFee: 0,
+        totalAmount: 50,
+        paymentStatus: 'UNPAID',
+        paidAmount: 0,
+        refundedAmount: 0,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        items: [],
+      }),
+    } as any;
+    const service = createService(repoMock);
+    const result = await service.addInternalNote('order_1', 'ligar cliente', ctxBase);
+    expect(result.id).toBe('order_1');
+  });
+
+  it('processa reembolso mock', async () => {
+    const repoMock = {
+      applyRefundMock: jest.fn().mockResolvedValue({
+        id: 'order_1',
+        orderNumber: 'V2-1',
+        status: 'CONFIRMED',
+        subtotal: 50,
+        discountAmount: 0,
+        deliveryFee: 0,
+        totalAmount: 50,
+        paymentStatus: 'REFUNDED',
+        paidAmount: 50,
+        refundedAmount: 50,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        items: [],
+      }),
+    } as any;
+    const service = createService(repoMock);
+    const result = await service.refundMock('order_1', { amount: 50, reasonCode: 'test_refund' }, ctxBase);
+    expect(result.paymentSummary?.status).toBe('REFUNDED');
+  });
 });

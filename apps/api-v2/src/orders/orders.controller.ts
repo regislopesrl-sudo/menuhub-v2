@@ -43,4 +43,40 @@ export class OrdersController {
   ) {
     return this.ordersService.updateStatus(id, body.status, ctx);
   }
+
+  @Get(':id/timeline')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_READ, TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async getTimeline(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.ordersService.getTimeline(id, ctx);
+  }
+
+  @Patch(':id/cancel')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async cancelOrder(
+    @Param('id') id: string,
+    @Body() body: { reasonCode: string; reasonText?: string; internalNote?: string },
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    return this.ordersService.cancelOrder(id, body, ctx);
+  }
+
+  @Patch(':id/internal-note')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async addInternalNote(
+    @Param('id') id: string,
+    @Body() body: { note: string },
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    return this.ordersService.addInternalNote(id, body.note, ctx);
+  }
+
+  @Patch(':id/refund')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async refundMock(
+    @Param('id') id: string,
+    @Body() body: { amount: number; reasonCode: string; reasonText?: string },
+    @CurrentContext() ctx: RequestContext,
+  ) {
+    return this.ordersService.refundMock(id, body, ctx);
+  }
 }

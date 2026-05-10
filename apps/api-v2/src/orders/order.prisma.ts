@@ -352,16 +352,250 @@ export class OrderPrismaRepository {
       return null;
     }
 
-    return this.prisma.order.update({
-      where: { id: existing.id },
-      data: { status: status as any },
-      include: {
-        items: {
-          include: {
-            addons: true,
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.order.findUnique({
+        where: { id: existing.id },
+        select: { status: true },
+      });
+      const updated = await tx.order.update({
+        where: { id: existing.id },
+        data: { status: status as any },
+        include: {
+          items: {
+            include: {
+              addons: true,
+            },
           },
         },
+      });
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: updated.id,
+          userId: ctx.userId,
+          previousStatus: before?.status ?? null,
+          newStatus: updated.status,
+          notes: `status_change:${status}`,
+        },
+      });
+      await tx.orderTimelineEvent.create({
+        data: {
+          orderId: updated.id,
+          actorType: 'USER',
+          actorUserId: ctx.userId,
+          eventType: 'order.status.updated',
+          previousStatus: before?.status ?? null,
+          newStatus: updated.status,
+          sourceModule: 'orders',
+          sourceAction: 'update_status',
+          channel: updated.channel,
+          correlationId: ctx.requestId,
+        },
+      });
+      return updated;
+    });
+  }
+
+  async listTimeline(id: string, ctx: RequestContext) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id,
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
       },
+      select: { id: true },
+    });
+    if (!order) return null;
+    return this.prisma.orderTimelineEvent.findMany({
+      where: { orderId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
+  async cancelOrder(
+    id: string,
+    ctx: RequestContext,
+    input: { reasonCode: string; reasonText?: string; internalNote?: string },
+  ) {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        id,
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+      },
+      include: { items: { include: { addons: true } } },
+    });
+    if (!existing) return null;
+
+    const snapshot = this.parseInternalNotes(existing.internalNotes);
+    const notes = Array.isArray(snapshot.internalOperationNotes)
+      ? (snapshot.internalOperationNotes as Array<Record<string, unknown>>)
+      : [];
+    if (input.internalNote) {
+      notes.push({ note: input.internalNote, at: new Date().toISOString(), by: ctx.userId ?? null });
+      snapshot.internalOperationNotes = notes;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          status: 'CANCELED',
+          cancellationReason: input.reasonCode,
+          canceledAt: new Date(),
+          internalNotes: JSON.stringify(snapshot),
+        },
+        include: { items: { include: { addons: true } } },
+      });
+      await tx.orderStatusLog.create({
+        data: {
+          orderId: updated.id,
+          userId: ctx.userId,
+          previousStatus: existing.status,
+          newStatus: 'CANCELED',
+          notes: input.reasonText ?? input.reasonCode,
+        },
+      });
+      await tx.orderTimelineEvent.create({
+        data: {
+          orderId: updated.id,
+          actorType: 'USER',
+          actorUserId: ctx.userId,
+          eventType: 'order.canceled',
+          previousStatus: existing.status,
+          newStatus: 'CANCELED',
+          sourceModule: 'orders',
+          sourceAction: 'cancel',
+          reasonCode: input.reasonCode,
+          reasonText: input.reasonText ?? null,
+          channel: updated.channel,
+          correlationId: ctx.requestId,
+          payload: input.internalNote ? { internalNote: input.internalNote } : undefined,
+        },
+      });
+      return updated;
+    });
+  }
+
+  async addInternalNote(id: string, ctx: RequestContext, note: string) {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        id,
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+      },
+      include: { items: { include: { addons: true } } },
+    });
+    if (!existing) return null;
+    const snapshot = this.parseInternalNotes(existing.internalNotes);
+    const notes = Array.isArray(snapshot.internalOperationNotes)
+      ? (snapshot.internalOperationNotes as Array<Record<string, unknown>>)
+      : [];
+    notes.push({ note, at: new Date().toISOString(), by: ctx.userId ?? null });
+    snapshot.internalOperationNotes = notes;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: existing.id },
+        data: { internalNotes: JSON.stringify(snapshot) },
+        include: { items: { include: { addons: true } } },
+      });
+      await tx.orderTimelineEvent.create({
+        data: {
+          orderId: updated.id,
+          actorType: 'USER',
+          actorUserId: ctx.userId,
+          eventType: 'order.internal_note.added',
+          sourceModule: 'orders',
+          sourceAction: 'internal_note',
+          channel: updated.channel,
+          correlationId: ctx.requestId,
+          payload: { note },
+        },
+      });
+      return updated;
+    });
+  }
+
+  async applyRefundMock(
+    id: string,
+    ctx: RequestContext,
+    input: { amount: number; reasonCode: string; reasonText?: string },
+  ) {
+    const existing = await this.prisma.order.findFirst({
+      where: {
+        id,
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+      },
+      include: { items: { include: { addons: true } } },
+    });
+    if (!existing) return null;
+
+    const total = Number(existing.totalAmount ?? 0);
+    const refunded = Number(existing.refundedAmount ?? 0);
+    const nextRefunded = Number((refunded + input.amount).toFixed(2));
+    if (nextRefunded > total) {
+      throw new Error('Valor de reembolso excede total do pedido.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.orderPayment.findFirst({
+        where: { orderId: existing.id },
+        orderBy: { id: 'asc' },
+      });
+      if (!payment) {
+        throw new Error('Pedido sem pagamento para reembolso.');
+      }
+
+      await tx.orderPaymentRefund.create({
+        data: {
+          orderPaymentId: payment.id,
+          orderId: existing.id,
+          amount: input.amount,
+          reasonCode: input.reasonCode,
+          reasonText: input.reasonText ?? null,
+          requestId: ctx.requestId,
+          processedAt: new Date(),
+          requestedById: ctx.userId,
+          metadata: { mode: 'mock' },
+        },
+      });
+
+      await tx.orderPayment.update({
+        where: { id: payment.id },
+        data: {
+          refundedAmount: Number((Number(payment.refundedAmount ?? 0) + input.amount).toFixed(2)),
+          status: 'REFUNDED',
+          refundedAt: new Date(),
+        },
+      });
+
+      const updated = await tx.order.update({
+        where: { id: existing.id },
+        data: {
+          refundedAmount: nextRefunded,
+          paymentStatus: nextRefunded >= total ? 'REFUNDED' : 'PAID',
+        },
+        include: { items: { include: { addons: true } } },
+      });
+
+      await tx.orderTimelineEvent.create({
+        data: {
+          orderId: updated.id,
+          actorType: 'USER',
+          actorUserId: ctx.userId,
+          eventType: 'order.refund.mock',
+          sourceModule: 'orders',
+          sourceAction: 'refund_mock',
+          reasonCode: input.reasonCode,
+          reasonText: input.reasonText ?? null,
+          channel: updated.channel,
+          correlationId: ctx.requestId,
+          payload: { amount: input.amount },
+        },
+      });
+      return updated;
     });
   }
 
