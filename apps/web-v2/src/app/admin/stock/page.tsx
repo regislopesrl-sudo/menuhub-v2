@@ -14,6 +14,7 @@ import {
   listStockMovements,
   stockManualEntry,
   stockManualExit,
+  applyInventoryCounts,
   type StockItem,
   type StockMovement,
 } from '@/features/stock/stock.api';
@@ -35,6 +36,7 @@ export default function AdminStockPage() {
   const [moveQty, setMoveQty] = useState('');
   const [moveCost, setMoveCost] = useState('0');
   const [moveReason, setMoveReason] = useState('manual');
+  const [countedQty, setCountedQty] = useState('');
 
   const selected = useMemo(() => items.find((it) => it.id === selectedItemId) ?? null, [items, selectedItemId]);
 
@@ -105,6 +107,32 @@ export default function AdminStockPage() {
     }
   }
 
+  async function submitInventoryCount() {
+    if (!selectedItemId) {
+      setError('Selecione um item.');
+      return;
+    }
+    const counted = Number(countedQty || '0');
+    if (!Number.isFinite(counted) || counted < 0) {
+      setError('Quantidade contada invalida.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await applyInventoryCounts({
+        counts: [{ stockItemId: selectedItemId, countedQuantity: counted, reasonCode: 'inventory_count' }],
+      });
+      await load();
+      setNotice('Inventario aplicado com sucesso.');
+      setCountedQty('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao aplicar inventario.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <main className={styles.page}><LoadingState label="Carregando estoque..." /></main>;
 
   return (
@@ -154,6 +182,12 @@ export default function AdminStockPage() {
           <div className={styles.actions}>
             <Button disabled={saving || !selectedItemId} onClick={() => void submitMovement('entry')}>Entrada manual</Button>
             <Button variant="danger" disabled={saving || !selectedItemId} onClick={() => void submitMovement('exit')}>Saida manual</Button>
+          </div>
+          <div className={styles.formRow}>
+            <Input placeholder="Quantidade contada (inventario)" value={countedQty} onChange={(e) => setCountedQty(e.target.value)} />
+            <Button disabled={saving || !selectedItemId} onClick={() => void submitInventoryCount()}>
+              Aplicar inventario
+            </Button>
           </div>
 
           <h3>Ultimas movimentacoes</h3>

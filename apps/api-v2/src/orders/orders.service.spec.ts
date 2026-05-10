@@ -9,8 +9,12 @@ describe('OrdersService', () => {
     channel: 'delivery' as const,
   };
 
-  function createService(repoMock: any, eventsMock?: any) {
-    return new OrdersService(repoMock, eventsMock ?? { emitOrderStatusUpdated: jest.fn() });
+  function createService(repoMock: any, eventsMock?: any, stockMock?: any) {
+    return new OrdersService(
+      repoMock,
+      eventsMock ?? { emitOrderStatusUpdated: jest.fn() },
+      stockMock ?? { consumeByOrder: jest.fn() },
+    );
   }
 
   it('retorna pedido da empresa correta', async () => {

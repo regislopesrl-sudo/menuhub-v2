@@ -24,6 +24,13 @@ export type StockMovementInput = {
   notes?: string;
 };
 
+export type InventoryCountInput = {
+  stockItemId: string;
+  countedQuantity: number;
+  reasonCode?: string;
+  notes?: string;
+};
+
 @Injectable()
 export class StockService {
   constructor(private readonly prisma: PrismaService) {}
@@ -134,6 +141,194 @@ export class StockService {
 
   async manualExit(ctx: RequestContext, input: StockMovementInput) {
     return this.applyManualMovement(ctx, 'EXIT', input);
+  }
+
+  async applyInventoryCount(ctx: RequestContext, input: { counts: InventoryCountInput[]; notes?: string }) {
+    const counts = Array.isArray(input.counts) ? input.counts : [];
+    if (counts.length === 0) {
+      throw new BadRequestException('counts obrigatorio com ao menos um item.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const results: Array<{ stockItemId: string; previousStock: number; countedQuantity: number; delta: number; movementId: string | null }> = [];
+
+      for (const row of counts) {
+        const stockItemId = String(row.stockItemId ?? '').trim();
+        if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio em todos os counts.');
+
+        const countedQuantity = Number(row.countedQuantity ?? 0);
+        if (!Number.isFinite(countedQuantity) || countedQuantity < 0) {
+          throw new BadRequestException('countedQuantity invalido em inventario.');
+        }
+
+        const item = await tx.stockItem.findUnique({ where: { id: stockItemId } });
+        if (!item || item.companyId !== ctx.companyId) {
+          throw new NotFoundException('Item de estoque nao encontrado para inventario.');
+        }
+
+        const previous = Number(item.currentQuantity);
+        const delta = countedQuantity - previous;
+
+        if (delta === 0) {
+          results.push({ stockItemId, previousStock: previous, countedQuantity, delta, movementId: null });
+          continue;
+        }
+
+        const updated = await tx.stockItem.update({
+          where: { id: stockItemId },
+          data: { currentQuantity: this.decimal(countedQuantity) },
+        });
+
+        if (ctx.branchId) {
+          await tx.stockLocationBalance.upsert({
+            where: { branchId_stockItemId: { branchId: ctx.branchId, stockItemId } },
+            update: { currentQuantity: this.decimal(countedQuantity), companyId: ctx.companyId },
+            create: {
+              branchId: ctx.branchId,
+              stockItemId,
+              companyId: ctx.companyId,
+              currentQuantity: this.decimal(countedQuantity),
+            },
+          });
+        }
+
+        const movement = await tx.stockMovement.create({
+          data: {
+            stockItemId,
+            branchId: ctx.branchId,
+            movementType: 'ADJUSTMENT',
+            movementTypeDetailed: 'inventory_count_adjustment',
+            sourceModule: 'admin_inventory',
+            sourceId: ctx.requestId,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity: this.decimal(Math.abs(delta)),
+            unitCost: this.decimal(Number(updated.averageCost ?? 0)),
+            totalCost: this.decimal(Math.abs(delta) * Number(updated.averageCost ?? 0)),
+            previousStock: this.decimal(previous),
+            newStock: this.decimal(countedQuantity),
+            reasonCode: this.clean(row.reasonCode) ?? 'inventory_count',
+            notes: this.clean(row.notes) ?? this.clean(input.notes),
+          },
+        });
+
+        results.push({ stockItemId, previousStock: previous, countedQuantity, delta, movementId: movement.id });
+      }
+
+      return {
+        appliedAt: new Date().toISOString(),
+        totalItems: results.length,
+        changedItems: results.filter((item) => item.delta !== 0).length,
+        results,
+      };
+    });
+  }
+
+  async consumeByOrder(ctx: RequestContext, orderId: string) {
+    const existing = await this.prisma.stockMovement.findFirst({
+      where: {
+        sourceModule: 'orders',
+        sourceId: orderId,
+        movementType: 'SALE_CONSUMPTION',
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return { orderId, consumed: false, reason: 'already_consumed' as const };
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, companyId: ctx.companyId },
+      include: {
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            productId: true,
+            product: {
+              select: {
+                id: true,
+                controlsStock: true,
+                recipe: {
+                  select: {
+                    id: true,
+                    items: {
+                      where: { affectsStock: true },
+                      select: { stockItemId: true, quantity: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) throw new NotFoundException('Pedido nao encontrado para consumo de estoque.');
+
+    return this.prisma.$transaction(async (tx) => {
+      let movementsCreated = 0;
+      for (const item of order.items) {
+        if (!item.product?.controlsStock || !item.product?.recipe?.items?.length) continue;
+        const orderItemQty = Number(item.quantity);
+
+        for (const recipeItem of item.product.recipe.items) {
+          const consumeQty = Number(recipeItem.quantity) * orderItemQty;
+          if (!Number.isFinite(consumeQty) || consumeQty <= 0) continue;
+
+          const stock = await tx.stockItem.findUnique({ where: { id: recipeItem.stockItemId } });
+          if (!stock || stock.companyId !== ctx.companyId) continue;
+
+          const previous = Number(stock.currentQuantity);
+          const next = previous - consumeQty;
+          if (next < 0 && !stock.allowNegativeStock) {
+            throw new BadRequestException(`Estoque insuficiente para baixa automatica do item ${stock.id}.`);
+          }
+
+          const updated = await tx.stockItem.update({
+            where: { id: stock.id },
+            data: { currentQuantity: this.decimal(next) },
+          });
+
+          if (ctx.branchId) {
+            await tx.stockLocationBalance.upsert({
+              where: { branchId_stockItemId: { branchId: ctx.branchId, stockItemId: stock.id } },
+              update: { currentQuantity: this.decimal(next), companyId: ctx.companyId },
+              create: {
+                branchId: ctx.branchId,
+                stockItemId: stock.id,
+                companyId: ctx.companyId,
+                currentQuantity: this.decimal(next),
+              },
+            });
+          }
+
+          await tx.stockMovement.create({
+            data: {
+              stockItemId: stock.id,
+              branchId: ctx.branchId,
+              orderItemId: item.id,
+              movementType: 'SALE_CONSUMPTION',
+              movementTypeDetailed: 'sale_consumption_recipe',
+              sourceModule: 'orders',
+              sourceId: order.id,
+              actorId: ctx.userId,
+              requestId: ctx.requestId,
+              quantity: this.decimal(consumeQty),
+              unitCost: this.decimal(Number(updated.averageCost ?? 0)),
+              totalCost: this.decimal(consumeQty * Number(updated.averageCost ?? 0)),
+              previousStock: this.decimal(previous),
+              newStock: this.decimal(next),
+              reasonCode: 'order_sale_consumption',
+            },
+          });
+          movementsCreated += 1;
+        }
+      }
+
+      return { orderId, consumed: true, movementsCreated };
+    });
   }
 
   private async applyManualMovement(

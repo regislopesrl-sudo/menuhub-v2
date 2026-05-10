@@ -8,6 +8,7 @@ describe('StockController', () => {
     listMovements: jest.fn(),
     manualEntry: jest.fn(),
     manualExit: jest.fn(),
+    applyInventoryCount: jest.fn(),
   };
 
   const controller = new StockController(service as any);
@@ -28,5 +29,13 @@ describe('StockController', () => {
     const result = await controller.manualEntry(ctx, payload);
     expect(result).toEqual({ movement: { id: 'm1' } });
     expect(service.manualEntry).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('aplica inventario', async () => {
+    service.applyInventoryCount.mockResolvedValueOnce({ changedItems: 1 });
+    const payload = { counts: [{ stockItemId: 's1', countedQuantity: 3 }] };
+    const result = await controller.applyInventoryCount(ctx, payload);
+    expect(result).toEqual({ changedItems: 1 });
+    expect(service.applyInventoryCount).toHaveBeenCalledWith(ctx, payload);
   });
 });

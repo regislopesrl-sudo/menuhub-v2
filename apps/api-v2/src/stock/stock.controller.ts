@@ -68,4 +68,13 @@ export class StockController {
   ) {
     return this.stockService.manualExit(ctx, body);
   }
+
+  @Post('inventory/counts')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  applyInventoryCount(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>; notes?: string },
+  ) {
+    return this.stockService.applyInventoryCount(ctx, body);
+  }
 }

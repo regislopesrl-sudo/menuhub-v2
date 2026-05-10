@@ -20,6 +20,7 @@ describe('StockService', () => {
     stockMovement: {
       findMany: jest.fn(),
       create: jest.fn(),
+      findFirst: jest.fn(),
     },
     stockLocationBalance: {
       upsert: jest.fn(),
@@ -64,5 +65,22 @@ describe('StockService', () => {
   it('bloqueia saida sem estoque quando nao permite negativo', async () => {
     prisma.stockItem.findUnique.mockResolvedValue({ id: 's1', companyId: 'company-demo', currentQuantity: 1, allowNegativeStock: false });
     await expect(service.manualExit(ctx, { stockItemId: 's1', quantity: 5 })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('aplica inventario e gera ajuste quando ha diferenca', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 's1', companyId: 'company-demo', currentQuantity: 10, averageCost: 3 });
+    prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 8, averageCost: 3 });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'adj1' });
+    const result = await service.applyInventoryCount(ctx, {
+      counts: [{ stockItemId: 's1', countedQuantity: 8 }],
+    });
+    expect(result.changedItems).toBe(1);
+    expect(prisma.stockMovement.create).toHaveBeenCalled();
+  });
+
+  it('ignora nova baixa automatica se pedido ja consumido', async () => {
+    prisma.stockMovement.findFirst.mockResolvedValue({ id: 'm1' });
+    const result = await service.consumeByOrder(ctx, 'order-1');
+    expect(result).toEqual({ orderId: 'order-1', consumed: false, reason: 'already_consumed' });
   });
 });

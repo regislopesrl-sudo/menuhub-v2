@@ -81,3 +81,18 @@ export function stockManualExit(input: {
     body: JSON.stringify(input),
   });
 }
+
+export function applyInventoryCounts(input: {
+  counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>;
+  notes?: string;
+}) {
+  return apiFetch<{
+    appliedAt: string;
+    totalItems: number;
+    changedItems: number;
+    results: Array<{ stockItemId: string; previousStock: number; countedQuantity: number; delta: number; movementId: string | null }>;
+  }>('/v2/admin/stock/inventory/counts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
