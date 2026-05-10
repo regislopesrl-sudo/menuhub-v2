@@ -51,6 +51,10 @@ export const TENANT_PERMISSIONS = {
   KDS_OPERATE: 'kds.operate',
   WAITER_OPERATE: 'waiter.operate',
   DELIVERY_OPERATE: 'delivery.operate',
+  PROCUREMENT_READ: 'procurement.read',
+  PROCUREMENT_MANAGE: 'procurement.manage',
+  SUPPLIERS_READ: 'suppliers.read',
+  SUPPLIERS_MANAGE: 'suppliers.manage',
 } as const;
 
 export type TenantPermission = (typeof TENANT_PERMISSIONS)[keyof typeof TENANT_PERMISSIONS];
