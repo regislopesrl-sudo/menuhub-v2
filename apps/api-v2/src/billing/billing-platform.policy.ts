@@ -100,10 +100,9 @@ const ALLOWED_SUBSCRIPTION_TRANSITIONS: Record<SubscriptionStatus, readonly Subs
   ],
   [SubscriptionStatus.CANCELED]: [
     SubscriptionStatus.CANCELED,
-    SubscriptionStatus.ACTIVE,
     SubscriptionStatus.EXPIRED,
   ],
-  [SubscriptionStatus.EXPIRED]: [SubscriptionStatus.EXPIRED, SubscriptionStatus.ACTIVE],
+  [SubscriptionStatus.EXPIRED]: [SubscriptionStatus.EXPIRED],
 };
 
 export function canTransitionSubscriptionStatus(

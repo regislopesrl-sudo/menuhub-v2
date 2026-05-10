@@ -158,7 +158,10 @@ describe('billing-platform.policy', () => {
       true,
     );
     expect(canTransitionSubscriptionStatus(SubscriptionStatus.CANCELED, SubscriptionStatus.ACTIVE)).toBe(
-      true,
+      false,
+    );
+    expect(canTransitionSubscriptionStatus(SubscriptionStatus.EXPIRED, SubscriptionStatus.ACTIVE)).toBe(
+      false,
     );
 
     expect(canTransitionSubscriptionStatus(SubscriptionStatus.EXPIRED, SubscriptionStatus.TRIAL)).toBe(

@@ -452,6 +452,32 @@ describe('DeveloperController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('bloqueia reativacao direta de assinatura cancelada via patch', async () => {
+    prisma.companySubscription.findUnique.mockResolvedValueOnce({
+      id: 'sub1',
+      companyId: 'c1',
+      status: 'CANCELED',
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      endsAt: new Date('2026-02-01T00:00:00.000Z'),
+      trialEndsAt: null,
+    });
+
+    await expect(
+      controller.patchCompanySubscription(
+        'c1',
+        'sub1',
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:billing:manage'],
+        },
+        { status: 'ACTIVE' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('patch subscription bloqueia datas inconsistentes', async () => {
     prisma.companySubscription.findUnique.mockResolvedValueOnce({
       id: 'sub1',
