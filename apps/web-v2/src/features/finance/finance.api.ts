@@ -50,6 +50,11 @@ export type FinanceLedgerEntry = {
   createdAt: string;
 };
 
+export type FinanceOption = {
+  key: string;
+  label: string;
+};
+
 export type FinanceAccount = {
   id: string;
   branchId: string;
@@ -58,6 +63,8 @@ export type FinanceAccount = {
   paidAmount: number;
   dueDate: string | null;
   status: string;
+  category?: string | null;
+  costCenter?: string | null;
   supplier?: { id: string; name: string } | null;
   orderId?: string | null;
   paymentId?: string | null;
@@ -94,6 +101,14 @@ export function listFinanceLedger(params?: { from?: string; to?: string; branchI
   return apiFetch<FinanceLedgerEntry[]>(`/v2/admin/finance/ledger${query(params)}`, { method: 'GET' });
 }
 
+export function listFinanceCategories(params?: { from?: string; to?: string; branchId?: string }) {
+  return apiFetch<FinanceOption[]>(`/v2/admin/finance/categories${query(params)}`, { method: 'GET' });
+}
+
+export function listFinanceCostCenters(params?: { from?: string; to?: string; branchId?: string }) {
+  return apiFetch<FinanceOption[]>(`/v2/admin/finance/cost-centers${query(params)}`, { method: 'GET' });
+}
+
 export function listFinancePayables(params?: { from?: string; to?: string; branchId?: string }) {
   return apiFetch<FinanceAccount[]>(`/v2/admin/finance/payables${query(params)}`, { method: 'GET' });
 }
@@ -114,6 +129,46 @@ export function createManualFinanceEntry(input: {
   costCenter?: string;
 }) {
   return apiFetch<FinanceLedgerEntry>('/v2/admin/finance/ledger/manual', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createManualPayable(input: {
+  description: string;
+  amount: number;
+  dueDate: string;
+  category?: string;
+  costCenter?: string;
+}) {
+  return apiFetch<FinanceAccount>('/v2/admin/finance/payables/manual', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createManualReceivable(input: {
+  description: string;
+  amount: number;
+  dueDate?: string;
+  category?: string;
+  costCenter?: string;
+}) {
+  return apiFetch<FinanceAccount>('/v2/admin/finance/receivables/manual', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function settlePayable(id: string, input: { amount: number; settlementMethod?: string; reasonText?: string }) {
+  return apiFetch<FinanceAccount>(`/v2/admin/finance/payables/${id}/settle`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function settleReceivable(id: string, input: { amount: number; settlementMethod?: string; reasonText?: string }) {
+  return apiFetch<FinanceAccount>(`/v2/admin/finance/receivables/${id}/settle`, {
     method: 'POST',
     body: JSON.stringify(input),
   });

@@ -19,6 +19,24 @@ export type ManualLedgerInput = {
   externalReference?: string;
 };
 
+export type ManualAccountInput = {
+  description: string;
+  amount: number;
+  dueDate?: string;
+  category?: string;
+  costCenter?: string;
+  branchId?: string;
+  externalReference?: string;
+};
+
+export type AccountSettlementInput = {
+  amount: number;
+  settlementMethod?: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'BOLETO' | 'EXTERNAL' | 'OTHER';
+  settledAt?: string;
+  reasonText?: string;
+  externalReference?: string;
+};
+
 type Period = {
   from: Date;
   to: Date;
@@ -208,33 +226,14 @@ export class FinanceService {
     const period = this.resolvePeriod(query);
     const scope = await this.resolveBranchScope(ctx, query.branchId);
     const rows = await this.findPayables(period, scope);
-    return rows.map((item) => ({
-      id: item.id,
-      branchId: item.branchId,
-      description: item.description,
-      amount: this.money(item.amount),
-      paidAmount: this.money(item.paidAmount),
-      dueDate: item.dueDate.toISOString(),
-      status: item.status,
-      supplier: item.supplier ? { id: item.supplier.id, name: item.supplier.name } : null,
-    }));
+    return rows.map((item) => this.mapPayable(item));
   }
 
   async listReceivables(ctx: RequestContext, query: FinanceQuery = {}) {
     const period = this.resolvePeriod(query);
     const scope = await this.resolveBranchScope(ctx, query.branchId);
     const rows = await this.findReceivables(period, scope);
-    return rows.map((item) => ({
-      id: item.id,
-      branchId: item.branchId,
-      description: item.description,
-      amount: this.money(item.amount),
-      paidAmount: this.money(item.paidAmount),
-      dueDate: item.dueDate?.toISOString() ?? null,
-      status: item.status,
-      orderId: item.orderId ?? null,
-      paymentId: item.paymentId ?? null,
-    }));
+    return rows.map((item) => this.mapReceivable(item));
   }
 
   async listLedger(ctx: RequestContext, query: FinanceQuery = {}) {
@@ -242,6 +241,34 @@ export class FinanceService {
     const scope = await this.resolveBranchScope(ctx, query.branchId);
     const rows = await this.findLedger(period, scope);
     return rows.map((item) => this.mapLedgerEntry(item));
+  }
+
+  async listCategories(ctx: RequestContext, query: FinanceQuery = {}) {
+    const period = this.resolvePeriod(query);
+    const scope = await this.resolveBranchScope(ctx, query.branchId);
+    const [ledger, payables, receivables] = await Promise.all([
+      this.findLedger(period, scope),
+      this.findPayables(period, scope),
+      this.findReceivables(period, scope),
+    ]);
+    const values = new Set(['vendas', 'delivery', 'compras', 'fornecedores', 'taxas', 'marketing', 'ajustes']);
+    for (const row of ledger) if (row.reasonCode) values.add(row.reasonCode);
+    for (const row of payables) if (row.reasonCode) values.add(row.reasonCode);
+    for (const row of receivables) if (row.reasonCode) values.add(row.reasonCode);
+    return Array.from(values).sort().map((key) => ({ key, label: this.toLabel(key) }));
+  }
+
+  async listCostCenters(ctx: RequestContext, query: FinanceQuery = {}) {
+    const period = this.resolvePeriod(query);
+    const scope = await this.resolveBranchScope(ctx, query.branchId);
+    const ledger = await this.findLedger(period, scope);
+    const values = new Set(['salao', 'delivery', 'cozinha', 'administrativo', 'marketing']);
+    for (const row of ledger) {
+      const metadata = row.metadata as { costCenter?: unknown } | null;
+      const costCenter = String(metadata?.costCenter ?? '').trim();
+      if (costCenter) values.add(costCenter);
+    }
+    return Array.from(values).sort().map((key) => ({ key, label: this.toLabel(key) }));
   }
 
   async createManualLedgerEntry(ctx: RequestContext, body: ManualLedgerInput) {
@@ -280,6 +307,174 @@ export class FinanceService {
     });
 
     return this.mapLedgerEntry(created);
+  }
+
+  async createManualPayable(ctx: RequestContext, body: ManualAccountInput) {
+    const branchId = await this.resolveRequiredBranchId(ctx, body.branchId);
+    const description = this.requireText(body.description, 'description');
+    const amount = this.requirePositiveAmount(body.amount, 'amount');
+    const dueDate = this.resolveDate(body.dueDate, 'dueDate', true);
+
+    const created = await this.prisma.accountsPayable.create({
+      data: {
+        branchId,
+        createdById: ctx.userId ?? null,
+        description,
+        amount,
+        dueDate,
+        originType: 'MANUAL',
+        externalReference: this.clean(body.externalReference),
+        reasonCode: this.clean(body.category),
+        reasonText: this.clean(body.costCenter),
+      },
+      include: { supplier: { select: { id: true, name: true } } },
+    });
+
+    return this.mapPayable(created);
+  }
+
+  async createManualReceivable(ctx: RequestContext, body: ManualAccountInput) {
+    const branchId = await this.resolveRequiredBranchId(ctx, body.branchId);
+    const description = this.requireText(body.description, 'description');
+    const amount = this.requirePositiveAmount(body.amount, 'amount');
+    const dueDate = this.resolveDate(body.dueDate, 'dueDate', false);
+
+    const created = await this.prisma.accountsReceivable.create({
+      data: {
+        branchId,
+        createdById: ctx.userId ?? null,
+        description,
+        amount,
+        dueDate,
+        originType: 'MANUAL',
+        externalReference: this.clean(body.externalReference),
+        reasonCode: this.clean(body.category),
+        reasonText: this.clean(body.costCenter),
+      },
+    });
+
+    return this.mapReceivable(created);
+  }
+
+  async settlePayable(ctx: RequestContext, id: string, body: AccountSettlementInput) {
+    const amount = this.requirePositiveAmount(body.amount, 'amount');
+    const settledAt = this.resolveDate(body.settledAt, 'settledAt', false) ?? new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const payable = await tx.accountsPayable.findFirst({
+        where: { id, branch: { companyId: ctx.companyId } },
+        include: { supplier: { select: { id: true, name: true } } },
+      });
+      if (!payable) throw new BadRequestException(`Conta a pagar '${id}' nao encontrada para a empresa atual.`);
+      if (payable.status === 'CANCELED') throw new BadRequestException('Conta a pagar cancelada nao pode ser baixada.');
+
+      const paidBefore = Number(payable.paidAmount ?? 0);
+      const total = Number(payable.amount ?? 0);
+      const nextPaid = this.money(paidBefore + amount);
+      if (nextPaid > total) throw new BadRequestException('Valor de baixa excede saldo da conta a pagar.');
+
+      const settlement = await tx.payableSettlement.create({
+        data: {
+          accountsPayableId: payable.id,
+          branchId: payable.branchId,
+          createdById: ctx.userId ?? null,
+          settlementMethod: body.settlementMethod ?? 'EXTERNAL',
+          amount,
+          settledAt,
+          externalReference: this.clean(body.externalReference),
+          reasonText: this.clean(body.reasonText),
+          requestId: ctx.requestId,
+        },
+      });
+      const status = nextPaid >= total ? 'PAID' : 'PARTIALLY_PAID';
+      const updated = await tx.accountsPayable.update({
+        where: { id: payable.id },
+        data: {
+          paidAmount: nextPaid,
+          status,
+          settledAt: status === 'PAID' ? settledAt : payable.settledAt,
+          updatedById: ctx.userId ?? null,
+        },
+        include: { supplier: { select: { id: true, name: true } } },
+      });
+      await tx.financialLedgerEntry.create({
+        data: {
+          branchId: payable.branchId,
+          actorUserId: ctx.userId ?? null,
+          entryType: 'EXPENSE',
+          originType: 'MANUAL',
+          accountsPayableId: payable.id,
+          payableSettlementId: settlement.id,
+          amount,
+          reasonCode: payable.reasonCode,
+          reasonText: body.reasonText ?? payable.description,
+          requestId: ctx.requestId,
+          metadata: { settlementMethod: body.settlementMethod ?? 'EXTERNAL' },
+        },
+      });
+      return this.mapPayable(updated);
+    });
+  }
+
+  async settleReceivable(ctx: RequestContext, id: string, body: AccountSettlementInput) {
+    const amount = this.requirePositiveAmount(body.amount, 'amount');
+    const settledAt = this.resolveDate(body.settledAt, 'settledAt', false) ?? new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const receivable = await tx.accountsReceivable.findFirst({
+        where: { id, branch: { companyId: ctx.companyId } },
+      });
+      if (!receivable) throw new BadRequestException(`Conta a receber '${id}' nao encontrada para a empresa atual.`);
+      if (receivable.status === 'CANCELED') throw new BadRequestException('Conta a receber cancelada nao pode ser baixada.');
+
+      const paidBefore = Number(receivable.paidAmount ?? 0);
+      const total = Number(receivable.amount ?? 0);
+      const nextPaid = this.money(paidBefore + amount);
+      if (nextPaid > total) throw new BadRequestException('Valor de baixa excede saldo da conta a receber.');
+
+      const settlement = await tx.receivableSettlement.create({
+        data: {
+          accountsReceivableId: receivable.id,
+          branchId: receivable.branchId,
+          paymentId: receivable.paymentId ?? null,
+          createdById: ctx.userId ?? null,
+          settlementMethod: body.settlementMethod ?? 'EXTERNAL',
+          amount,
+          settledAt,
+          externalReference: this.clean(body.externalReference),
+          reasonText: this.clean(body.reasonText),
+          requestId: ctx.requestId,
+        },
+      });
+      const status = nextPaid >= total ? 'PAID' : 'PARTIALLY_PAID';
+      const updated = await tx.accountsReceivable.update({
+        where: { id: receivable.id },
+        data: {
+          paidAmount: nextPaid,
+          status,
+          settledAt: status === 'PAID' ? settledAt : receivable.settledAt,
+          updatedById: ctx.userId ?? null,
+        },
+      });
+      await tx.financialLedgerEntry.create({
+        data: {
+          branchId: receivable.branchId,
+          actorUserId: ctx.userId ?? null,
+          entryType: 'REVENUE',
+          originType: 'MANUAL',
+          accountsReceivableId: receivable.id,
+          receivableSettlementId: settlement.id,
+          paymentId: receivable.paymentId ?? null,
+          orderId: receivable.orderId ?? null,
+          amount,
+          reasonCode: receivable.reasonCode,
+          reasonText: body.reasonText ?? receivable.description,
+          requestId: ctx.requestId,
+          metadata: { settlementMethod: body.settlementMethod ?? 'EXTERNAL' },
+        },
+      });
+      return this.mapReceivable(updated);
+    });
   }
 
   private async findPaidOrders(period: Period, scope: BranchScope) {
@@ -415,6 +610,60 @@ export class FinanceService {
     };
   }
 
+  private mapPayable(item: {
+    id: string;
+    branchId: string;
+    description: string;
+    amount: number | { toString(): string };
+    paidAmount: number | { toString(): string };
+    dueDate: Date;
+    status: string;
+    reasonCode?: string | null;
+    reasonText?: string | null;
+    supplier?: { id: string; name: string } | null;
+  }) {
+    return {
+      id: item.id,
+      branchId: item.branchId,
+      description: item.description,
+      amount: this.money(item.amount),
+      paidAmount: this.money(item.paidAmount),
+      dueDate: item.dueDate.toISOString(),
+      status: item.status,
+      category: item.reasonCode ?? null,
+      costCenter: item.reasonText ?? null,
+      supplier: item.supplier ? { id: item.supplier.id, name: item.supplier.name } : null,
+    };
+  }
+
+  private mapReceivable(item: {
+    id: string;
+    branchId: string;
+    description: string;
+    amount: number | { toString(): string };
+    paidAmount: number | { toString(): string };
+    dueDate?: Date | null;
+    status: string;
+    reasonCode?: string | null;
+    reasonText?: string | null;
+    orderId?: string | null;
+    paymentId?: string | null;
+  }) {
+    return {
+      id: item.id,
+      branchId: item.branchId,
+      description: item.description,
+      amount: this.money(item.amount),
+      paidAmount: this.money(item.paidAmount),
+      dueDate: item.dueDate?.toISOString() ?? null,
+      status: item.status,
+      category: item.reasonCode ?? null,
+      costCenter: item.reasonText ?? null,
+      orderId: item.orderId ?? null,
+      paymentId: item.paymentId ?? null,
+    };
+  }
+
   private mapPeriod(period: Period) {
     return {
       from: period.from.toISOString(),
@@ -425,6 +674,44 @@ export class FinanceService {
   private clean(value?: string): string | undefined {
     const normalized = String(value ?? '').trim();
     return normalized || undefined;
+  }
+
+  private requireText(value: string | undefined, fieldName: string): string {
+    const normalized = this.clean(value);
+    if (!normalized) {
+      throw new BadRequestException(`${fieldName} e obrigatorio.`);
+    }
+    return normalized;
+  }
+
+  private requirePositiveAmount(value: number, fieldName: string): number {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException(`${fieldName} deve ser maior que zero.`);
+    }
+    return this.money(amount);
+  }
+
+  private resolveDate(value: string | undefined, fieldName: string, required: true): Date;
+  private resolveDate(value: string | undefined, fieldName: string, required: false): Date | null;
+  private resolveDate(value: string | undefined, fieldName: string, required: boolean): Date | null {
+    if (!value) {
+      if (required) throw new BadRequestException(`${fieldName} e obrigatorio.`);
+      return null;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`${fieldName} invalido.`);
+    }
+    return parsed;
+  }
+
+  private toLabel(key: string): string {
+    return key
+      .split(/[_\-\s]+/g)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   private sum(values: Array<number | { toString(): string }>): number {

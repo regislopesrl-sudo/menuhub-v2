@@ -1,4 +1,4 @@
-.page {
+﻿.page {
   min-height: 100vh;
   padding: 24px 0 40px;
   display: grid;
@@ -36,8 +36,15 @@
 
 .formRow {
   display: grid;
-  grid-template-columns: 140px 1fr 1fr 1fr 160px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 180px 180px auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .list {
@@ -79,7 +86,9 @@
 
 @media (max-width: 720px) {
   .grid,
-  .formRow {
+  .formRow,
+  .toolbar {
     grid-template-columns: 1fr;
   }
 }
+
