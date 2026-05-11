@@ -27,6 +27,9 @@ export function ProductCard({
 }) {
   const hasImage = Boolean(product.imageUrl);
   const addonCount = (product.addonGroups ?? []).length;
+  const basePrice = product.salePrice ?? product.price;
+  const costPrice = product.costPrice ?? 0;
+  const margin = basePrice > 0 ? ((basePrice - costPrice) / basePrice) * 100 : null;
 
   return (
     <Card className={`${styles.productCard} ${product.available === false ? styles.productInactive : ''}`.trim()}>
@@ -47,7 +50,11 @@ export function ProductCard({
         <div className={styles.pricePanel}>
           <div>
             <span>Base</span>
-            <strong>{brl(product.salePrice ?? product.price)}</strong>
+            <strong>{brl(basePrice)}</strong>
+          </div>
+          <div>
+            <span>Local / PDV</span>
+            <strong>{brl(product.localPrice ?? basePrice)}</strong>
           </div>
           <div>
             <span>Delivery</span>
@@ -57,12 +64,22 @@ export function ProductCard({
             <span>Promo</span>
             <strong>{product.promotionalPrice ? brl(product.promotionalPrice) : '-'}</strong>
           </div>
+          <div>
+            <span>Custo</span>
+            <strong>{costPrice > 0 ? brl(costPrice) : '-'}</strong>
+          </div>
+          <div>
+            <span>Margem</span>
+            <strong>{margin === null ? '-' : `${margin.toFixed(1)}%`}</strong>
+          </div>
         </div>
 
         <ChannelBadges channels={product.channels} />
 
         <div className={styles.cardFooter}>
           <Badge>{product.categoryName ?? 'Sem categoria'}</Badge>
+          {product.sku ? <Badge>{product.sku}</Badge> : null}
+          <Badge>{product.prepTimeMinutes ? `${product.prepTimeMinutes} min` : 'Sem tempo'}</Badge>
           <Badge tone={addonCount > 0 ? 'warning' : 'default'}>{addonCount} grupos</Badge>
         </div>
 
