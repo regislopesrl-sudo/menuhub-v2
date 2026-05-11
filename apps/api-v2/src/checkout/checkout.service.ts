@@ -10,7 +10,8 @@ import { DeliveryQuoteService } from '../delivery/delivery-quote.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PdvService } from '../pdv/pdv.service';
 
-type PdvCheckoutInputExtended = PdvCheckoutInput & {
+type PdvCheckoutInputExtended = Omit<PdvCheckoutInput, 'channel'> & {
+  channel: 'pdv' | 'waiter_app';
   saleType?: 'COUNTER' | 'TABLE' | 'COMMAND';
   commandReference?: string;
 };
@@ -19,6 +20,7 @@ export interface CheckoutQuoteInput {
   storeId: string;
   items: DeliveryCheckoutInput['items'];
   couponCode?: string;
+  channel?: 'delivery' | 'kiosk';
   deliveryAddress: {
     cep: string;
     number: string;
@@ -59,7 +61,7 @@ export class CheckoutService {
     const validated = await this.menuPort.validateItems({
       companyId: ctx.companyId,
       storeId: input.storeId,
-      channel: 'delivery',
+      channel: input.channel ?? 'delivery',
       items: input.items,
     });
 
@@ -79,7 +81,7 @@ export class CheckoutService {
     }
 
     const draftOrder = orderCore.createOrder({
-      channel: 'delivery',
+      channel: input.channel ?? 'delivery',
       items: validated.items,
       deliveryFee: deliveryQuote.fee,
       deliveryAddress: {
@@ -219,12 +221,12 @@ export class CheckoutService {
     const validated = await this.menuPort.validateItems({
       companyId: ctx.companyId,
       storeId: input.storeId,
-      channel: 'pdv',
+      channel: input.channel,
       items: input.items,
     });
 
     const draft = orderCore.createOrder({
-      channel: 'pdv',
+      channel: input.channel,
       customerId: input.customerId,
       customer: input.customer,
       deliveryFee: 0,

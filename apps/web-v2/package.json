@@ -6,21 +6,28 @@
     "dev": "next dev --port 3112",
     "build": "next build",
     "start": "next start --port 3111",
+    "start:pwa": "next start --port 3112",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:encoding": "node scripts/check-mojibake.mjs",
-    "test": "echo \"No web tests configured\""
+    "test": "echo \"No web tests configured\"",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:copy": "npx cap copy android"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "@mercadopago/sdk-react": "^1.0.7",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "typescript": "^5.7.3"
   }
 }
-

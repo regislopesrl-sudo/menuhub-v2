@@ -78,7 +78,7 @@ export interface CreateOrderInput {
 export interface DeliveryCheckoutInput {
   companyId: string;
   storeId: string;
-  channel: 'delivery';
+  channel: 'delivery' | 'kiosk';
   fulfillmentType?: 'DELIVERY' | 'TAKEOUT';
   scheduledAt?: string;
   customerId?: string;
@@ -113,7 +113,7 @@ export interface DeliveryCheckoutInput {
 export interface PdvCheckoutInput {
   companyId: string;
   storeId: string;
-  channel: 'pdv';
+  channel: 'pdv' | 'waiter_app';
   customerId?: string;
   customer?: {
     name: string;

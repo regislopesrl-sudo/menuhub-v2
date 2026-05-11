@@ -147,6 +147,16 @@ describe('RBAC route permissions metadata', () => {
     ]);
   });
 
+  it('channels waiter checkout exige waiter.operate', () => {
+    expect(methodPermissions(ChannelsController.prototype, 'waiterCheckout')).toEqual([
+      TENANT_PERMISSIONS.WAITER_OPERATE,
+    ]);
+  });
+
+  it('channels kiosk checkout e publico', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, ChannelsController.prototype.kioskCheckout)).toBe(true);
+  });
+
   it('developer exige permissoes de plataforma explicitas', () => {
     expect(methodPermissions(DeveloperController.prototype, 'listPlans')).toEqual([
       PLATFORM_PERMISSIONS.PLANS_MANAGE,
