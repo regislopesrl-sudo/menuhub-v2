@@ -11,10 +11,16 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import {
   createPurchaseOrder,
   createSupplier,
+  confirmPurchaseFiscalDocumentStockEntry,
+  ignorePurchaseFiscalDocumentItem,
+  importPurchaseFiscalDocument,
   listAccountsPayable,
+  listPurchaseDocuments,
   listPurchaseOrders,
   listSuppliers,
+  mapPurchaseFiscalDocumentItem,
   receivePurchaseOrder,
+  type PurchaseDocument,
   type PurchaseOrder,
   type Supplier,
 } from '@/features/procurement/procurement.api';
@@ -30,6 +36,7 @@ export default function AdminProcurementPage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [payables, setPayables] = useState<Array<{ id: string; description: string; amount: number; status: string; dueDate: string; supplier?: { id: string; name: string } }>>([]);
+  const [purchaseDocuments, setPurchaseDocuments] = useState<PurchaseDocument[]>([]);
 
   const [supplierName, setSupplierName] = useState('');
   const [supplierDocument, setSupplierDocument] = useState('');
@@ -41,21 +48,37 @@ export default function AdminProcurementPage() {
 
   const [receiveOrderId, setReceiveOrderId] = useState('');
   const [receiveInvoice, setReceiveInvoice] = useState('');
+  const [accessKey, setAccessKey] = useState('');
+  const [fiscalSupplierId, setFiscalSupplierId] = useState('');
+  const [selectedDocumentId, setSelectedDocumentId] = useState('');
+  const [mappingStockItemId, setMappingStockItemId] = useState('');
+  const [mappingConversionFactor, setMappingConversionFactor] = useState('1');
 
   const selectedOrder = useMemo(() => orders.find((row) => row.id === receiveOrderId) ?? null, [orders, receiveOrderId]);
+  const selectedDocument = useMemo(() => purchaseDocuments.find((row) => row.id === selectedDocumentId) ?? purchaseDocuments[0] ?? null, [purchaseDocuments, selectedDocumentId]);
+  const fiscalKpis = useMemo(() => {
+    const pending = purchaseDocuments.filter((doc) => ['PENDING_REVIEW', 'PARTIALLY_MAPPED', 'READY_TO_CONFIRM'].includes(doc.status)).length;
+    const confirmed = purchaseDocuments.filter((doc) => doc.status === 'CONFIRMED').length;
+    const total = purchaseDocuments.reduce((acc, doc) => acc + Number(doc.totalAmount ?? 0), 0);
+    return { pending, confirmed, total };
+  }, [purchaseDocuments]);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const [sup, ord, stk, ap] = await Promise.all([listSuppliers(), listPurchaseOrders(), listStockItems(), listAccountsPayable()]);
+      const [sup, ord, stk, ap, docs] = await Promise.all([listSuppliers(), listPurchaseOrders(), listStockItems(), listAccountsPayable(), listPurchaseDocuments()]);
       setSuppliers(sup);
       setOrders(ord);
       setStockItems(stk);
       setPayables(ap);
+      setPurchaseDocuments(docs);
       if (!poSupplierId && sup[0]?.id) setPoSupplierId(sup[0].id);
+      if (!fiscalSupplierId && sup[0]?.id) setFiscalSupplierId(sup[0].id);
       if (!poStockItemId && stk[0]?.id) setPoStockItemId(stk[0].id);
+      if (!mappingStockItemId && stk[0]?.id) setMappingStockItemId(stk[0].id);
       if (!receiveOrderId && ord[0]?.id) setReceiveOrderId(ord[0].id);
+      if (!selectedDocumentId && docs[0]?.id) setSelectedDocumentId(docs[0].id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar compras.');
     } finally {
@@ -135,6 +158,77 @@ export default function AdminProcurementPage() {
     }
   }
 
+  async function onImportFiscalDocument(event: FormEvent) {
+    event.preventDefault();
+    const normalized = accessKey.replace(/\D/g, '');
+    if (!/^\d{44}$/.test(normalized)) return setError('Chave de acesso deve conter 44 digitos numericos.');
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await importPurchaseFiscalDocument({
+        accessKey: normalized,
+        supplierId: fiscalSupplierId || undefined,
+        documentType: normalized.slice(20, 22) === '55' ? 'NFE' : 'NFCE',
+      });
+      setPurchaseDocuments((prev) => [created, ...prev]);
+      setSelectedDocumentId(created.id);
+      setAccessKey('');
+      setNotice('Cupom fiscal importado para revisao. Revise e mapeie os itens antes de confirmar estoque.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao importar cupom fiscal.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onMapFiscalItem(itemId: string) {
+    if (!selectedDocument) return setError('Selecione um documento fiscal.');
+    if (!mappingStockItemId) return setError('Selecione um insumo para mapeamento.');
+    const conversionFactor = Number(mappingConversionFactor || '1');
+    if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) return setError('Fator de conversao invalido.');
+    setSaving(true);
+    setError(null);
+    try {
+      await mapPurchaseFiscalDocumentItem(selectedDocument.id, itemId, { stockItemId: mappingStockItemId, conversionFactor });
+      await load();
+      setNotice('Item fiscal mapeado para insumo.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao mapear item fiscal.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onIgnoreFiscalItem(itemId: string) {
+    if (!selectedDocument) return setError('Selecione um documento fiscal.');
+    setSaving(true);
+    setError(null);
+    try {
+      await ignorePurchaseFiscalDocumentItem(selectedDocument.id, itemId);
+      await load();
+      setNotice('Item fiscal ignorado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao ignorar item fiscal.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onConfirmFiscalDocument() {
+    if (!selectedDocument) return setError('Selecione um documento fiscal.');
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await confirmPurchaseFiscalDocumentStockEntry(selectedDocument.id);
+      await load();
+      setNotice(result.confirmed ? `Entrada confirmada com ${result.movementsCreated ?? 0} movimentos.` : 'Documento ja estava confirmado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao confirmar entrada fiscal.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <main className={styles.page}><LoadingState label="Carregando compras e fornecedores..." /></main>;
 
   return (
@@ -143,8 +237,94 @@ export default function AdminProcurementPage() {
 
       {error ? <Card className={styles.card}><Badge tone="danger">Erro</Badge><span>{error}</span></Card> : null}
       {notice ? <Card className={styles.card}><Badge tone="success">OK</Badge><span>{notice}</span></Card> : null}
+      <section className={styles.kpiGrid}>
+        <Card className={styles.kpiCard}>
+          <span>Documentos em revisao</span>
+          <strong>{fiscalKpis.pending}</strong>
+          <small>Itens aguardando mapeamento/conferencia</small>
+        </Card>
+        <Card className={styles.kpiCard}>
+          <span>Documentos confirmados</span>
+          <strong>{fiscalKpis.confirmed}</strong>
+          <small>Ja geraram entrada no estoque</small>
+        </Card>
+        <Card className={styles.kpiCard}>
+          <span>Total fiscal importado</span>
+          <strong>R$ {fiscalKpis.total.toFixed(2)}</strong>
+          <small>Somente documentos de compra importados</small>
+        </Card>
+      </section>
 
       <section className={styles.grid}>
+        <Card className={styles.card}>
+          <h2>Importar cupom fiscal</h2>
+          <p className={styles.help}>Informe a chave de acesso de 44 digitos. O provider local gera uma pre-importacao para revisao, sem movimentar estoque automaticamente.</p>
+          <form className={styles.formRow} onSubmit={(e) => void onImportFiscalDocument(e)}>
+            <Input placeholder="Chave de acesso NFC-e/NF-e" value={accessKey} onChange={(e) => setAccessKey(e.target.value)} />
+            <select value={fiscalSupplierId} onChange={(e) => setFiscalSupplierId(e.target.value)}>
+              <option value="">Fornecedor opcional</option>
+              {suppliers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+            </select>
+            <Button type="submit" disabled={saving}>Importar para revisao</Button>
+          </form>
+          <div className={styles.list}>
+            {purchaseDocuments.length === 0 ? <EmptyState title="Sem cupons importados" description="Importe uma chave fiscal para revisar os itens antes da entrada." /> : null}
+            {purchaseDocuments.map((doc) => (
+              <button key={doc.id} type="button" className={`${styles.row} ${selectedDocument?.id === doc.id ? styles.selectedRow : ''}`.trim()} onClick={() => setSelectedDocumentId(doc.id)}>
+                <strong>{doc.issuerName ?? doc.issuerCnpj ?? doc.accessKey}</strong>
+                <div className={styles.meta}>
+                  <span>Status: {doc.status}</span>
+                  <span>Tipo: {doc.documentType}</span>
+                  <span>Total: R$ {Number(doc.totalAmount ?? 0).toFixed(2)}</span>
+                  <span>Itens: {doc.items?.length ?? 0}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+
+        <Card className={styles.card}>
+          <h2>Revisao fiscal e mapeamento</h2>
+          {selectedDocument ? (
+            <>
+              <div className={styles.meta}>
+                <Badge tone={selectedDocument.status === 'CONFIRMED' ? 'success' : selectedDocument.status === 'READY_TO_CONFIRM' ? 'warning' : 'default'}>{selectedDocument.status}</Badge>
+                <span>Chave: {selectedDocument.accessKey}</span>
+                <span>Fornecedor fiscal: {selectedDocument.issuerName ?? '-'}</span>
+              </div>
+              <div className={styles.formRow}>
+                <select value={mappingStockItemId} onChange={(e) => setMappingStockItemId(e.target.value)}>
+                  {stockItems.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+                </select>
+                <Input placeholder="Fator conversao" value={mappingConversionFactor} onChange={(e) => setMappingConversionFactor(e.target.value)} />
+                <Button disabled={saving || selectedDocument.status !== 'READY_TO_CONFIRM'} onClick={() => void onConfirmFiscalDocument()}>
+                  Confirmar entrada no estoque
+                </Button>
+              </div>
+              <div className={styles.list}>
+                {selectedDocument.items.map((item) => (
+                  <div key={item.id} className={styles.row}>
+                    <strong>{item.description}</strong>
+                    <div className={styles.meta}>
+                      <span>Status: {item.status}</span>
+                      <span>Qtd fiscal: {Number(item.quantity).toFixed(3)} {item.unit ?? ''}</span>
+                      <span>Unitario: R$ {Number(item.unitPrice ?? 0).toFixed(2)}</span>
+                      <span>Total: R$ {Number(item.totalAmount ?? 0).toFixed(2)}</span>
+                      {item.mappedStockItemId ? <span>Insumo: {stockItems.find((stock) => stock.id === item.mappedStockItemId)?.name ?? item.mappedStockItemId}</span> : null}
+                    </div>
+                    <div className={styles.actions}>
+                      <Button disabled={saving || selectedDocument.status === 'CONFIRMED'} onClick={() => void onMapFiscalItem(item.id)}>Mapear para insumo</Button>
+                      <Button disabled={saving || selectedDocument.status === 'CONFIRMED'} variant="danger" onClick={() => void onIgnoreFiscalItem(item.id)}>Ignorar</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState title="Selecione uma importacao" description="Importe ou selecione um cupom fiscal para revisar os itens." />
+          )}
+        </Card>
+
         <Card className={styles.card}>
           <h2>Fornecedores</h2>
           <form className={styles.formRow} onSubmit={(e) => void onCreateSupplier(e)}>

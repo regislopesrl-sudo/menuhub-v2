@@ -15,6 +15,12 @@ describe('ProcurementController', () => {
     listPurchaseHistory: jest.fn(),
     getAverageCost: jest.fn(),
     listAccountsPayable: jest.fn(),
+    listPurchaseDocuments: jest.fn(),
+    importFiscalDocumentByAccessKey: jest.fn(),
+    getPurchaseDocument: jest.fn(),
+    mapPurchaseDocumentItem: jest.fn(),
+    ignorePurchaseDocumentItem: jest.fn(),
+    confirmPurchaseDocumentStockEntry: jest.fn(),
   };
   const controller = new ProcurementController(service as any);
   const ctx = { companyId: 'c1', branchId: 'b1', userId: 'u1' } as any;
@@ -33,6 +39,29 @@ describe('ProcurementController', () => {
     const result = await controller.createPurchaseOrder(ctx, payload as any);
     expect(result).toEqual({ id: 'po1' });
     expect(service.createPurchaseOrder).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('importa cupom fiscal por chave de acesso', async () => {
+    const payload = { accessKey: '35260512345678000190650010000012341000012345', documentType: 'NFCE' as const };
+    service.importFiscalDocumentByAccessKey.mockResolvedValue({ id: 'pd1', status: 'PENDING_REVIEW' });
+    const result = await controller.importFiscalDocumentByAccessKey(ctx, payload);
+    expect(result).toEqual({ id: 'pd1', status: 'PENDING_REVIEW' });
+    expect(service.importFiscalDocumentByAccessKey).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('mapeia e confirma documento fiscal de compra', async () => {
+    service.mapPurchaseDocumentItem.mockResolvedValue({ id: 'pdi1', status: 'MAPPED' });
+    service.confirmPurchaseDocumentStockEntry.mockResolvedValue({ documentId: 'pd1', confirmed: true, movementsCreated: 1 });
+
+    await expect(controller.mapPurchaseDocumentItem(ctx, 'pd1', 'pdi1', { stockItemId: 'st1', conversionFactor: 1 })).resolves.toEqual({
+      id: 'pdi1',
+      status: 'MAPPED',
+    });
+    await expect(controller.confirmPurchaseDocumentStockEntry(ctx, 'pd1')).resolves.toEqual({
+      documentId: 'pd1',
+      confirmed: true,
+      movementsCreated: 1,
+    });
   });
 });
 
