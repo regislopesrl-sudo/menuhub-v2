@@ -132,6 +132,13 @@ describe('RBAC route permissions metadata', () => {
     expect(methodPermissions(AdminMenuController.prototype, 'duplicate')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'listVariations')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_READ,
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuController.prototype, 'createVariation')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'listCategories')).toEqual([
       TENANT_PERMISSIONS.CATALOG_READ,
       TENANT_PERMISSIONS.CATALOG_MANAGE,
@@ -143,6 +150,19 @@ describe('RBAC route permissions metadata', () => {
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'deleteCategory')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'listCombos')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_READ,
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'createCombo')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'updateCombo')).toEqual([
+      TENANT_PERMISSIONS.CATALOG_MANAGE,
+    ]);
+    expect(methodPermissions(AdminMenuUtilityController.prototype, 'deleteCombo')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
   });

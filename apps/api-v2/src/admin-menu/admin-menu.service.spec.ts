@@ -60,6 +60,27 @@ describe('AdminMenuService', () => {
     };
   }
 
+  function combo(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'combo_1',
+      companyId: 'company_a',
+      name: 'Combo Familia',
+      description: 'Burger e batata',
+      price: 49.9,
+      isActive: true,
+      items: [
+        {
+          id: 'combo_item_1',
+          comboId: 'combo_1',
+          productId: 'prod_1',
+          quantity: 2,
+          product: product({ id: 'prod_1', name: 'X Burger' }),
+        },
+      ],
+      ...overrides,
+    };
+  }
+
   function addonGroup(overrides: Record<string, unknown> = {}) {
     return {
       id: 'group_1',
@@ -119,6 +140,19 @@ describe('AdminMenuService', () => {
         findFirst: jest.fn().mockResolvedValue(variation()),
         create: jest.fn().mockImplementation((args) => Promise.resolve(variation({ ...args.data, id: 'variation_new' }))),
         update: jest.fn().mockImplementation((args) => Promise.resolve(variation({ ...args.data }))),
+      },
+      combo: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(combo()),
+        create: jest.fn().mockImplementation((args) => {
+          const { items: _items, ...data } = args.data;
+          return Promise.resolve(combo({ ...data, id: 'combo_new' }));
+        }),
+        update: jest.fn().mockImplementation((args) => Promise.resolve(combo({ ...args.data }))),
+      },
+      comboItem: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       addonGroup: {
         findFirst: jest.fn().mockResolvedValue(addonGroup()),
@@ -620,6 +654,69 @@ describe('AdminMenuService', () => {
       where: { id: 'variation_1' },
       data: { isActive: false },
     });
+  });
+
+  it('cria combo premium com produtos da empresa', async () => {
+    const prisma = prismaMock();
+    prisma.product.findMany.mockResolvedValue([{ id: 'prod_1' }, { id: 'prod_2' }]);
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.createCombo(ctx, {
+      name: 'Combo Familia',
+      description: 'Burger e bebida',
+      price: 49.9,
+      items: [
+        { productId: 'prod_1', quantity: 2 },
+        { productId: 'prod_2', quantity: 1 },
+      ],
+    });
+
+    expect(prisma.combo.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        companyId: 'company_a',
+        name: 'Combo Familia',
+        description: 'Burger e bebida',
+        price: 49.9,
+        isActive: true,
+        items: {
+          create: [
+            { productId: 'prod_1', quantity: 2 },
+            { productId: 'prod_2', quantity: 1 },
+          ],
+        },
+      }),
+    }));
+    expect(result).toEqual(expect.objectContaining({ id: 'combo_new', name: 'Combo Familia', active: true }));
+  });
+
+  it('bloqueia combo invalido e desativa sem apagar historico', async () => {
+    const prisma = prismaMock();
+    prisma.product.findMany.mockResolvedValue([{ id: 'prod_1' }]);
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.createCombo(ctx, { name: '', price: 10, items: [{ productId: 'prod_1', quantity: 1 }] })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.createCombo(ctx, { name: 'Combo', price: -1, items: [{ productId: 'prod_1', quantity: 1 }] })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(
+      service.createCombo(ctx, {
+        name: 'Combo',
+        price: 10,
+        items: [
+          { productId: 'prod_1', quantity: 1 },
+          { productId: 'prod_1', quantity: 1 },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await service.deleteCombo('combo_1', ctx);
+
+    expect(prisma.combo.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'combo_1' },
+      data: { isActive: false },
+    }));
   });
 
   it('PATCH availableKiosk nao altera availablePdv', async () => {

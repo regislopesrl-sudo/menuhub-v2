@@ -1,8 +1,9 @@
-﻿import { mockMenuProducts, type MenuProduct, type MenuProductVariation, type MenuRecommendationConfig } from './menu.mock';
+﻿import { mockMenuProducts, type MenuCombo, type MenuProduct, type MenuProductVariation, type MenuRecommendationConfig } from './menu.mock';
 import { apiFetch } from '@/lib/api-fetch';
 
 type MenuApiItem = {
   id: string;
+  type?: 'product' | 'combo';
   name: string;
   description?: string;
   sku?: string;
@@ -25,6 +26,7 @@ type MenuApiItem = {
   featuredSortOrder?: number;
   recommendations?: MenuRecommendationConfig;
   variations?: MenuProductVariation[];
+  comboItems?: MenuProduct['comboItems'];
   addonGroups?: Array<{
     id: string;
     name: string;
@@ -100,6 +102,7 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
   const available = item.available !== false;
   return {
     id: item.id,
+    type: item.type ?? 'product',
     name: item.name,
     description: item.description ?? '',
     sku: item.sku,
@@ -118,6 +121,7 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     featuredSortOrder: Number(item.featuredSortOrder ?? 0),
     recommendations: item.recommendations,
     variations: (item.variations ?? []).map(mapVariation),
+    comboItems: item.comboItems ?? [],
     channels: {
       delivery: item.availableDelivery ?? available,
       pdv: item.availablePdv ?? true,
@@ -181,6 +185,16 @@ export type AdminMenuVariationPayload = {
   deliveryPriceDelta?: number;
   active?: boolean;
   sortOrder?: number;
+};
+export type AdminMenuComboPayload = {
+  name?: string;
+  description?: string | null;
+  price?: number;
+  active?: boolean;
+  items?: Array<{
+    productId: string;
+    quantity: number;
+  }>;
 };
 export type AdminMenuCategory = {
   id: string;
@@ -527,3 +541,48 @@ export async function deleteAdminMenuProductVariation(input: {
 }
 
 
+export async function fetchAdminMenuCombos(input: {
+  companyId: string;
+  branchId?: string;
+}): Promise<MenuCombo[]> {
+  return apiFetch<MenuCombo[]>('/v2/admin/menu/combos', {
+    method: 'GET',
+    headers: adminHeaders(input),
+  });
+}
+
+export async function createAdminMenuCombo(input: {
+  companyId: string;
+  branchId?: string;
+  payload: AdminMenuComboPayload;
+}): Promise<MenuCombo> {
+  return apiFetch<MenuCombo>('/v2/admin/menu/combos', {
+    method: 'POST',
+    headers: adminHeaders(input),
+    body: JSON.stringify(input.payload),
+  });
+}
+
+export async function updateAdminMenuCombo(input: {
+  companyId: string;
+  branchId?: string;
+  comboId: string;
+  payload: AdminMenuComboPayload;
+}): Promise<MenuCombo> {
+  return apiFetch<MenuCombo>(`/v2/admin/menu/combos/${input.comboId}`, {
+    method: 'PATCH',
+    headers: adminHeaders(input),
+    body: JSON.stringify(input.payload),
+  });
+}
+
+export async function deleteAdminMenuCombo(input: {
+  companyId: string;
+  branchId?: string;
+  comboId: string;
+}): Promise<MenuCombo> {
+  return apiFetch<MenuCombo>(`/v2/admin/menu/combos/${input.comboId}`, {
+    method: 'DELETE',
+    headers: adminHeaders(input),
+  });
+}

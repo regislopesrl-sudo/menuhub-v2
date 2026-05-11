@@ -6,6 +6,7 @@ import { isProductVisibleOnChannel, resolvePublicMenuPrice } from './menu-visibi
 
 export interface MenuItemDto {
   id: string;
+  type?: 'product' | 'combo';
   name: string;
   description?: string;
   imageUrl?: string;
@@ -35,6 +36,11 @@ export interface MenuItemDto {
     deliveryPriceDelta: number;
     active: boolean;
     sortOrder: number;
+  }>;
+  comboItems?: Array<{
+    productId: string;
+    productName?: string;
+    quantity: number;
   }>;
 }
 
@@ -136,8 +142,30 @@ export class MenuService {
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+    const combos = await this.prisma.combo.findMany({
+      where: {
+        companyId,
+        isActive: true,
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                isActive: true,
+                availableDelivery: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ name: 'asc' }],
+    });
 
-    return products
+    const productItems = products
       .filter((product) => isProductVisibleOnChannel(product, 'delivery'))
       .filter((product) => product.category?.isActive !== false)
       .map((product) => {
@@ -174,6 +202,7 @@ export class MenuService {
 
         return {
         id: product.id,
+        type: 'product' as const,
         name: product.name,
         description: product.description ?? undefined,
         imageUrl: product.imageUrl ?? undefined,
@@ -184,5 +213,29 @@ export class MenuService {
         variations,
       };
       });
+
+    const comboItems = combos
+      .filter((combo) =>
+        combo.items.every((item) => Boolean(item.product?.isActive && item.product?.availableDelivery && !item.product?.deletedAt)),
+      )
+      .map((combo) => ({
+        id: combo.id,
+        type: 'combo' as const,
+        name: combo.name,
+        description: combo.description ?? undefined,
+        imageUrl: undefined,
+        price: Number(combo.price ?? 0),
+        categoryName: 'Combos',
+        available: combo.isActive !== false,
+        addonGroups: [],
+        variations: [],
+        comboItems: combo.items.map((item) => ({
+          productId: item.productId,
+          productName: item.product?.name ?? undefined,
+          quantity: Number(item.quantity ?? 1),
+        })),
+      }));
+
+    return [...productItems, ...comboItems];
   }
 }

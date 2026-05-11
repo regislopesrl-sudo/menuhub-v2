@@ -9,6 +9,9 @@ describe('MenuService', () => {
   };
 
   function createService(prismaMock: any, moduleAccess = { allowed: true }) {
+    prismaMock.combo = prismaMock.combo ?? {
+      findMany: jest.fn().mockResolvedValue([]),
+    };
     const modulesService = {
       checkAccess: jest.fn().mockResolvedValue(moduleAccess),
     };
@@ -70,6 +73,28 @@ describe('MenuService', () => {
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+    expect(prismaMock.combo.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company_a',
+        isActive: true,
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                isActive: true,
+                availableDelivery: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ name: 'asc' }],
+    });
   });
 
   it('menu retorna produto sem opcionais', async () => {
@@ -101,6 +126,7 @@ describe('MenuService', () => {
     expect(result).toEqual([
       {
         id: 'prod_1',
+        type: 'product',
         name: 'Pizza',
         description: undefined,
         imageUrl: undefined,
@@ -168,6 +194,7 @@ describe('MenuService', () => {
     expect(result).toEqual([
       {
         id: 'prod_2',
+        type: 'product',
         name: 'Hamburguer',
         description: 'Artesanal',
         imageUrl: 'https://img.local/hamburguer.png',
@@ -230,6 +257,57 @@ describe('MenuService', () => {
     const result = await service.list(ctx);
 
     expect(result).toEqual([]);
+  });
+
+  it('menu publico retorna combos ativos com produtos visiveis', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      combo: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'combo_1',
+            name: 'Combo Familia',
+            description: 'Burger e batata',
+            price: 49.9,
+            isActive: true,
+            items: [
+              {
+                productId: 'prod_1',
+                quantity: 2,
+                product: {
+                  id: 'prod_1',
+                  name: 'Burger',
+                  isActive: true,
+                  availableDelivery: true,
+                  deletedAt: null,
+                },
+              },
+            ],
+          },
+        ]),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock);
+    const result = await service.list(ctx);
+
+    expect(result).toEqual([
+      {
+        id: 'combo_1',
+        type: 'combo',
+        name: 'Combo Familia',
+        description: 'Burger e batata',
+        imageUrl: undefined,
+        price: 49.9,
+        categoryName: 'Combos',
+        available: true,
+        addonGroups: [],
+        variations: [],
+        comboItems: [{ productId: 'prod_1', productName: 'Burger', quantity: 2 }],
+      },
+    ]);
   });
 
   it('falha quando companyId nao esta presente no contexto', async () => {

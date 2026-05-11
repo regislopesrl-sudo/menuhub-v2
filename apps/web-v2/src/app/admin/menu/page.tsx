@@ -6,12 +6,16 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionTabs } from '@/components/ui/SectionTabs';
 import { ModuleDisabled } from '@/components/module-disabled';
 import {
+  createAdminMenuCombo,
+  deleteAdminMenuCombo,
+  fetchAdminMenuCombos,
+  updateAdminMenuCombo,
   createAdminMenuProduct,
   createAdminMenuCategory,
   commitAdminMenuImport,
@@ -32,11 +36,12 @@ import {
   updateAdminMenuProductAvailability,
   updateAdminMenuProductFeatured,
   updateAdminMenuProductVariation,
+  type AdminMenuComboPayload,
   type AdminMenuProductPayload,
   type AdminMenuCategory,
   type MenuImportPreview,
 } from '@/features/menu/menu.api';
-import type { MenuProduct, MenuRecommendationConfig } from '@/features/menu/menu.mock';
+import type { MenuCombo, MenuProduct, MenuRecommendationConfig } from '@/features/menu/menu.mock';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { AddonsManagementPanel } from './components/AddonsManagementPanel';
 import { FeaturedProductsPanel } from './components/FeaturedProductsPanel';
@@ -46,6 +51,7 @@ import { ProductFilters } from './components/ProductFilters';
 import { ProductModal } from './components/ProductModal';
 import { RecommendationsPanel } from './components/RecommendationsPanel';
 import {
+  brl,
   normalizeProduct,
   primaryPrice,
   type AddonFilter,
@@ -59,6 +65,7 @@ const MENU_TABS: Array<{ key: MenuTab; label: string }> = [
   { key: 'products', label: 'Produtos' },
   { key: 'categories', label: 'Categorias' },
   { key: 'addons', label: 'Adicionais' },
+  { key: 'combos', label: 'Combos' },
   { key: 'featured', label: 'Destaques' },
   { key: 'import', label: 'Importacao' },
   { key: 'recommendations', label: 'Peca tambem' },
@@ -70,6 +77,7 @@ export default function AdminMenuPage() {
   const access = useModuleAccess({ companyId, branchId, userRole: 'admin' }, 'menu');
 
   const [products, setProducts] = useState<MenuProduct[]>([]);
+  const [combos, setCombos] = useState<MenuCombo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -101,15 +109,18 @@ export default function AdminMenuPage() {
     setLoading(true);
     setError(null);
     try {
-      const [data, categoriesData] = await Promise.all([
+      const [data, categoriesData, combosData] = await Promise.all([
         fetchAdminMenu({ companyId, branchId }),
         fetchAdminMenuCategories({ companyId, branchId }).catch(() => []),
+        fetchAdminMenuCombos({ companyId, branchId }).catch(() => []),
       ]);
       setProducts((Array.isArray(data) ? data : []).map(normalizeProduct));
       setCategoryRecords(Array.isArray(categoriesData) ? categoriesData : []);
+      setCombos(Array.isArray(combosData) ? combosData : []);
     } catch (err) {
       setProducts(getMenuFallback().map(normalizeProduct));
       setCategoryRecords([]);
+      setCombos([]);
       setError(err instanceof Error ? err.message : 'Falha ao carregar cardapio.');
     } finally {
       setLoading(false);
@@ -414,6 +425,39 @@ export default function AdminMenuPage() {
     }
   };
 
+  const saveCombo = async (payload: AdminMenuComboPayload, combo?: MenuCombo) => {
+    setSavingAction(combo?.id ? `save-combo-${combo.id}` : 'save-combo');
+    setError(null);
+    try {
+      const saved = combo?.id
+        ? await updateAdminMenuCombo({ companyId, branchId, comboId: combo.id, payload })
+        : await createAdminMenuCombo({ companyId, branchId, payload });
+      setCombos((prev) => {
+        const exists = prev.some((item) => item.id === saved.id);
+        return exists ? prev.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...prev];
+      });
+      setNotice(combo?.id ? 'Combo atualizado com sucesso.' : 'Combo criado com sucesso.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar combo.');
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
+  const disableCombo = async (combo: MenuCombo) => {
+    setSavingAction(`delete-combo-${combo.id}`);
+    setError(null);
+    try {
+      const saved = await deleteAdminMenuCombo({ companyId, branchId, comboId: combo.id });
+      setCombos((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+      setNotice('Combo desativado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao desativar combo.');
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   return (
     <main className={styles.page}>
       <PageHeader
@@ -552,6 +596,16 @@ export default function AdminMenuPage() {
 
       {activeTab === 'addons' ? <AddonsManagementPanel products={products} onOpenAddons={(product) => setModal({ mode: 'addons', product })} /> : null}
 
+      {activeTab === 'combos' ? (
+        <CombosManagementPanel
+          products={products}
+          combos={combos}
+          savingAction={savingAction}
+          onSave={(payload, combo) => void saveCombo(payload, combo)}
+          onDisable={(combo) => void disableCombo(combo)}
+        />
+      ) : null}
+
       {activeTab === 'featured' ? (
         <FeaturedProductsPanel products={featuredProducts} allProducts={products} savingAction={savingAction} onMove={(id, direction) => void moveFeatured(id, direction)} onToggleFeatured={(product) => void toggleFeatured(product)} />
       ) : null}
@@ -612,5 +666,154 @@ export default function AdminMenuPage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+
+
+function CombosManagementPanel({
+  products,
+  combos,
+  savingAction,
+  onSave,
+  onDisable,
+}: {
+  products: MenuProduct[];
+  combos: MenuCombo[];
+  savingAction: string | null;
+  onSave: (payload: AdminMenuComboPayload, combo?: MenuCombo) => void;
+  onDisable: (combo: MenuCombo) => void;
+}) {
+  const availableProducts = products.filter((product) => product.type !== 'combo');
+  const [editing, setEditing] = useState<MenuCombo | undefined>();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('0');
+  const [active, setActive] = useState(true);
+  const [items, setItems] = useState<Array<{ productId: string; quantity: string }>>([
+    { productId: availableProducts[0]?.id ?? '', quantity: '1' },
+  ]);
+
+  const startEdit = (combo: MenuCombo) => {
+    setEditing(combo);
+    setName(combo.name);
+    setDescription(combo.description ?? '');
+    setPrice(String(combo.price ?? 0));
+    setActive(combo.active !== false);
+    setItems(
+      combo.items.length > 0
+        ? combo.items.map((item) => ({ productId: item.productId, quantity: String(item.quantity ?? 1) }))
+        : [{ productId: availableProducts[0]?.id ?? '', quantity: '1' }],
+    );
+  };
+
+  const reset = () => {
+    setEditing(undefined);
+    setName('');
+    setDescription('');
+    setPrice('0');
+    setActive(true);
+    setItems([{ productId: availableProducts[0]?.id ?? '', quantity: '1' }]);
+  };
+
+  const submit = () => {
+    onSave(
+      {
+        name: name.trim(),
+        description: description.trim() || null,
+        price: Number(price || 0),
+        active,
+        items: items
+          .filter((item) => item.productId)
+          .map((item) => ({ productId: item.productId, quantity: Number(item.quantity || 1) })),
+      },
+      editing,
+    );
+    reset();
+  };
+
+  return (
+    <section className={styles.comboWorkspace}>
+      <Card className={styles.comboBuilder}>
+        <div className={styles.categoryCardHeader}>
+          <div>
+            <strong>{editing ? 'Editar combo' : 'Novo combo / kit'}</strong>
+            <span>Monte ofertas premium usando produtos existentes do catalogo.</span>
+          </div>
+          {editing ? <Button onClick={reset}>Novo combo</Button> : null}
+        </div>
+        <div className={styles.formGrid}>
+          <label>
+            Nome
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: Combo familia" />
+          </label>
+          <label>
+            Preco fechado
+            <Input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" />
+          </label>
+          <label className={styles.wide}>
+            Descricao
+            <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Resumo comercial do combo" />
+          </label>
+          <label>
+            Status
+            <Select value={active ? 'active' : 'inactive'} onChange={(event) => setActive(event.target.value === 'active')}>
+              <option value="active">Ativo</option>
+              <option value="inactive">Inativo</option>
+            </Select>
+          </label>
+        </div>
+        <div className={styles.comboItemsEditor}>
+          {items.map((item, index) => (
+            <div key={`${item.productId}-${index}`} className={styles.comboItemRow}>
+              <Select
+                value={item.productId}
+                onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, productId: event.target.value } : row))}
+              >
+                <option value="">Selecione o produto</option>
+                {availableProducts.map((product) => (
+                  <option key={product.id} value={product.id}>{product.name}</option>
+                ))}
+              </Select>
+              <Input
+                value={item.quantity}
+                onChange={(event) => setItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row))}
+                inputMode="decimal"
+              />
+              <Button onClick={() => setItems((prev) => prev.filter((_, rowIndex) => rowIndex !== index))} disabled={items.length <= 1}>Remover</Button>
+            </div>
+          ))}
+          <Button onClick={() => setItems((prev) => [...prev, { productId: availableProducts[0]?.id ?? '', quantity: '1' }])}>Adicionar item</Button>
+        </div>
+        <Button variant="primary" onClick={submit} disabled={savingAction === 'save-combo' || (editing ? savingAction === `save-combo-${editing.id}` : false)}>
+          {savingAction?.startsWith('save-combo') ? 'Salvando...' : editing ? 'Salvar combo' : 'Criar combo'}
+        </Button>
+      </Card>
+
+      <section className={styles.simpleGrid}>
+        {combos.length === 0 ? <EmptyState title="Nenhum combo cadastrado" description="Crie combos usando produtos ativos do cardapio." /> : null}
+        {combos.map((combo) => (
+          <Card key={combo.id} className={styles.managementCard}>
+            <div className={styles.categoryCardHeader}>
+              <strong>{combo.name}</strong>
+              <Badge tone={combo.active ? 'success' : 'warning'}>{combo.active ? 'Ativo' : 'Inativo'}</Badge>
+            </div>
+            <span>{combo.description || 'Sem descricao'}</span>
+            <strong>{brl(combo.price)}</strong>
+            <div className={styles.comboItemsSummary}>
+              {combo.items.map((item) => (
+                <span key={`${combo.id}-${item.productId}`}>{item.quantity}x {item.productName ?? item.productId}</span>
+              ))}
+            </div>
+            <div className={styles.managementActions}>
+              <Button onClick={() => startEdit(combo)}>Editar</Button>
+              <Button onClick={() => onDisable(combo)} disabled={!combo.active || savingAction === `delete-combo-${combo.id}`}>
+                {savingAction === `delete-combo-${combo.id}` ? 'Desativando...' : 'Desativar'}
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </section>
+    </section>
   );
 }
