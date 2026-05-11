@@ -1,0 +1,122 @@
+// delivery customers
+
+
+
+model DeliveryArea {
+  id               String   @id @default(uuid()) @map("id")
+  branchId         String   @map("branch_id")
+  name             String   @map("name")
+  zipCodeStart     String   @map("zip_code_start")
+  zipCodeEnd       String   @map("zip_code_end")
+  deliveryFee      Decimal  @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  pricingMode      DeliveryPricingMode @default(FIXED) @map("pricing_mode")
+  baseFee          Decimal? @map("base_fee") @db.Decimal(12, 2)
+  pricePerKm       Decimal? @map("price_per_km") @db.Decimal(12, 2)
+  estimatedMinutes Int      @default(0) @map("estimated_minutes")
+  polygonGeoJson   Json?    @map("polygon_geo_json")
+  color            String?  @map("color")
+  priority         Int      @default(0) @map("priority")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  addresses      CustomerAddress[]     @relation("deliveryAreaAddresses")
+  deliveryOrders Order[]               @relation("deliveryAreaOrders")
+  polygons       DeliveryAreaPolygon[]
+  feeRules       DeliveryFeeRule[]
+
+  @@index([branchId])
+  @@index([zipCodeStart, zipCodeEnd])
+  @@map("delivery_areas")
+}
+
+model DeliveryAreaPolygon {
+  id             String   @id @default(cuid()) @map("id")
+  deliveryAreaId String   @map("delivery_area_id")
+  geoJson        Json     @map("geo_json")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  deliveryArea DeliveryArea @relation(fields: [deliveryAreaId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryAreaId])
+  @@map("delivery_area_polygons")
+}
+
+model DeliveryDriver {
+  id          String       @id @default(cuid()) @map("id")
+  name        String       @map("name")
+  phone       String       @map("phone")
+  vehicleType String?      @map("vehicle_type")
+  isOnline    Boolean      @default(false) @map("is_online")
+  currentLat  Decimal?     @map("current_lat") @db.Decimal(10, 7)
+  currentLng  Decimal?     @map("current_lng") @db.Decimal(10, 7)
+  status      DriverStatus @default(OFFLINE) @map("status")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("delivery_drivers")
+}
+
+model DeliveryFeeRule {
+  id             String   @id @default(cuid()) @map("id")
+  deliveryAreaId String   @map("delivery_area_id")
+  minDistanceKm  Float    @map("min_distance_km")
+  maxDistanceKm  Float    @map("max_distance_km")
+  fee            Decimal  @map("fee") @db.Decimal(10, 2)
+  priority       Int      @default(0) @map("priority")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  deliveryArea DeliveryArea @relation(fields: [deliveryAreaId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryAreaId])
+  @@map("delivery_fee_rules")
+}
+
+model Courier {
+  id              String       @id @default(uuid()) @map("id")
+  branchId        String       @map("branch_id")
+  name            String       @map("name")
+  phone           String?      @map("phone")
+  vehicleType     String?      @map("vehicle_type")
+  vehiclePlate    String?      @map("vehicle_plate")
+  document        String?      @map("document")
+  commissionType  String?      @map("commission_type")
+  commissionValue Decimal?     @map("commission_value") @db.Decimal(12, 2)
+  status          DriverStatus @default(OFFLINE) @map("status")
+  isOnline        Boolean      @default(false) @map("is_online")
+  currentLat      Decimal?     @map("current_lat") @db.Decimal(10, 7)
+  currentLng      Decimal?     @map("current_lng") @db.Decimal(10, 7)
+  isActive        Boolean      @default(true) @map("is_active")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  branch     Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  deliveries CourierDelivery[]
+
+  @@index([branchId])
+  @@map("couriers")
+}
+
+model CourierDelivery {
+  id               String    @id @default(uuid()) @map("id")
+  orderId          String    @map("order_id")
+  courierId        String    @map("courier_id")
+  assignedAt       DateTime  @default(now()) @map("assigned_at")
+  outForDeliveryAt DateTime? @map("out_for_delivery_at")
+  deliveredAt      DateTime? @map("delivered_at")
+  failedAt         DateTime? @map("failed_at")
+  failedReason     String?   @map("failed_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courier Courier @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([courierId])
+  @@map("courier_deliveries")
+}
+

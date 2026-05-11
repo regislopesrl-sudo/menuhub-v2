@@ -79,6 +79,8 @@ export interface DeliveryCheckoutInput {
   companyId: string;
   storeId: string;
   channel: 'delivery';
+  fulfillmentType?: 'DELIVERY' | 'TAKEOUT';
+  scheduledAt?: string;
   customerId?: string;
   customer: {
     name: string;

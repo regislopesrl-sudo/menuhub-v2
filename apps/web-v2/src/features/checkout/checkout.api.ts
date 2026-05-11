@@ -47,6 +47,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 export async function submitDeliveryCheckout(input: {
   headers: CheckoutHeaders;
   storeId: string;
+  fulfillmentType?: 'DELIVERY' | 'TAKEOUT';
+  scheduledAt?: string;
   customer: {
     name: string;
     phone: string;
@@ -74,6 +76,8 @@ export async function submitDeliveryCheckout(input: {
     },
     body: JSON.stringify({
       storeId: input.storeId,
+      fulfillmentType: input.fulfillmentType,
+      scheduledAt: input.scheduledAt,
       customer: input.customer,
       deliveryAddress: input.deliveryAddress,
       items: input.items.map((item) => ({

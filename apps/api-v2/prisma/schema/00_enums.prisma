@@ -1,0 +1,440 @@
+// enums
+
+
+
+enum OrderStatus {
+  DRAFT
+  PENDING_CONFIRMATION
+  CONFIRMED
+  IN_PREPARATION
+  READY
+  WAITING_PICKUP
+  WAITING_DISPATCH
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FINALIZED
+  CANCELED
+  REFUNDED
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_DELIVERY
+}
+
+enum MenuImportJobStatus {
+  PREVIEWED
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum MenuImportRowStatus {
+  VALID
+  INVALID
+  CREATED
+  UPDATED
+  SKIPPED
+  ERROR
+}
+
+enum MenuImportMode {
+  UPSERT
+}
+
+enum SalesImportJobStatus {
+  PREVIEWED
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum SalesImportRowStatus {
+  VALID
+  INVALID
+  CREATED
+  UPDATED
+  SKIPPED
+  ERROR
+}
+
+enum SalesImportMode {
+  UPSERT
+}
+
+enum OrderType {
+  DELIVERY
+  COUNTER
+  PICKUP
+  TABLE
+  COMMAND
+  WHATSAPP
+  KIOSK
+  QR
+}
+
+enum Channel {
+  ADMIN
+  PDV
+  WEB
+  WHATSAPP
+  KIOSK
+  QR
+  WAITER_APP
+  ERP
+  MARKETPLACE
+  CUSTOMER_APP
+  INTEGRATION
+}
+
+enum OrderPaymentMethod {
+  PIX
+  CARD
+  CASH
+  PAY_ON_DELIVERY
+  EXTERNAL
+}
+
+enum OrderPaymentStatus {
+  PENDING
+  INITIATED
+  AUTHORIZED
+  PAID
+  DECLINED
+  CANCELED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum OrderPaymentSummaryStatus {
+  UNPAID
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  CANCELED
+}
+
+enum KitchenStation {
+  FRYER
+  DRINKS
+  DESSERTS
+  EXPEDITION
+}
+
+enum OrderItemStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+enum OrderTimelineActorType {
+  USER
+  SYSTEM
+  INTEGRATION
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  RESERVED
+  BLOCKED
+}
+
+enum CommandStatus {
+  OPEN
+  CLOSED
+  CANCELED
+}
+
+enum TableSessionStatus {
+  OPEN
+  CLOSED
+  CANCELED
+}
+
+enum ReservationStatus {
+  BOOKED
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+enum WaitlistStatus {
+  WAITING
+  CALLED
+  SEATED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+enum FiscalDocumentModel {
+  NFCE
+}
+
+enum FiscalEnvironment {
+  HOMOLOGATION
+  PRODUCTION
+}
+
+enum FiscalCertificateStorageType {
+  ENV
+  FILE
+  BASE64
+}
+
+enum DeliveryPricingMode {
+  FIXED
+  PER_KM
+}
+
+enum FiscalDocumentStatus {
+  PENDING
+  READY_TO_ISSUE
+  ISSUING
+  AUTHORIZED
+  REJECTED
+  FAILED
+  WAITING_RETRY
+  CANCELLED
+}
+
+enum StockMovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT
+  LOSS
+  TRANSFER
+  PRODUCTION_CONSUMPTION
+  PRODUCTION_OUTPUT
+  SALE_CONSUMPTION
+  RETURN
+}
+
+enum ConversationStatus {
+  BOT_ACTIVE
+  WAITING_HUMAN
+  PAUSED
+  CLOSED
+}
+
+enum RecipeType {
+  SALE
+  PRODUCTION
+}
+
+enum StockItemType {
+  PRODUCT
+  RAW_MATERIAL
+  ADDON
+}
+
+enum StockBatchStatus {
+  AVAILABLE
+  OPENED
+  EXHAUSTED
+  EXPIRED
+  QUARANTINED
+  DISCARDED
+}
+
+enum CounterOrderStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  CLOSED
+  MERGED
+}
+
+enum CashRegisterStatus {
+  OPEN
+  CLOSED
+  RECONCILING
+  CANCELED
+}
+
+enum CashMovementType {
+  OPENING
+  SALE
+  PAYMENT
+  REFUND
+  WITHDRAWAL
+  DEPOSIT
+  ADJUSTMENT
+  CLOSING
+}
+
+enum AccountsPayableStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum AccountsReceivableStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELED
+  REFUNDED
+}
+
+enum FinancialOriginType {
+  ORDER
+  PAYMENT
+  PURCHASE_ORDER
+  GOODS_RECEIPT
+  DAILY_CLOSURE
+  MANUAL
+  ADJUSTMENT
+  INTEGRATION
+}
+
+enum FinancialSettlementMethod {
+  CASH
+  PIX
+  CARD
+  BANK_TRANSFER
+  BOLETO
+  EXTERNAL
+  OTHER
+}
+
+enum FinancialReconciliationStatus {
+  PENDING
+  MATCHED
+  DIVERGENT
+  ADJUSTED
+  CLOSED
+}
+
+enum DailyFinancialClosureStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  REOPENED
+}
+
+enum CouponDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_DELIVERY
+}
+
+enum ProductionOrderStatus {
+  PLANNED
+  IN_PROGRESS
+  FINISHED
+  CANCELED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT              @map("draft")
+  APPROVED           @map("approved")
+  SENT               @map("sent")
+  PARTIALLY_RECEIVED @map("partially_received")
+  RECEIVED           @map("received")
+  CANCELED           @map("canceled")
+}
+
+enum GoodsReceiptStatus {
+  PENDING   @map("pending")
+  FINALIZED @map("finalized")
+  CANCELED  @map("canceled")
+}
+
+enum ReviewStatus {
+  NEW         @map("new")
+  IN_PROGRESS @map("in_progress")
+  REPLIED     @map("replied")
+  CLOSED      @map("closed")
+}
+
+enum IdempotencyRequestStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OrderPaymentRefundStatus {
+  REQUESTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum RealtimeOutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+enum RealtimeSocketSessionStatus {
+  CONNECTED
+  DISCONNECTED
+  BLOCKED
+}
+
+enum RealtimeActorType {
+  USER
+  CUSTOMER
+  SYSTEM
+}
+
+enum AuthSecurityEventAction {
+  LOGIN
+  LOGIN_FAILED
+  REFRESH
+  REFRESH_FAILED
+  LOGOUT
+  LOGOUT_FAILED
+  RATE_LIMIT_BLOCKED
+  SESSION_REVOKED
+  SESSION_REVOKED_ALL
+}
+
+enum AuthSecurityEventOutcome {
+  SUCCESS
+  FAILURE
+  BLOCKED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAST_DUE
+  PAID
+  VOID
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+

@@ -1,0 +1,106 @@
+// recipe production
+
+
+
+model Recipe {
+  id            String     @id @default(uuid()) @map("id")
+  companyId     String     @map("company_id")
+  name          String     @map("name")
+  type          RecipeType @map("type")
+  yieldQuantity Decimal    @map("yield_quantity") @db.Decimal(12, 3)
+  yieldUnit     String     @map("yield_unit")
+  lossPercent   Decimal?   @map("loss_percent") @db.Decimal(5, 2)
+  active        Boolean    @default(true) @map("active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items            RecipeItem[]
+  menuProduct      MenuProduct?
+  products         Product[]         @relation("RecipeProducts")
+  productionOrders ProductionOrder[]
+
+  @@index([companyId])
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id           String   @id @default(uuid()) @map("id")
+  recipeId     String   @map("recipe_id")
+  stockItemId  String   @map("stock_item_id")
+  quantity     Decimal  @map("quantity") @db.Decimal(14, 3)
+  unit         String   @map("unit")
+  optional     Boolean  @default(false) @map("optional")
+  affectsStock Boolean  @default(true) @map("affects_stock")
+  affectsCost  Boolean  @default(true) @map("affects_cost")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@index([recipeId])
+  @@index([stockItemId])
+  @@map("recipe_items")
+}
+
+model CostSnapshot {
+  id           String   @id @default(uuid()) @map("id")
+  periodStart  DateTime @map("period_start")
+  periodEnd    DateTime @map("period_end")
+  totalRevenue Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  totalCost    Decimal  @default(0) @map("total_cost") @db.Decimal(12, 2)
+  cmv          Decimal  @default(0) @map("cmv") @db.Decimal(12, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("cost_snapshots")
+}
+
+model ProductionOrder {
+  id              String                @id @default(uuid()) @map("id")
+  branchId        String                @map("branch_id")
+  stockItemId     String                @map("stock_item_id")
+  recipeId        String?               @map("recipe_id")
+  createdById     String?               @map("created_by_id")
+  finishedById    String?               @map("finished_by_id")
+  canceledById    String?               @map("canceled_by_id")
+  plannedQuantity Decimal               @map("planned_quantity") @db.Decimal(14, 3)
+  actualQuantity  Decimal?              @map("actual_quantity") @db.Decimal(14, 3)
+  status          ProductionOrderStatus @default(PLANNED) @map("status")
+  startedAt       DateTime?             @map("started_at")
+  finishedAt      DateTime?             @map("finished_at")
+  canceledAt      DateTime?             @map("canceled_at")
+  cancellationReason String?            @map("cancellation_reason")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+  recipe    Recipe?   @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  consumptions ProductionConsumption[]
+
+  @@index([branchId])
+  @@index([stockItemId])
+  @@index([recipeId])
+  @@map("production_orders")
+}
+
+model ProductionConsumption {
+  id                String   @id @default(uuid()) @map("id")
+  productionOrderId String   @map("production_order_id")
+  stockItemId       String   @map("stock_item_id")
+  batchId           String?  @map("batch_id")
+  quantity          Decimal  @map("quantity") @db.Decimal(14, 3)
+  unitCost          Decimal  @map("unit_cost") @db.Decimal(12, 4)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  stockItem       StockItem       @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+  batch           StockBatch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([productionOrderId])
+  @@index([stockItemId])
+  @@index([batchId])
+  @@map("production_consumptions")
+}
+

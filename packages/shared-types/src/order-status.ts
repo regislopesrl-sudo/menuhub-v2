@@ -1,0 +1,13 @@
+export type OrderStatus =
+  | 'DRAFT'
+  | 'PENDING_CONFIRMATION'
+  | 'CONFIRMED'
+  | 'IN_PREPARATION'
+  | 'READY'
+  | 'WAITING_PICKUP'
+  | 'WAITING_DISPATCH'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'FINALIZED'
+  | 'CANCELED'
+  | 'REFUNDED';

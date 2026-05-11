@@ -16,13 +16,15 @@
     "test": "npm run test --workspaces --if-present",
     "prisma:generate": "npm run prisma:generate --workspace @delivery-futuro/api-v2",
     "prisma:migrate:deploy": "npm run prisma:migrate:deploy --workspace @delivery-futuro/api-v2",
-    "db:push": "npm run prisma:db:push --workspace @delivery-futuro/api-v2",
     "seed": "npm run seed --workspace @delivery-futuro/backend",
     "bi:sync": "npm run bi:sync --workspace @delivery-futuro/backend",
     "bi:check": "npm run bi:check --workspace @delivery-futuro/backend",
     "bi:seed-demo": "npm run bi:seed-demo --workspace @delivery-futuro/backend",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "prisma:validate": "npm run prisma:validate --workspace @delivery-futuro/api-v2",
+    "prisma:migrate:status": "npm run prisma:migrate:status --workspace @delivery-futuro/api-v2",
+    "prisma:db:push:local": "npm run prisma:db:push:local --workspace @delivery-futuro/api-v2"
   },
   "devDependencies": {
     "prettier": "^3.4.2"

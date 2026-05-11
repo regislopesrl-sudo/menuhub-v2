@@ -5,6 +5,7 @@ import { OrdersEventsService } from '../orders/orders-events.service';
 import { PAYMENT_PROVIDER_TOKEN } from './providers/payment-provider.tokens';
 import type { PaymentProvider } from './providers/payment-provider.interface';
 import { PrismaService } from '../database/prisma.service';
+import { sanitizeAuditMetadata } from '../common/audit-log';
 
 @Injectable()
 export class PaymentsService {
@@ -144,7 +145,7 @@ export class PaymentsService {
           provider,
           eventId,
           eventType: 'payments.webhook',
-          payloadJson: payload as object,
+          payloadJson: this.sanitizeWebhookPayload(payload),
         },
       });
       return { canProcess: true };
@@ -191,5 +192,12 @@ export class PaymentsService {
     if (upper === 'DECLINED') return 'DECLINED';
     if (upper === 'EXPIRED') return 'EXPIRED';
     return 'PENDING';
+  }
+
+  private sanitizeWebhookPayload(payload: unknown): object {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {};
+    }
+    return sanitizeAuditMetadata(payload as Record<string, unknown>) ?? {};
   }
 }

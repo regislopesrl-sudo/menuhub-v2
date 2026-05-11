@@ -1,0 +1,298 @@
+// inventory procurement
+
+
+
+model StockCategory {
+  id        String  @id @default(uuid()) @map("id")
+  companyId String  @map("company_id")
+  name      String  @map("name")
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items   StockItem[]
+
+  @@index([companyId])
+  @@map("stock_categories")
+}
+
+model StockItem {
+  id                 String        @id @default(uuid()) @map("id")
+  companyId          String        @map("company_id")
+  categoryId         String?       @map("category_id")
+  supplierId         String?       @map("supplier_id")
+  name               String        @map("name")
+  code               String?       @map("code")
+  stockType          StockItemType @default(RAW_MATERIAL) @map("stock_type")
+  purchaseUnit       String?       @map("purchase_unit")
+  stockUnit          String?       @map("stock_unit")
+  productionUnit     String?       @map("production_unit")
+  conversionFactor   Decimal       @default(1) @map("conversion_factor") @db.Decimal(14, 6)
+  currentQuantity    Decimal       @default(0) @map("current_quantity") @db.Decimal(14, 3)
+  minimumQuantity    Decimal       @default(0) @map("minimum_quantity") @db.Decimal(14, 3)
+  reorderPoint       Decimal       @default(0) @map("reorder_point") @db.Decimal(14, 3)
+  averageCost        Decimal       @default(0) @map("average_cost") @db.Decimal(12, 4)
+  lastCost           Decimal       @default(0) @map("last_cost") @db.Decimal(12, 4)
+  standardCost       Decimal       @default(0) @map("standard_cost") @db.Decimal(12, 4)
+  leadTimeDays       Int           @default(0) @map("lead_time_days")
+  controlsStock      Boolean       @default(true) @map("controls_stock")
+  controlsBatch      Boolean       @default(false) @map("controls_batch")
+  controlsExpiry     Boolean       @default(false) @map("controls_expiry")
+  requiresFefo       Boolean       @default(false) @map("requires_fefo")
+  isPerishable       Boolean       @default(false) @map("is_perishable")
+  isFractionable     Boolean       @default(false) @map("is_fractionable")
+  isCritical         Boolean       @default(false) @map("is_critical")
+  isHighTurnover     Boolean       @default(false) @map("is_high_turnover")
+  allowNegativeStock Boolean       @default(false) @map("allow_negative_stock")
+  version            Int           @default(1) @map("version")
+  isActive           Boolean       @default(true) @map("is_active")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category StockCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  batches                StockBatch[]
+  movements              StockMovement[]
+  recipeItems            RecipeItem[]
+  purchaseRequestItems   PurchaseRequestItem[]
+  purchaseOrderItems     PurchaseOrderItem[]
+  goodsReceiptItems      GoodsReceiptItem[]
+  productionOrders       ProductionOrder[]
+  productionConsumptions ProductionConsumption[]
+  balances               StockLocationBalance[]
+
+  @@index([companyId])
+  @@index([stockType])
+  @@map("stock_items")
+}
+
+model StockBatch {
+  id                String           @id @default(uuid()) @map("id")
+  stockItemId       String           @map("stock_item_id")
+  branchId          String?          @map("branch_id")
+  supplierId        String?          @map("supplier_id")
+  batchNumber       String?          @map("batch_number")
+  manufactureDate   DateTime?        @map("manufacture_date")
+  receivedDate      DateTime?        @map("received_date")
+  openedDate        DateTime?        @map("opened_date")
+  expirationDate    DateTime?        @map("expiration_date")
+  useUntilDate      DateTime?        @map("use_until_date")
+  initialQuantity   Decimal          @default(0) @map("initial_quantity") @db.Decimal(14, 3)
+  quantityRemaining Decimal          @default(0) @map("quantity_remaining") @db.Decimal(14, 3)
+  unitCost          Decimal          @default(0) @map("unit_cost") @db.Decimal(12, 4)
+  status            StockBatchStatus @default(AVAILABLE) @map("status")
+  sanitaryNotes     String?          @map("sanitary_notes")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  branch    Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  movements              StockMovement[]
+  goodsReceiptItems      GoodsReceiptItem[]
+  productionConsumptions ProductionConsumption[]
+
+  @@unique([stockItemId, branchId, batchNumber])
+  @@index([stockItemId])
+  @@index([branchId])
+  @@index([expirationDate])
+  @@map("stock_batches")
+}
+
+model StockMovement {
+  id                   String            @id @default(uuid()) @map("id")
+  stockItemId          String            @map("stock_item_id")
+  branchId             String?           @map("branch_id")
+  batchId              String?           @map("batch_id")
+  orderItemId          String?           @map("order_item_id")
+  actorId              String?           @map("actor_id")
+  approvalRequired     Boolean           @default(false) @map("approval_required")
+  approvedByActorId    String?           @map("approved_by_actor_id")
+  approvedAt           DateTime?         @map("approved_at")
+  approvalNotes        String?           @map("approval_notes")
+  idempotencyKey       String?           @map("idempotency_key")
+  requestId            String?           @map("request_id")
+  traceId              String?           @map("trace_id")
+  movementType         StockMovementType @map("movement_type")
+  movementTypeDetailed String?           @map("movement_type_detailed")
+  sourceModule         String?           @map("source_module")
+  sourceId             String?           @map("source_id")
+  referenceType        String?           @map("reference_type")
+  referenceId          String?           @map("reference_id")
+  previousStock        Decimal?          @map("previous_stock") @db.Decimal(14, 3)
+  newStock             Decimal?          @map("new_stock") @db.Decimal(14, 3)
+  quantity             Decimal           @map("quantity") @db.Decimal(14, 3)
+  unitCost             Decimal           @default(0) @map("unit_cost") @db.Decimal(12, 4)
+  totalCost            Decimal           @default(0) @map("total_cost") @db.Decimal(12, 2)
+  reasonCode           String?           @map("reason_code")
+  notes                String?           @map("notes")
+  createdAt            DateTime          @default(now()) @map("created_at")
+
+  stockItem StockItem   @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  branch    Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  batch     StockBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  orderItem OrderItem?  @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([stockItemId])
+  @@index([branchId])
+  @@index([batchId])
+  @@index([orderItemId])
+  @@index([actorId])
+  @@index([approvedByActorId])
+  @@index([createdAt])
+  @@index([requestId])
+  @@index([traceId])
+  @@index([branchId, movementType, createdAt])
+  @@map("stock_movements")
+}
+
+model StockLocationBalance {
+  id              String   @id @default(uuid()) @map("id")
+  companyId       String   @map("company_id")
+  branchId        String   @map("branch_id")
+  stockItemId     String   @map("stock_item_id")
+  currentQuantity Decimal  @default(0) @map("current_quantity") @db.Decimal(14, 3)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, stockItemId])
+  @@index([companyId, branchId])
+  @@index([stockItemId])
+  @@map("stock_location_balances")
+}
+
+model PurchaseRequest {
+  id        String   @id @default(uuid()) @map("id")
+  branchId  String   @map("branch_id")
+  notes     String?  @map("notes")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  items PurchaseRequestItem[]
+
+  @@index([branchId])
+  @@map("purchase_requests")
+}
+
+model PurchaseRequestItem {
+  id                String  @id @default(uuid()) @map("id")
+  purchaseRequestId String  @map("purchase_request_id")
+  stockItemId       String  @map("stock_item_id")
+  quantity          Decimal @map("quantity") @db.Decimal(14, 3)
+  notes             String? @map("notes")
+
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  stockItem       StockItem       @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseRequestId])
+  @@index([stockItemId])
+  @@map("purchase_request_items")
+}
+
+model Supplier {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  name      String   @map("name")
+  document  String?  @map("document")
+  phone     String?  @map("phone")
+  email     String?  @map("email")
+  notes     String?  @map("notes")
+  active    Boolean  @default(true) @map("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  purchaseOrders  PurchaseOrder[]
+  goodsReceipts   GoodsReceipt[]
+  accountsPayable AccountsPayable[]
+
+  @@index([companyId])
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id                   String    @id @default(uuid()) @map("id")
+  branchId             String    @map("branch_id")
+  supplierId           String    @map("supplier_id")
+  status               PurchaseOrderStatus @default(DRAFT) @map("status")
+  createdById          String?   @map("created_by_id")
+  approvedById         String?   @map("approved_by_id")
+  updatedById          String?   @map("updated_by_id")
+  expectedDeliveryDate DateTime? @map("expected_delivery_date")
+  totalAmount          Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+  notes                String?   @map("notes")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  items         PurchaseOrderItem[]
+  goodsReceipts GoodsReceipt[]
+
+  @@index([branchId])
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String  @id @default(uuid()) @map("id")
+  purchaseOrderId String  @map("purchase_order_id")
+  stockItemId     String  @map("stock_item_id")
+  unit            String  @default("UN") @map("unit")
+  quantity        Decimal @map("quantity") @db.Decimal(14, 3)
+  unitCost        Decimal @map("unit_cost") @db.Decimal(12, 4)
+  totalCost       Decimal @map("total_cost") @db.Decimal(12, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@index([stockItemId])
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id              String    @id @default(uuid()) @map("id")
+  purchaseOrderId String?   @map("purchase_order_id")
+  supplierId      String    @map("supplier_id")
+  createdById     String?   @map("created_by_id")
+  processedById   String?   @map("processed_by_id")
+  invoiceNumber   String?   @map("invoice_number")
+  invoiceKey      String?   @map("invoice_key")
+  status          GoodsReceiptStatus @default(PENDING) @map("status")
+  receivedAt      DateTime? @map("received_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  items GoodsReceiptItem[]
+
+  @@index([supplierId])
+  @@index([purchaseOrderId])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id               String    @id @default(uuid()) @map("id")
+  goodsReceiptId   String    @map("goods_receipt_id")
+  stockItemId      String    @map("stock_item_id")
+  batchId          String?   @map("batch_id")
+  batchNumber      String?   @map("batch_number")
+  manufactureDate  DateTime? @map("manufacture_date")
+  expirationDate   DateTime? @map("expiration_date")
+  orderedQuantity  Decimal?  @map("ordered_quantity") @db.Decimal(14, 3)
+  receivedQuantity Decimal   @map("received_quantity") @db.Decimal(14, 3)
+  unitCost         Decimal   @map("unit_cost") @db.Decimal(12, 4)
+  hasDivergence    Boolean   @default(false) @map("has_divergence")
+  divergenceNotes  String?   @map("divergence_notes")
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  stockItem    StockItem    @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
+  batch        StockBatch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([goodsReceiptId])
+  @@index([stockItemId])
+  @@index([batchId])
+  @@map("goods_receipt_items")
+}
+

@@ -12,13 +12,14 @@ type Props = {
 export function PremiumErrorState({ message, onRetry }: Props) {
   return (
     <Card className={styles.errorCard}>
-      <p>Não foi possível carregar os dados.</p>
+      <p>Nao foi possivel carregar os dados.</p>
       {message ? <small>{message}</small> : null}
       {onRetry ? (
-        <div style={{ marginTop: 8 }}>
+        <div className={styles.errorActions}>
           <Button onClick={onRetry}>Tentar novamente</Button>
         </div>
       ) : null}
     </Card>
   );
 }
+
