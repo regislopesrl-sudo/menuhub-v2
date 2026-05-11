@@ -85,8 +85,15 @@ export class StockController {
 
   @Get('movements')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
-  listMovements(@CurrentContext() ctx: RequestContext, @Query('stockItemId') stockItemId?: string) {
-    return this.stockService.listMovements(ctx, stockItemId);
+  listMovements(
+    @CurrentContext() ctx: RequestContext,
+    @Query('stockItemId') stockItemId?: string,
+    @Query('batchId') batchId?: string,
+    @Query('movementType') movementType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.stockService.listMovements(ctx, { stockItemId, batchId, movementType, from, to });
   }
 
   @Post('movements/entry')
@@ -114,6 +121,15 @@ export class StockController {
     @Body() body: { counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>; notes?: string },
   ) {
     return this.stockService.applyInventoryCount(ctx, body);
+  }
+
+  @Post('inventory/batch-counts')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  applyBatchInventoryCount(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { stockItemId: string; batchId: string; countedQuantity: number; reasonCode?: string; notes?: string },
+  ) {
+    return this.stockService.applyBatchInventoryCount(ctx, body);
   }
 
   @Post('conversions/estimate')

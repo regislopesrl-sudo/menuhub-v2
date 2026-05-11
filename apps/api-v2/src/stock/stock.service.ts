@@ -59,8 +59,24 @@ export type StockBatchStatusInput = {
   notes?: string;
 };
 
+export type StockMovementFilters = {
+  stockItemId?: string;
+  batchId?: string;
+  movementType?: string;
+  from?: string;
+  to?: string;
+};
+
 export type InventoryCountInput = {
   stockItemId: string;
+  countedQuantity: number;
+  reasonCode?: string;
+  notes?: string;
+};
+
+export type BatchInventoryCountInput = {
+  stockItemId: string;
+  batchId: string;
   countedQuantity: number;
   reasonCode?: string;
   notes?: string;
@@ -194,11 +210,23 @@ export class StockService {
     return this.prisma.stockItem.update({ where: { id }, data: payload });
   }
 
-  async listMovements(ctx: RequestContext, stockItemId?: string) {
+  async listMovements(ctx: RequestContext, filters: string | StockMovementFilters = {}) {
+    const parsedFilters: StockMovementFilters = typeof filters === 'string' ? { stockItemId: filters } : filters;
+    const from = parsedFilters.from ? new Date(parsedFilters.from) : null;
+    const to = parsedFilters.to ? new Date(parsedFilters.to) : null;
+    if (from && Number.isNaN(from.getTime())) throw new BadRequestException('from invalido.');
+    if (to && Number.isNaN(to.getTime())) throw new BadRequestException('to invalido.');
+    const movementType = parsedFilters.movementType ? String(parsedFilters.movementType).trim().toUpperCase() : null;
+    const allowedMovementTypes = ['ENTRY', 'EXIT', 'ADJUSTMENT', 'LOSS', 'TRANSFER', 'PRODUCTION_CONSUMPTION', 'PRODUCTION_OUTPUT', 'SALE_CONSUMPTION', 'RETURN'];
+    if (movementType && !allowedMovementTypes.includes(movementType)) throw new BadRequestException('movementType invalido.');
+
     return this.prisma.stockMovement.findMany({
       where: {
         stockItem: { companyId: ctx.companyId },
-        ...(stockItemId ? { stockItemId } : {}),
+        ...(parsedFilters.stockItemId ? { stockItemId: parsedFilters.stockItemId } : {}),
+        ...(parsedFilters.batchId ? { batchId: parsedFilters.batchId } : {}),
+        ...(movementType ? { movementType: movementType as any } : {}),
+        ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -657,6 +685,113 @@ export class StockService {
         totalItems: results.length,
         changedItems: results.filter((item) => item.delta !== 0).length,
         results,
+      };
+    });
+  }
+
+  async applyBatchInventoryCount(ctx: RequestContext, input: BatchInventoryCountInput) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    const batchId = String(input.batchId ?? '').trim();
+    if (!stockItemId || !batchId) throw new BadRequestException('stockItemId e batchId obrigatorios.');
+
+    const countedQuantity = Number(input.countedQuantity ?? 0);
+    if (!Number.isFinite(countedQuantity) || countedQuantity < 0) {
+      throw new BadRequestException('countedQuantity invalido em inventario de lote.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.stockBatch.findUnique({
+        where: { id: batchId },
+        include: { stockItem: true },
+      });
+      if (!batch || batch.stockItemId !== stockItemId || batch.stockItem?.companyId !== ctx.companyId) {
+        throw new NotFoundException('Lote de estoque nao encontrado para inventario.');
+      }
+      if (ctx.branchId && batch.branchId && batch.branchId !== ctx.branchId) {
+        throw new NotFoundException('Lote de estoque nao encontrado para a filial atual.');
+      }
+      if (['DISCARDED', 'EXPIRED'].includes(String(batch.status)) && countedQuantity > 0) {
+        throw new BadRequestException('Lote descartado ou expirado nao pode receber saldo por inventario.');
+      }
+
+      const previousBatchQuantity = Number(batch.quantityRemaining ?? 0);
+      const delta = countedQuantity - previousBatchQuantity;
+      if (delta === 0) {
+        return {
+          stockItemId,
+          batchId,
+          previousBatchQuantity,
+          countedQuantity,
+          delta,
+          movementId: null,
+        };
+      }
+
+      const previousStock = Number(batch.stockItem.currentQuantity ?? 0);
+      const nextStock = previousStock + delta;
+      if (nextStock < 0 && !batch.stockItem.allowNegativeStock) {
+        throw new BadRequestException('Inventario do lote deixaria o item com saldo negativo.');
+      }
+
+      const nextStatus = countedQuantity <= 0
+        ? 'EXHAUSTED'
+        : String(batch.status) === 'EXHAUSTED'
+          ? 'OPENED'
+          : batch.status;
+
+      const updatedBatch = await tx.stockBatch.update({
+        where: { id: batchId },
+        data: {
+          quantityRemaining: this.decimal(countedQuantity),
+          status: nextStatus,
+          sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes,
+        },
+      });
+
+      const updatedItem = await tx.stockItem.update({
+        where: { id: stockItemId },
+        data: { currentQuantity: this.decimal(nextStock) },
+      });
+
+      const branchId = batch.branchId ?? ctx.branchId;
+      if (branchId) {
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId } },
+          update: { currentQuantity: this.decimal(nextStock), companyId: ctx.companyId },
+          create: { branchId, stockItemId, companyId: ctx.companyId, currentQuantity: this.decimal(nextStock) },
+        });
+      }
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          stockItemId,
+          branchId,
+          batchId,
+          movementType: 'ADJUSTMENT',
+          movementTypeDetailed: 'batch_inventory_count_adjustment',
+          sourceModule: 'admin_inventory_batch',
+          sourceId: ctx.requestId,
+          actorId: ctx.userId,
+          requestId: ctx.requestId,
+          quantity: this.decimal(Math.abs(delta)),
+          unitCost: this.decimal(Number(batch.unitCost ?? batch.stockItem.averageCost ?? 0)),
+          totalCost: this.decimal(Math.abs(delta) * Number(batch.unitCost ?? batch.stockItem.averageCost ?? 0)),
+          previousStock: this.decimal(previousStock),
+          newStock: this.decimal(nextStock),
+          reasonCode: this.clean(input.reasonCode) ?? 'batch_inventory_count',
+          notes: this.clean(input.notes),
+        },
+      });
+
+      return {
+        stockItemId,
+        batchId,
+        previousBatchQuantity,
+        countedQuantity,
+        delta,
+        movementId: movement.id,
+        batch: updatedBatch,
+        item: updatedItem,
       };
     });
   }

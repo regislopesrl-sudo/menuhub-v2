@@ -215,6 +215,65 @@ describe('StockService', () => {
     expect(prisma.stockMovement.create).toHaveBeenCalled();
   });
 
+  it('aplica inventario por lote e ajusta saldo do item', async () => {
+    prisma.stockBatch.findUnique.mockResolvedValue({
+      id: 'b1',
+      stockItemId: 's1',
+      branchId: 'branch-demo',
+      quantityRemaining: 5,
+      unitCost: 4,
+      status: 'AVAILABLE',
+      sanitaryNotes: null,
+      stockItem: { id: 's1', companyId: 'company-demo', currentQuantity: 10, averageCost: 3, allowNegativeStock: false },
+    });
+    prisma.stockBatch.update.mockResolvedValue({ id: 'b1', quantityRemaining: 3, status: 'AVAILABLE' });
+    prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 8 });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'adj-b1' });
+
+    const result = await service.applyBatchInventoryCount(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      countedQuantity: 3,
+      notes: 'Contagem fisica',
+    });
+
+    expect(result).toEqual(expect.objectContaining({ batchId: 'b1', previousBatchQuantity: 5, countedQuantity: 3, delta: -2, movementId: 'adj-b1' }));
+    expect(prisma.stockBatch.update).toHaveBeenCalledWith({
+      where: { id: 'b1' },
+      data: { quantityRemaining: 3, status: 'AVAILABLE', sanitaryNotes: 'Contagem fisica' },
+    });
+    expect(prisma.stockItem.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { currentQuantity: 8 },
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        batchId: 'b1',
+        movementType: 'ADJUSTMENT',
+        movementTypeDetailed: 'batch_inventory_count_adjustment',
+        quantity: 2,
+        unitCost: 4,
+      }),
+    });
+  });
+
+  it('bloqueia inventario positivo em lote descartado', async () => {
+    prisma.stockBatch.findUnique.mockResolvedValue({
+      id: 'b1',
+      stockItemId: 's1',
+      branchId: 'branch-demo',
+      quantityRemaining: 0,
+      status: 'DISCARDED',
+      stockItem: { id: 's1', companyId: 'company-demo', currentQuantity: 10, allowNegativeStock: false },
+    });
+
+    await expect(service.applyBatchInventoryCount(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      countedQuantity: 1,
+    })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('ignora nova baixa automatica se pedido ja consumido', async () => {
     prisma.stockMovement.findFirst.mockResolvedValue({ id: 'm1' });
     const result = await service.consumeByOrder(ctx, 'order-1');

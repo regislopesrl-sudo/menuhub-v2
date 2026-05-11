@@ -9,6 +9,7 @@ describe('ProcurementService', () => {
     goodsReceiptItem: { create: jest.fn(), findMany: jest.fn() },
     purchaseOrderItem: { findMany: jest.fn() },
     stockItem: { findUnique: jest.fn(), update: jest.fn() },
+    stockBatch: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     stockLocationBalance: { upsert: jest.fn() },
     stockMovement: { create: jest.fn() },
     accountsPayable: { create: jest.fn(), findMany: jest.fn() },
@@ -24,6 +25,7 @@ describe('ProcurementService', () => {
         goodsReceipt: prisma.goodsReceipt,
         goodsReceiptItem: prisma.goodsReceiptItem,
         stockItem: prisma.stockItem,
+        stockBatch: prisma.stockBatch,
         stockLocationBalance: prisma.stockLocationBalance,
         stockMovement: prisma.stockMovement,
         accountsPayable: prisma.accountsPayable,
@@ -57,6 +59,58 @@ describe('ProcurementService', () => {
     await expect(
       service.createPurchaseOrder(ctx, { supplierId: 'sup1', items: [{ stockItemId: 'st1', quantity: 1, unitCost: 1 }] }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('recebe pedido e vincula lote operacional ao estoque', async () => {
+    prisma.purchaseOrder.findUnique.mockResolvedValue({
+      id: 'po1',
+      branchId: 'branch-demo',
+      supplierId: 'sup1',
+      supplier: { id: 'sup1', companyId: 'company-demo' },
+      items: [{ stockItemId: 'st1', quantity: 3 }],
+    });
+    prisma.goodsReceipt.create.mockResolvedValue({ id: 'gr1' });
+    prisma.stockItem.findUnique.mockResolvedValue({
+      id: 'st1',
+      companyId: 'company-demo',
+      currentQuantity: 2,
+      controlsExpiry: false,
+    });
+    prisma.stockBatch.findFirst.mockResolvedValue(null);
+    prisma.stockBatch.create.mockResolvedValue({ id: 'batch-1' });
+    prisma.stockItem.update.mockResolvedValue({ id: 'st1', currentQuantity: 5 });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'mov1' });
+    prisma.accountsPayable.create.mockResolvedValue({ id: 'ap1' });
+    prisma.purchaseOrder.update.mockResolvedValue({ id: 'po1', status: 'RECEIVED' });
+
+    const result = await service.receivePurchaseOrder(ctx, 'po1', {
+      items: [{
+        stockItemId: 'st1',
+        receivedQuantity: 3,
+        unitCost: 7,
+        orderedQuantity: 3,
+        batchNumber: 'L-001',
+        expirationDate: '2026-06-30',
+      }],
+    });
+
+    expect(result).toEqual(expect.objectContaining({ receiptId: 'gr1', payableId: 'ap1', hasDivergence: false, totalReceived: 21 }));
+    expect(prisma.stockBatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stockItemId: 'st1',
+        branchId: 'branch-demo',
+        supplierId: 'sup1',
+        batchNumber: 'L-001',
+        quantityRemaining: 3,
+        unitCost: 7,
+      }),
+    });
+    expect(prisma.goodsReceiptItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ batchId: 'batch-1', batchNumber: 'L-001' }),
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ batchId: 'batch-1', movementType: 'ENTRY', movementTypeDetailed: 'purchase_receipt_entry' }),
+    });
   });
 });
 

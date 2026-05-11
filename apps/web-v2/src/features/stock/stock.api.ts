@@ -132,8 +132,20 @@ export function updateStockItem(
   });
 }
 
-export function listStockMovements(stockItemId?: string) {
-  const query = stockItemId ? `?stockItemId=${encodeURIComponent(stockItemId)}` : '';
+export function listStockMovements(filters?: {
+  stockItemId?: string;
+  batchId?: string;
+  movementType?: string;
+  from?: string;
+  to?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.stockItemId) params.set('stockItemId', filters.stockItemId);
+  if (filters?.batchId) params.set('batchId', filters.batchId);
+  if (filters?.movementType) params.set('movementType', filters.movementType);
+  if (filters?.from) params.set('from', filters.from);
+  if (filters?.to) params.set('to', filters.to);
+  const query = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<StockMovement[]>(`/v2/admin/stock/movements${query}`, { method: 'GET' });
 }
 
@@ -207,6 +219,28 @@ export function createStockBatch(
   input: { batchNumber?: string; expirationDate?: string; receivedDate?: string; initialQuantity: number; unitCost?: number; notes?: string },
 ) {
   return apiFetch<StockBatch>(`/v2/admin/stock/items/${stockItemId}/batches`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function applyBatchInventoryCount(input: {
+  stockItemId: string;
+  batchId: string;
+  countedQuantity: number;
+  reasonCode?: string;
+  notes?: string;
+}) {
+  return apiFetch<{
+    stockItemId: string;
+    batchId: string;
+    previousBatchQuantity: number;
+    countedQuantity: number;
+    delta: number;
+    movementId: string | null;
+    batch?: StockBatch;
+    item?: StockItem;
+  }>('/v2/admin/stock/inventory/batch-counts', {
     method: 'POST',
     body: JSON.stringify(input),
   });

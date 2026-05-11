@@ -167,12 +167,68 @@ export class ProcurementService {
         const divergence = Math.abs(receivedQuantity - orderedQuantity) > 0.0001;
         if (divergence) hasDivergence = true;
 
+        const item = await tx.stockItem.findUnique({ where: { id: row.stockItemId } });
+        if (!item || item.companyId !== ctx.companyId) {
+          throw new NotFoundException('Item de estoque nao encontrado para recebimento.');
+        }
+
+        const batchNumber = this.clean(row.batchNumber);
+        const expirationDate = row.expirationDate ? new Date(row.expirationDate) : null;
+        if (expirationDate && Number.isNaN(expirationDate.getTime())) {
+          throw new BadRequestException('expirationDate invalida.');
+        }
+
+        let batchId: string | null = null;
+        if (batchNumber || expirationDate) {
+          const existingBatch = batchNumber
+            ? await tx.stockBatch.findFirst({
+                where: {
+                  stockItemId: row.stockItemId,
+                  branchId,
+                  batchNumber,
+                },
+              })
+            : null;
+          if (existingBatch && ['DISCARDED', 'EXPIRED'].includes(String(existingBatch.status))) {
+            throw new BadRequestException('Lote descartado ou expirado nao pode receber nova entrada.');
+          }
+          const batch = existingBatch
+            ? await tx.stockBatch.update({
+                where: { id: existingBatch.id },
+                data: {
+                  initialQuantity: Number(existingBatch.initialQuantity ?? 0) + receivedQuantity,
+                  quantityRemaining: Number(existingBatch.quantityRemaining ?? 0) + receivedQuantity,
+                  unitCost,
+                  expirationDate: expirationDate ?? existingBatch.expirationDate,
+                  receivedDate: new Date(),
+                  supplierId: po.supplierId,
+                  status: Number(existingBatch.quantityRemaining ?? 0) + receivedQuantity > 0 ? 'AVAILABLE' : existingBatch.status,
+                },
+              })
+            : await tx.stockBatch.create({
+                data: {
+                  stockItemId: row.stockItemId,
+                  branchId,
+                  supplierId: po.supplierId,
+                  batchNumber,
+                  receivedDate: new Date(),
+                  expirationDate,
+                  initialQuantity: receivedQuantity,
+                  quantityRemaining: receivedQuantity,
+                  unitCost,
+                  status: 'AVAILABLE',
+                },
+              });
+          batchId = batch.id;
+        }
+
         await tx.goodsReceiptItem.create({
           data: {
             goodsReceiptId: receipt.id,
             stockItemId: row.stockItemId,
-            batchNumber: this.clean(row.batchNumber),
-            expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
+            batchId,
+            batchNumber,
+            expirationDate,
             orderedQuantity,
             receivedQuantity,
             unitCost,
@@ -181,38 +237,41 @@ export class ProcurementService {
           },
         });
 
-        const item = await tx.stockItem.findUnique({ where: { id: row.stockItemId } });
-        if (item && item.companyId === ctx.companyId) {
-          const previous = Number(item.currentQuantity);
-          const next = previous + receivedQuantity;
-          await tx.stockItem.update({
-            where: { id: row.stockItemId },
-            data: { currentQuantity: next, averageCost: unitCost, lastCost: unitCost },
-          });
-          await tx.stockLocationBalance.upsert({
-            where: { branchId_stockItemId: { branchId, stockItemId: row.stockItemId } },
-            create: { branchId, stockItemId: row.stockItemId, companyId: ctx.companyId, currentQuantity: next },
-            update: { currentQuantity: next, companyId: ctx.companyId },
-          });
-          await tx.stockMovement.create({
-            data: {
-              stockItemId: row.stockItemId,
-              branchId,
-              movementType: 'ENTRY',
-              movementTypeDetailed: 'purchase_receipt_entry',
-              sourceModule: 'procurement_receipt',
-              sourceId: receipt.id,
-              actorId: ctx.userId,
-              requestId: ctx.requestId,
-              quantity: receivedQuantity,
-              unitCost,
-              totalCost: Number((receivedQuantity * unitCost).toFixed(2)),
-              previousStock: previous,
-              newStock: next,
-              reasonCode: 'purchase_receipt',
-            },
-          });
-        }
+        const previous = Number(item.currentQuantity);
+        const next = previous + receivedQuantity;
+        await tx.stockItem.update({
+          where: { id: row.stockItemId },
+          data: {
+            currentQuantity: next,
+            averageCost: unitCost,
+            lastCost: unitCost,
+            ...(batchId ? { controlsBatch: true, controlsExpiry: Boolean(expirationDate) || item.controlsExpiry } : {}),
+          },
+        });
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId: row.stockItemId } },
+          create: { branchId, stockItemId: row.stockItemId, companyId: ctx.companyId, currentQuantity: next },
+          update: { currentQuantity: next, companyId: ctx.companyId },
+        });
+        await tx.stockMovement.create({
+          data: {
+            stockItemId: row.stockItemId,
+            branchId,
+            batchId,
+            movementType: 'ENTRY',
+            movementTypeDetailed: 'purchase_receipt_entry',
+            sourceModule: 'procurement_receipt',
+            sourceId: receipt.id,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity: receivedQuantity,
+            unitCost,
+            totalCost: Number((receivedQuantity * unitCost).toFixed(2)),
+            previousStock: previous,
+            newStock: next,
+            reasonCode: 'purchase_receipt',
+          },
+        });
 
         totalReceived += Number((receivedQuantity * unitCost).toFixed(2));
       }
