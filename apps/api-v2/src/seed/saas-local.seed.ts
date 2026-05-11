@@ -1,6 +1,9 @@
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(process.env.DATABASE_URL ?? ''),
+});
 
 async function run() {
   const ensurePlan = async (key: string, name: string, description: string) =>
