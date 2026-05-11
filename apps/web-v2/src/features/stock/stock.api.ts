@@ -212,6 +212,17 @@ export function createStockBatch(
   });
 }
 
+export function updateStockBatchStatus(
+  stockItemId: string,
+  batchId: string,
+  input: { status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED'; notes?: string },
+) {
+  return apiFetch<StockBatch | { batch: StockBatch; item: StockItem }>(`/v2/admin/stock/items/${stockItemId}/batches/${batchId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 export function estimateStockConversion(input: { stockItemId: string; quantity: number; fromUnit: string; toUnit: string }) {
   return apiFetch<{ stockItemId: string; fromUnit: string; toUnit: string; inputQuantity: number; convertedQuantity: number; conversionFactor: number }>(
     '/v2/admin/stock/conversions/estimate',

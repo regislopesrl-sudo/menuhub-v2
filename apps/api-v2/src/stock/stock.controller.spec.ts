@@ -11,6 +11,7 @@ describe('StockController', () => {
     applyInventoryCount: jest.fn(),
     listBatches: jest.fn(),
     createBatch: jest.fn(),
+    updateBatchStatus: jest.fn(),
     estimateUnitConversion: jest.fn(),
     listBreakageAlerts: jest.fn(),
     registerLoss: jest.fn(),
@@ -63,6 +64,18 @@ describe('StockController', () => {
     const result = await controller.createBatch(ctx, 's1', payload as any);
     expect(result).toEqual({ id: 'b1' });
     expect(service.createBatch).toHaveBeenCalledWith(ctx, { ...payload, stockItemId: 's1' });
+  });
+
+  it('atualiza status operacional de lote', async () => {
+    service.updateBatchStatus.mockResolvedValueOnce({ batch: { id: 'b1', status: 'QUARANTINED' } });
+    const result = await controller.updateBatchStatus(ctx, 's1', 'b1', { status: 'QUARANTINED', notes: 'Analise sanitaria' });
+    expect(result).toEqual({ batch: { id: 'b1', status: 'QUARANTINED' } });
+    expect(service.updateBatchStatus).toHaveBeenCalledWith(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      status: 'QUARANTINED',
+      notes: 'Analise sanitaria',
+    });
   });
 
   it('estima conversao de unidade', async () => {

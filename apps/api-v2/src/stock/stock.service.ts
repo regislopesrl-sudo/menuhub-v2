@@ -52,6 +52,13 @@ export type StockBatchInput = {
   notes?: string;
 };
 
+export type StockBatchStatusInput = {
+  stockItemId: string;
+  batchId: string;
+  status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED';
+  notes?: string;
+};
+
 export type InventoryCountInput = {
   stockItemId: string;
   countedQuantity: number;
@@ -344,6 +351,101 @@ export class StockService {
       });
 
       return batch;
+    });
+  }
+
+  async updateBatchStatus(ctx: RequestContext, input: StockBatchStatusInput) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    const batchId = String(input.batchId ?? '').trim();
+    if (!stockItemId || !batchId) throw new BadRequestException('stockItemId e batchId obrigatorios.');
+
+    const status = String(input.status ?? '').trim().toUpperCase();
+    if (!['AVAILABLE', 'OPENED', 'QUARANTINED', 'DISCARDED', 'EXPIRED'].includes(status)) {
+      throw new BadRequestException('status de lote invalido.');
+    }
+
+    const batch = await this.prisma.stockBatch.findUnique({
+      where: { id: batchId },
+      include: { stockItem: true },
+    });
+    if (!batch || batch.stockItemId !== stockItemId || batch.stockItem?.companyId !== ctx.companyId) {
+      throw new NotFoundException('Lote de estoque nao encontrado.');
+    }
+    if (ctx.branchId && batch.branchId && batch.branchId !== ctx.branchId) {
+      throw new NotFoundException('Lote de estoque nao encontrado para a filial atual.');
+    }
+
+    const remaining = Number(batch.quantityRemaining ?? 0);
+    const terminal = status === 'DISCARDED' || status === 'EXPIRED';
+    if (terminal && remaining <= 0) {
+      return this.prisma.stockBatch.update({
+        where: { id: batchId },
+        data: { status: status as any, sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes },
+      });
+    }
+    if (!terminal && remaining <= 0) {
+      throw new BadRequestException('Lote sem saldo nao pode voltar para status operacional.');
+    }
+
+    if (!terminal) {
+      return this.prisma.stockBatch.update({
+        where: { id: batchId },
+        data: { status: status as any, sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const previous = Number(batch.stockItem.currentQuantity ?? 0);
+      const next = previous - remaining;
+      if (next < 0 && !batch.stockItem.allowNegativeStock) {
+        throw new BadRequestException('Saldo do lote excede saldo atual do item.');
+      }
+
+      const updatedBatch = await tx.stockBatch.update({
+        where: { id: batchId },
+        data: {
+          quantityRemaining: this.decimal(0),
+          status: status as any,
+          sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes,
+        },
+      });
+
+      const updatedItem = await tx.stockItem.update({
+        where: { id: stockItemId },
+        data: { currentQuantity: this.decimal(next) },
+      });
+
+      const branchId = batch.branchId ?? ctx.branchId;
+      if (branchId) {
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId } },
+          update: { currentQuantity: this.decimal(next), companyId: ctx.companyId },
+          create: { branchId, stockItemId, companyId: ctx.companyId, currentQuantity: this.decimal(next) },
+        });
+      }
+
+      await tx.stockMovement.create({
+        data: {
+          stockItemId,
+          branchId,
+          batchId,
+          movementType: 'LOSS',
+          movementTypeDetailed: status === 'EXPIRED' ? 'batch_expired_writeoff' : 'batch_discard_writeoff',
+          sourceModule: 'admin_stock_batch',
+          sourceId: batchId,
+          actorId: ctx.userId,
+          requestId: ctx.requestId,
+          quantity: this.decimal(remaining),
+          unitCost: this.decimal(Number(batch.unitCost ?? 0)),
+          totalCost: this.decimal(remaining * Number(batch.unitCost ?? 0)),
+          previousStock: this.decimal(previous),
+          newStock: this.decimal(next),
+          reasonCode: status === 'EXPIRED' ? 'batch_expired' : 'batch_discarded',
+          notes: this.clean(input.notes),
+        },
+      });
+
+      return { batch: updatedBatch, item: updatedItem };
     });
   }
 

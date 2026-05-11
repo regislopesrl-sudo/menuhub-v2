@@ -72,6 +72,17 @@ export class StockController {
     return this.stockService.createBatch(ctx, { ...body, stockItemId: id });
   }
 
+  @Patch('items/:id/batches/:batchId/status')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  updateBatchStatus(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Param('batchId') batchId: string,
+    @Body() body: { status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED'; notes?: string },
+  ) {
+    return this.stockService.updateBatchStatus(ctx, { ...body, stockItemId: id, batchId });
+  }
+
   @Get('movements')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
   listMovements(@CurrentContext() ctx: RequestContext, @Query('stockItemId') stockItemId?: string) {

@@ -25,6 +25,7 @@ import {
   type StockBreakageAlert,
   type StockBatch,
   type StockMovement,
+  updateStockBatchStatus,
 } from '@/features/stock/stock.api';
 import styles from './page.module.css';
 
@@ -283,6 +284,29 @@ export default function AdminStockPage() {
     }
   }
 
+  async function changeBatchStatus(batchId: string, status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED') {
+    if (!selectedItemId) return setError('Selecione um item.');
+    const notes = status === 'QUARANTINED'
+      ? 'Lote em quarentena operacional.'
+      : status === 'DISCARDED'
+        ? 'Lote descartado operacionalmente.'
+        : status === 'EXPIRED'
+          ? 'Lote expirado operacionalmente.'
+          : undefined;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateStockBatchStatus(selectedItemId, batchId, { status, notes });
+      await load();
+      await loadBatches(selectedItemId);
+      setNotice(`Status do lote atualizado para ${status}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao atualizar lote.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function runConversionEstimate() {
     if (!selectedItemId) return setError('Selecione um item.');
     setSaving(true);
@@ -520,6 +544,20 @@ export default function AdminStockPage() {
                   <span>Inicial: {Number(batch.initialQuantity).toFixed(3)}</span>
                   <span>Saldo: {Number(batch.quantityRemaining).toFixed(3)}</span>
                   <span>Status: {batch.status}</span>
+                </div>
+                <div className={styles.actions}>
+                  <Button disabled={saving || batch.status === 'QUARANTINED'} onClick={() => void changeBatchStatus(batch.id, 'QUARANTINED')}>
+                    Quarentena
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} variant="danger" onClick={() => void changeBatchStatus(batch.id, 'DISCARDED')}>
+                    Descartar saldo
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} variant="danger" onClick={() => void changeBatchStatus(batch.id, 'EXPIRED')}>
+                    Expirar
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} onClick={() => void changeBatchStatus(batch.id, 'AVAILABLE')}>
+                    Reativar
+                  </Button>
                 </div>
               </div>
             ))}

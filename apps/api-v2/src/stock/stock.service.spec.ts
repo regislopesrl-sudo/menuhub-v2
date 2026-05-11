@@ -29,6 +29,7 @@ describe('StockService', () => {
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      findUnique: jest.fn(),
     },
     order: {
       findFirst: jest.fn(),
@@ -283,6 +284,75 @@ describe('StockService', () => {
     prisma.stockBatch.findMany.mockResolvedValue([{ id: 'b1' }]);
     const batches = await service.listBatches(ctx, 's1');
     expect(batches).toEqual([{ id: 'b1' }]);
+  });
+
+  it('coloca lote em quarentena sem baixar saldo', async () => {
+    prisma.stockBatch.findUnique.mockResolvedValue({
+      id: 'b1',
+      stockItemId: 's1',
+      branchId: 'branch-demo',
+      quantityRemaining: 4,
+      sanitaryNotes: null,
+      stockItem: { id: 's1', companyId: 'company-demo', currentQuantity: 10, allowNegativeStock: false },
+    });
+    prisma.stockBatch.update.mockResolvedValue({ id: 'b1', status: 'QUARANTINED' });
+
+    const result = await service.updateBatchStatus(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      status: 'QUARANTINED',
+      notes: 'Analise sanitaria',
+    });
+
+    expect(result).toEqual({ id: 'b1', status: 'QUARANTINED' });
+    expect(prisma.stockItem.update).not.toHaveBeenCalled();
+    expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    expect(prisma.stockBatch.update).toHaveBeenCalledWith({
+      where: { id: 'b1' },
+      data: { status: 'QUARANTINED', sanitaryNotes: 'Analise sanitaria' },
+    });
+  });
+
+  it('descarta lote e gera baixa operacional com movimento', async () => {
+    prisma.stockBatch.findUnique.mockResolvedValue({
+      id: 'b1',
+      stockItemId: 's1',
+      branchId: 'branch-demo',
+      quantityRemaining: 4,
+      unitCost: 3,
+      sanitaryNotes: null,
+      stockItem: { id: 's1', companyId: 'company-demo', currentQuantity: 10, allowNegativeStock: false },
+    });
+    prisma.stockBatch.update.mockResolvedValue({ id: 'b1', status: 'DISCARDED', quantityRemaining: 0 });
+    prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 6 });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'm1' });
+
+    const result = await service.updateBatchStatus(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      status: 'DISCARDED',
+      notes: 'Embalagem violada',
+    });
+
+    expect(result).toEqual({ batch: { id: 'b1', status: 'DISCARDED', quantityRemaining: 0 }, item: { id: 's1', currentQuantity: 6 } });
+    expect(prisma.stockBatch.update).toHaveBeenCalledWith({
+      where: { id: 'b1' },
+      data: { quantityRemaining: 0, status: 'DISCARDED', sanitaryNotes: 'Embalagem violada' },
+    });
+    expect(prisma.stockItem.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { currentQuantity: 6 },
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        batchId: 'b1',
+        movementType: 'LOSS',
+        movementTypeDetailed: 'batch_discard_writeoff',
+        quantity: 4,
+        unitCost: 3,
+        totalCost: 12,
+      }),
+    });
   });
 
   it('baixa estoque por venda usando lote FEFO', async () => {
