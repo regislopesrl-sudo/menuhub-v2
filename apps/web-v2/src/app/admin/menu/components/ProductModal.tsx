@@ -71,6 +71,7 @@ export function ProductModal({
   const [deliveryPrice, setDeliveryPrice] = useState(String(product?.deliveryPrice ?? product?.price ?? ''));
   const [promotionalPrice, setPromotionalPrice] = useState(String(product?.promotionalPrice ?? ''));
   const [prepTimeMinutes, setPrepTimeMinutes] = useState(String(product?.prepTimeMinutes ?? ''));
+  const [sortOrder, setSortOrder] = useState(String(product?.sortOrder ?? product?.featuredSortOrder ?? '0'));
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [available, setAvailable] = useState(product?.available !== false);
   const [channels, setChannels] = useState<ProductChannelsState>({
@@ -106,6 +107,7 @@ export function ProductModal({
       deliveryPrice: deliveryPrice.trim() ? Number(deliveryPrice) : undefined,
       promotionalPrice: promotionalPrice.trim() ? Number(promotionalPrice) : null,
       prepTimeMinutes: prepTimeMinutes.trim() ? Number(prepTimeMinutes) : undefined,
+      sortOrder: sortOrder.trim() ? Number(sortOrder) : 0,
       imageUrl: imageUrl.trim() || undefined,
       available,
       channels,
@@ -169,6 +171,7 @@ export function ProductModal({
             deliveryPrice={deliveryPrice}
             promotionalPrice={promotionalPrice}
             prepTimeMinutes={prepTimeMinutes}
+            sortOrder={sortOrder}
             imageUrl={imageUrl}
             available={available}
             channels={channels}
@@ -182,6 +185,7 @@ export function ProductModal({
             onDeliveryPriceChange={setDeliveryPrice}
             onPromotionalPriceChange={setPromotionalPrice}
             onPrepTimeMinutesChange={setPrepTimeMinutes}
+            onSortOrderChange={setSortOrder}
             onImageUrlChange={setImageUrl}
             onAvailableChange={setAvailable}
             onChannelsChange={setChannels}
@@ -234,6 +238,7 @@ function ProductForm({
   deliveryPrice,
   promotionalPrice,
   prepTimeMinutes,
+  sortOrder,
   imageUrl,
   available,
   channels,
@@ -247,6 +252,7 @@ function ProductForm({
   onDeliveryPriceChange,
   onPromotionalPriceChange,
   onPrepTimeMinutesChange,
+  onSortOrderChange,
   onImageUrlChange,
   onAvailableChange,
   onChannelsChange,
@@ -261,6 +267,7 @@ function ProductForm({
   deliveryPrice: string;
   promotionalPrice: string;
   prepTimeMinutes: string;
+  sortOrder: string;
   imageUrl: string;
   available: boolean;
   channels: ProductChannelsState;
@@ -274,6 +281,7 @@ function ProductForm({
   onDeliveryPriceChange: (value: string) => void;
   onPromotionalPriceChange: (value: string) => void;
   onPrepTimeMinutesChange: (value: string) => void;
+  onSortOrderChange: (value: string) => void;
   onImageUrlChange: (value: string) => void;
   onAvailableChange: (value: boolean) => void;
   onChannelsChange: (value: ProductChannelsState) => void;
@@ -319,6 +327,10 @@ function ProductForm({
       <label>
         Tempo preparo (min)
         <Input value={prepTimeMinutes} onChange={(event) => onPrepTimeMinutesChange(event.target.value)} placeholder="Ex: 15" inputMode="numeric" />
+      </label>
+      <label>
+        Ordem no catalogo
+        <Input value={sortOrder} onChange={(event) => onSortOrderChange(event.target.value)} placeholder="0" inputMode="numeric" />
       </label>
       <label>
         Imagem

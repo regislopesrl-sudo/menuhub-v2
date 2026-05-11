@@ -780,6 +780,7 @@ export class AdminMenuService {
       availableKiosk: Boolean(product.availableKiosk ?? product.availableCounter),
       availableWaiter: Boolean(product.availableTable),
       featured: Boolean(product.isFeatured),
+      sortOrder: Number(product.sortOrder ?? 0),
       featuredSortOrder: Number(product.sortOrder ?? 0),
       channels: {
         delivery: Boolean(product.availableDelivery),

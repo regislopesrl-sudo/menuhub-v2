@@ -23,6 +23,7 @@ type MenuApiItem = {
   availableKiosk?: boolean;
   availableWaiter?: boolean;
   featured?: boolean;
+  sortOrder?: number;
   featuredSortOrder?: number;
   recommendations?: MenuRecommendationConfig;
   variations?: MenuProductVariation[];
@@ -118,6 +119,7 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     categoryName: item.categoryName ?? 'Sem categoria',
     available,
     featured: item.featured === true,
+    sortOrder: Number(item.sortOrder ?? item.featuredSortOrder ?? 0),
     featuredSortOrder: Number(item.featuredSortOrder ?? 0),
     recommendations: item.recommendations,
     variations: (item.variations ?? []).map(mapVariation),
@@ -152,6 +154,7 @@ export type AdminMenuProductPayload = {
   prepTimeMinutes?: number;
   imageUrl?: string;
   available?: boolean;
+  sortOrder?: number;
   channels?: {
     delivery?: boolean;
     pdv?: boolean;
@@ -201,6 +204,7 @@ export type AdminMenuCategory = {
   name: string;
   count: number;
   active: boolean;
+  sortOrder?: number;
 };
 
 function mapVariation(item: MenuProductVariation): MenuProductVariation {
@@ -289,11 +293,12 @@ export async function createAdminMenuCategory(input: {
   companyId: string;
   branchId?: string;
   name: string;
+  sortOrder?: number;
 }): Promise<AdminMenuCategory> {
   return apiFetch<AdminMenuCategory>('/v2/admin/menu/categories', {
     method: 'POST',
     headers: adminHeaders(input),
-    body: JSON.stringify({ name: input.name }),
+    body: JSON.stringify({ name: input.name, sortOrder: input.sortOrder }),
   });
 }
 
@@ -301,7 +306,7 @@ export async function updateAdminMenuCategory(input: {
   companyId: string;
   branchId?: string;
   categoryId: string;
-  payload: { name?: string; active?: boolean };
+  payload: { name?: string; active?: boolean; sortOrder?: number };
 }): Promise<AdminMenuCategory> {
   return apiFetch<AdminMenuCategory>(`/v2/admin/menu/categories/${input.categoryId}`, {
     method: 'PATCH',

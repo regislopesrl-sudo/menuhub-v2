@@ -5,7 +5,7 @@ export type ChannelFilter = 'all' | keyof NonNullable<MenuProduct['channels']>;
 export type AddonFilter = 'all' | 'with' | 'without';
 export type ModalMode = 'create' | 'edit' | 'addons' | 'variations' | 'recommendations';
 export type MenuTab = 'products' | 'categories' | 'addons' | 'combos' | 'featured' | 'import' | 'recommendations';
-export type CategorySummary = { name: string; count: number };
+export type CategorySummary = { id?: string; name: string; count: number; active?: boolean; sortOrder?: number };
 export type MenuStats = { active: number; unavailable: number; categoryCount: number; featured: number; noPrice: number };
 
 export const CHANNEL_LABELS: Array<{ key: keyof NonNullable<MenuProduct['channels']>; label: string }> = [
@@ -29,6 +29,7 @@ export function normalizeProduct(product: MenuProduct): MenuProduct {
     ...product,
     description: product.description ?? '',
     categoryName: product.categoryName ?? 'Sem categoria',
+    sortOrder: Number(product.sortOrder ?? product.featuredSortOrder ?? 0),
     available,
     channels: {
       delivery: product.channels?.delivery ?? available,
