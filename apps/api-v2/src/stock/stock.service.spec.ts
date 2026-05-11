@@ -178,6 +178,31 @@ describe('StockService', () => {
     await expect(service.manualExit(ctx, { stockItemId: 's1', quantity: 5 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('respeita lote escolhido na saida manual quando informado', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({
+      id: 's1',
+      companyId: 'company-demo',
+      currentQuantity: 10,
+      allowNegativeStock: false,
+      controlsBatch: true,
+      requiresFefo: true,
+    });
+    prisma.stockBatch.findMany.mockResolvedValue([
+      { id: 'b-selected', quantityRemaining: 4, unitCost: 6, createdAt: new Date() },
+    ]);
+    prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 8 });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'm1', batchId: 'b-selected' });
+
+    await service.manualExit(ctx, { stockItemId: 's1', quantity: 2, batchId: 'b-selected' });
+
+    expect(prisma.stockBatch.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'b-selected' }),
+    }));
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ batchId: 'b-selected', quantity: 2, unitCost: 6 }),
+    });
+  });
+
   it('aplica inventario e gera ajuste quando ha diferenca', async () => {
     prisma.stockItem.findUnique.mockResolvedValue({ id: 's1', companyId: 'company-demo', currentQuantity: 10, averageCost: 3 });
     prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 8, averageCost: 3 });

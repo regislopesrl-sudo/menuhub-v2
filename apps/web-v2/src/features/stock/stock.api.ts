@@ -37,6 +37,7 @@ export type StockMovement = {
   totalCost: number;
   previousStock: number | null;
   newStock: number | null;
+  batch?: { batchNumber: string | null; expirationDate: string | null; status: string } | null;
   reasonCode: string | null;
   notes: string | null;
   createdAt: string;
@@ -140,6 +141,7 @@ export function stockManualEntry(input: {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 }) {
@@ -153,6 +155,7 @@ export function stockManualExit(input: {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 }) {
@@ -166,6 +169,7 @@ export function stockRegisterLoss(input: {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 }) {

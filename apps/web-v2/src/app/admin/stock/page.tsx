@@ -62,6 +62,7 @@ export default function AdminStockPage() {
   const [moveQty, setMoveQty] = useState('');
   const [moveCost, setMoveCost] = useState('0');
   const [moveReason, setMoveReason] = useState('manual');
+  const [moveBatchId, setMoveBatchId] = useState('');
   const [countedQty, setCountedQty] = useState('');
   const [lossQty, setLossQty] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
@@ -192,11 +193,13 @@ export default function AdminStockPage() {
         stockItemId: selectedItemId,
         quantity: qty,
         unitCost: Number(moveCost || '0'),
+        batchId: moveBatchId || undefined,
         reasonCode: 'breakage_manual',
       });
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
       setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setLossQty('');
+      setMoveBatchId('');
       setNotice('Perda/quebra registrada.');
       const refreshedAlerts = await listStockBreakageAlerts();
       setAlerts(refreshedAlerts);
@@ -312,12 +315,14 @@ export default function AdminStockPage() {
         stockItemId: selectedItemId,
         quantity: Number(moveQty || '0'),
         unitCost: Number(moveCost || '0'),
+        batchId: type === 'exit' ? moveBatchId || undefined : undefined,
         reasonCode: moveReason,
       };
       const result = type === 'entry' ? await stockManualEntry(payload) : await stockManualExit(payload);
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
       setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setMoveQty('');
+      if (type === 'exit') setMoveBatchId('');
       setNotice(type === 'entry' ? 'Entrada manual registrada.' : 'Saida manual registrada.');
       if (type === 'exit') await loadBatches(selectedItemId);
     } catch (err) {
@@ -447,6 +452,17 @@ export default function AdminStockPage() {
             <Input placeholder="Quantidade" value={moveQty} onChange={(e) => setMoveQty(e.target.value)} />
             <Input placeholder="Custo unitario" value={moveCost} onChange={(e) => setMoveCost(e.target.value)} />
             <Input placeholder="Motivo" value={moveReason} onChange={(e) => setMoveReason(e.target.value)} />
+            <select className={styles.select} value={moveBatchId} onChange={(e) => setMoveBatchId(e.target.value)}>
+              <option value="">FEFO automatico</option>
+              {batches
+                .filter((batch) => Number(batch.quantityRemaining) > 0 && ['AVAILABLE', 'OPENED'].includes(batch.status))
+                .map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.batchNumber ?? batch.id} - saldo {Number(batch.quantityRemaining).toFixed(3)}
+                    {batch.expirationDate ? ` - ${new Date(batch.expirationDate).toLocaleDateString('pt-BR')}` : ''}
+                  </option>
+                ))}
+            </select>
           </div>
           <div className={styles.actions}>
             <Button disabled={saving || !selectedItemId} onClick={() => void submitMovement('entry')}>Entrada manual</Button>
@@ -474,7 +490,8 @@ export default function AdminStockPage() {
                 <div className={styles.meta}>
                   <span>Item: {mv.stockItemId}</span>
                   <span>Qtd: {Number(mv.quantity).toFixed(3)}</span>
-                  {mv.batchId ? <span>Lote: {mv.batchId}</span> : null}
+                  {mv.batchId ? <span>Lote: {mv.batch?.batchNumber ?? mv.batchId}</span> : null}
+                  {mv.batch?.expirationDate ? <span>Validade: {new Date(mv.batch.expirationDate).toLocaleDateString('pt-BR')}</span> : null}
                   <span>Anterior: {mv.previousStock ?? '-'}</span>
                   <span>Novo: {mv.newStock ?? '-'}</span>
                 </div>

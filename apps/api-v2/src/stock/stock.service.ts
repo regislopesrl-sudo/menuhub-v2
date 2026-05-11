@@ -37,6 +37,7 @@ export type StockLossInput = {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 };
@@ -205,6 +206,13 @@ export class StockService {
         previousStock: true,
         newStock: true,
         batchId: true,
+        batch: {
+          select: {
+            batchNumber: true,
+            expirationDate: true,
+            status: true,
+          },
+        },
         reasonCode: true,
         notes: true,
         createdAt: true,
@@ -225,6 +233,7 @@ export class StockService {
       stockItemId: input.stockItemId,
       quantity: input.quantity,
       unitCost: input.unitCost,
+      batchId: input.batchId,
       reasonCode: input.reasonCode ?? 'loss_manual',
       notes: input.notes,
     };

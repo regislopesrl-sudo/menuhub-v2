@@ -82,7 +82,7 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   manualEntry(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.manualEntry(ctx, body);
   }
@@ -91,7 +91,7 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   manualExit(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.manualExit(ctx, body);
   }
@@ -124,7 +124,7 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   registerLoss(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.registerLoss(ctx, body);
   }
