@@ -18,6 +18,8 @@ import { DeveloperController } from '../developer/developer.controller';
 import { OnboardingController } from '../onboarding/onboarding.controller';
 import { BranchesController } from '../branches/branches.controller';
 import { PLATFORM_PERMISSIONS } from './rbac';
+import { RecipesController } from '../recipes/recipes.controller';
+import { MODULE_ACCESS_KEY } from '../modules/module-access.decorator';
 
 function methodPermissions(target: object, methodName: string): string[] {
   const method = (target as Record<string, unknown>)[methodName] as Function;
@@ -155,6 +157,32 @@ describe('RBAC route permissions metadata', () => {
 
   it('channels kiosk checkout e publico', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, ChannelsController.prototype.kioskCheckout)).toBe(true);
+  });
+
+  it('recipes usa modulo stock e permissoes premium de ficha/producao/custo', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, RecipesController)).toBe('stock');
+    expect(methodPermissions(RecipesController.prototype, 'listRecipes')).toEqual([
+      TENANT_PERMISSIONS.RECIPE_READ,
+      TENANT_PERMISSIONS.RECIPE_MANAGE,
+    ]);
+    expect(methodPermissions(RecipesController.prototype, 'createRecipe')).toEqual([
+      TENANT_PERMISSIONS.RECIPE_MANAGE,
+    ]);
+    expect(methodPermissions(RecipesController.prototype, 'getRecipeCostBreakdown')).toEqual([
+      TENANT_PERMISSIONS.COST_READ,
+      TENANT_PERMISSIONS.RECIPE_READ,
+      TENANT_PERMISSIONS.RECIPE_MANAGE,
+    ]);
+    expect(methodPermissions(RecipesController.prototype, 'listProductionOrders')).toEqual([
+      TENANT_PERMISSIONS.PRODUCTION_READ,
+      TENANT_PERMISSIONS.PRODUCTION_MANAGE,
+    ]);
+    expect(methodPermissions(RecipesController.prototype, 'createProductionOrder')).toEqual([
+      TENANT_PERMISSIONS.PRODUCTION_MANAGE,
+    ]);
+    expect(methodPermissions(RecipesController.prototype, 'applyRecipeSubstitution')).toEqual([
+      TENANT_PERMISSIONS.RECIPE_MANAGE,
+    ]);
   });
 
   it('developer exige permissoes de plataforma explicitas', () => {

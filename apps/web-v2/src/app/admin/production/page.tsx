@@ -13,12 +13,16 @@ import {
   cancelProductionOrder,
   createProductionOrder,
   finishProductionOrder,
+  listProductionRecipes,
+  listProductionStockItems,
   listProductionLosses,
   listProductMargins,
   registerProductionLoss,
   listProductionOrders,
   previewRecipeSubstitution,
+  type RecipeOption,
   type RecipeSubstitutionPreview,
+  type StockItemOption,
   startProductionOrder,
   type ProductionLossEvent,
   type ProductMarginResponse,
@@ -60,6 +64,8 @@ export default function AdminProductionPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [losses, setLosses] = useState<ProductionLossEvent[]>([]);
+  const [recipes, setRecipes] = useState<RecipeOption[]>([]);
+  const [stockItems, setStockItems] = useState<StockItemOption[]>([]);
   const [substitution, setSubstitution] = useState<SubstitutionForm>(INITIAL_SUBSTITUTION);
   const [subPreview, setSubPreview] = useState<RecipeSubstitutionPreview | null>(null);
   const [margins, setMargins] = useState<ProductMarginResponse | null>(null);
@@ -76,6 +82,10 @@ export default function AdminProductionPage() {
       setLosses(Array.isArray(lossData) ? lossData : []);
       const marginData = await listProductMargins();
       setMargins(marginData);
+      const recipeData = await listProductionRecipes();
+      setRecipes(Array.isArray(recipeData) ? recipeData : []);
+      const stockData = await listProductionStockItems();
+      setStockItems(Array.isArray(stockData) ? stockData : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar ordens.');
     } finally {
@@ -100,7 +110,7 @@ export default function AdminProductionPage() {
     setSuccess(null);
     const plannedQuantity = Number(form.plannedQuantity);
     if (!form.stockItemId.trim() || !Number.isFinite(plannedQuantity) || plannedQuantity <= 0) {
-      setError('Informe stockItemId e quantidade planejada maior que zero.');
+      setError('Selecione o item produzido e informe quantidade planejada maior que zero.');
       return;
     }
     setBusyId('create');
@@ -193,7 +203,7 @@ export default function AdminProductionPage() {
 
   async function onPreviewSubstitution() {
     if (!substitution.recipeId.trim() || !substitution.fromStockItemId.trim() || !substitution.toStockItemId.trim()) {
-      setError('Informe recipeId, fromStockItemId e toStockItemId.');
+      setError('Selecione a ficha técnica, o item de origem e o item substituto.');
       return;
     }
     const quantityRatio = Number(substitution.quantityRatio || '1');
@@ -311,12 +321,35 @@ export default function AdminProductionPage() {
         </div>
         <div className={styles.form}>
           <label className={styles.field}>
-            <span>Stock item ID</span>
-            <Input value={form.stockItemId} onChange={(e) => setForm((prev) => ({ ...prev, stockItemId: e.target.value }))} />
+            <span>Item produzido</span>
+            <select
+              className={styles.select}
+              value={form.stockItemId}
+              onChange={(event) => setForm((prev) => ({ ...prev, stockItemId: event.target.value }))}
+            >
+              <option value="">Selecione um item</option>
+              {stockItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.code ? ` (${item.code})` : ''}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
-            <span>Recipe ID (opcional)</span>
-            <Input value={form.recipeId} onChange={(e) => setForm((prev) => ({ ...prev, recipeId: e.target.value }))} />
+            <span>Ficha técnica vinculada (opcional)</span>
+            <select
+              className={styles.select}
+              value={form.recipeId}
+              onChange={(event) => setForm((prev) => ({ ...prev, recipeId: event.target.value }))}
+            >
+              <option value="">Sem ficha vinculada</option>
+              {recipes.map((recipe) => (
+                <option key={recipe.id} value={recipe.id}>
+                  {recipe.name} - {recipe.yieldQuantity} {recipe.yieldUnit}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
             <span>Quantidade planejada</span>
@@ -411,16 +444,51 @@ export default function AdminProductionPage() {
         </div>
         <div className={styles.form}>
           <label className={styles.field}>
-            <span>Recipe ID</span>
-            <Input value={substitution.recipeId} onChange={(e) => setSubstitution((p) => ({ ...p, recipeId: e.target.value }))} />
+            <span>Ficha técnica</span>
+            <select
+              className={styles.select}
+              value={substitution.recipeId}
+              onChange={(event) => setSubstitution((prev) => ({ ...prev, recipeId: event.target.value }))}
+            >
+              <option value="">Selecione uma ficha</option>
+              {recipes.map((recipe) => (
+                <option key={recipe.id} value={recipe.id}>
+                  {recipe.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
-            <span>Item origem (stockItemId)</span>
-            <Input value={substitution.fromStockItemId} onChange={(e) => setSubstitution((p) => ({ ...p, fromStockItemId: e.target.value }))} />
+            <span>Item de origem</span>
+            <select
+              className={styles.select}
+              value={substitution.fromStockItemId}
+              onChange={(event) => setSubstitution((prev) => ({ ...prev, fromStockItemId: event.target.value }))}
+            >
+              <option value="">Selecione o item atual</option>
+              {stockItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.code ? ` (${item.code})` : ''}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
-            <span>Item substituto (stockItemId)</span>
-            <Input value={substitution.toStockItemId} onChange={(e) => setSubstitution((p) => ({ ...p, toStockItemId: e.target.value }))} />
+            <span>Item substituto</span>
+            <select
+              className={styles.select}
+              value={substitution.toStockItemId}
+              onChange={(event) => setSubstitution((prev) => ({ ...prev, toStockItemId: event.target.value }))}
+            >
+              <option value="">Selecione o novo item</option>
+              {stockItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.code ? ` (${item.code})` : ''}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={styles.field}>
             <span>Fator de quantidade</span>
