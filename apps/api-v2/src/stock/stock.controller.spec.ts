@@ -9,8 +9,10 @@ describe('StockController', () => {
     manualEntry: jest.fn(),
     manualExit: jest.fn(),
     applyInventoryCount: jest.fn(),
+    applyBatchInventoryCount: jest.fn(),
     listBatches: jest.fn(),
     createBatch: jest.fn(),
+    updateBatchStatus: jest.fn(),
     estimateUnitConversion: jest.fn(),
     listBreakageAlerts: jest.fn(),
     registerLoss: jest.fn(),
@@ -63,6 +65,39 @@ describe('StockController', () => {
     const result = await controller.createBatch(ctx, 's1', payload as any);
     expect(result).toEqual({ id: 'b1' });
     expect(service.createBatch).toHaveBeenCalledWith(ctx, { ...payload, stockItemId: 's1' });
+  });
+
+  it('aplica inventario por lote', async () => {
+    service.applyBatchInventoryCount.mockResolvedValueOnce({ batchId: 'b1', delta: -1 });
+    const payload = { stockItemId: 's1', batchId: 'b1', countedQuantity: 2 };
+    const result = await controller.applyBatchInventoryCount(ctx, payload);
+    expect(result).toEqual({ batchId: 'b1', delta: -1 });
+    expect(service.applyBatchInventoryCount).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('lista movimentos com filtros premium', async () => {
+    service.listMovements.mockResolvedValueOnce([{ id: 'm1' }]);
+    const result = await controller.listMovements(ctx, 's1', 'b1', 'ENTRY', '2026-05-01', '2026-05-11');
+    expect(result).toEqual([{ id: 'm1' }]);
+    expect(service.listMovements).toHaveBeenCalledWith(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      movementType: 'ENTRY',
+      from: '2026-05-01',
+      to: '2026-05-11',
+    });
+  });
+
+  it('atualiza status operacional de lote', async () => {
+    service.updateBatchStatus.mockResolvedValueOnce({ batch: { id: 'b1', status: 'QUARANTINED' } });
+    const result = await controller.updateBatchStatus(ctx, 's1', 'b1', { status: 'QUARANTINED', notes: 'Analise sanitaria' });
+    expect(result).toEqual({ batch: { id: 'b1', status: 'QUARANTINED' } });
+    expect(service.updateBatchStatus).toHaveBeenCalledWith(ctx, {
+      stockItemId: 's1',
+      batchId: 'b1',
+      status: 'QUARANTINED',
+      notes: 'Analise sanitaria',
+    });
   });
 
   it('estima conversao de unidade', async () => {

@@ -28,6 +28,7 @@ export type StockMovementInput = {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 };
@@ -36,6 +37,7 @@ export type StockLossInput = {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 };
@@ -50,8 +52,31 @@ export type StockBatchInput = {
   notes?: string;
 };
 
+export type StockBatchStatusInput = {
+  stockItemId: string;
+  batchId: string;
+  status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED';
+  notes?: string;
+};
+
+export type StockMovementFilters = {
+  stockItemId?: string;
+  batchId?: string;
+  movementType?: string;
+  from?: string;
+  to?: string;
+};
+
 export type InventoryCountInput = {
   stockItemId: string;
+  countedQuantity: number;
+  reasonCode?: string;
+  notes?: string;
+};
+
+export type BatchInventoryCountInput = {
+  stockItemId: string;
+  batchId: string;
   countedQuantity: number;
   reasonCode?: string;
   notes?: string;
@@ -185,11 +210,23 @@ export class StockService {
     return this.prisma.stockItem.update({ where: { id }, data: payload });
   }
 
-  async listMovements(ctx: RequestContext, stockItemId?: string) {
+  async listMovements(ctx: RequestContext, filters: string | StockMovementFilters = {}) {
+    const parsedFilters: StockMovementFilters = typeof filters === 'string' ? { stockItemId: filters } : filters;
+    const from = parsedFilters.from ? new Date(parsedFilters.from) : null;
+    const to = parsedFilters.to ? new Date(parsedFilters.to) : null;
+    if (from && Number.isNaN(from.getTime())) throw new BadRequestException('from invalido.');
+    if (to && Number.isNaN(to.getTime())) throw new BadRequestException('to invalido.');
+    const movementType = parsedFilters.movementType ? String(parsedFilters.movementType).trim().toUpperCase() : null;
+    const allowedMovementTypes = ['ENTRY', 'EXIT', 'ADJUSTMENT', 'LOSS', 'TRANSFER', 'PRODUCTION_CONSUMPTION', 'PRODUCTION_OUTPUT', 'SALE_CONSUMPTION', 'RETURN'];
+    if (movementType && !allowedMovementTypes.includes(movementType)) throw new BadRequestException('movementType invalido.');
+
     return this.prisma.stockMovement.findMany({
       where: {
         stockItem: { companyId: ctx.companyId },
-        ...(stockItemId ? { stockItemId } : {}),
+        ...(parsedFilters.stockItemId ? { stockItemId: parsedFilters.stockItemId } : {}),
+        ...(parsedFilters.batchId ? { batchId: parsedFilters.batchId } : {}),
+        ...(movementType ? { movementType: movementType as any } : {}),
+        ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -203,6 +240,14 @@ export class StockService {
         totalCost: true,
         previousStock: true,
         newStock: true,
+        batchId: true,
+        batch: {
+          select: {
+            batchNumber: true,
+            expirationDate: true,
+            status: true,
+          },
+        },
         reasonCode: true,
         notes: true,
         createdAt: true,
@@ -223,6 +268,7 @@ export class StockService {
       stockItemId: input.stockItemId,
       quantity: input.quantity,
       unitCost: input.unitCost,
+      batchId: input.batchId,
       reasonCode: input.reasonCode ?? 'loss_manual',
       notes: input.notes,
     };
@@ -333,6 +379,101 @@ export class StockService {
       });
 
       return batch;
+    });
+  }
+
+  async updateBatchStatus(ctx: RequestContext, input: StockBatchStatusInput) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    const batchId = String(input.batchId ?? '').trim();
+    if (!stockItemId || !batchId) throw new BadRequestException('stockItemId e batchId obrigatorios.');
+
+    const status = String(input.status ?? '').trim().toUpperCase();
+    if (!['AVAILABLE', 'OPENED', 'QUARANTINED', 'DISCARDED', 'EXPIRED'].includes(status)) {
+      throw new BadRequestException('status de lote invalido.');
+    }
+
+    const batch = await this.prisma.stockBatch.findUnique({
+      where: { id: batchId },
+      include: { stockItem: true },
+    });
+    if (!batch || batch.stockItemId !== stockItemId || batch.stockItem?.companyId !== ctx.companyId) {
+      throw new NotFoundException('Lote de estoque nao encontrado.');
+    }
+    if (ctx.branchId && batch.branchId && batch.branchId !== ctx.branchId) {
+      throw new NotFoundException('Lote de estoque nao encontrado para a filial atual.');
+    }
+
+    const remaining = Number(batch.quantityRemaining ?? 0);
+    const terminal = status === 'DISCARDED' || status === 'EXPIRED';
+    if (terminal && remaining <= 0) {
+      return this.prisma.stockBatch.update({
+        where: { id: batchId },
+        data: { status: status as any, sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes },
+      });
+    }
+    if (!terminal && remaining <= 0) {
+      throw new BadRequestException('Lote sem saldo nao pode voltar para status operacional.');
+    }
+
+    if (!terminal) {
+      return this.prisma.stockBatch.update({
+        where: { id: batchId },
+        data: { status: status as any, sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const previous = Number(batch.stockItem.currentQuantity ?? 0);
+      const next = previous - remaining;
+      if (next < 0 && !batch.stockItem.allowNegativeStock) {
+        throw new BadRequestException('Saldo do lote excede saldo atual do item.');
+      }
+
+      const updatedBatch = await tx.stockBatch.update({
+        where: { id: batchId },
+        data: {
+          quantityRemaining: this.decimal(0),
+          status: status as any,
+          sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes,
+        },
+      });
+
+      const updatedItem = await tx.stockItem.update({
+        where: { id: stockItemId },
+        data: { currentQuantity: this.decimal(next) },
+      });
+
+      const branchId = batch.branchId ?? ctx.branchId;
+      if (branchId) {
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId } },
+          update: { currentQuantity: this.decimal(next), companyId: ctx.companyId },
+          create: { branchId, stockItemId, companyId: ctx.companyId, currentQuantity: this.decimal(next) },
+        });
+      }
+
+      await tx.stockMovement.create({
+        data: {
+          stockItemId,
+          branchId,
+          batchId,
+          movementType: 'LOSS',
+          movementTypeDetailed: status === 'EXPIRED' ? 'batch_expired_writeoff' : 'batch_discard_writeoff',
+          sourceModule: 'admin_stock_batch',
+          sourceId: batchId,
+          actorId: ctx.userId,
+          requestId: ctx.requestId,
+          quantity: this.decimal(remaining),
+          unitCost: this.decimal(Number(batch.unitCost ?? 0)),
+          totalCost: this.decimal(remaining * Number(batch.unitCost ?? 0)),
+          previousStock: this.decimal(previous),
+          newStock: this.decimal(next),
+          reasonCode: status === 'EXPIRED' ? 'batch_expired' : 'batch_discarded',
+          notes: this.clean(input.notes),
+        },
+      });
+
+      return { batch: updatedBatch, item: updatedItem };
     });
   }
 
@@ -548,6 +689,113 @@ export class StockService {
     });
   }
 
+  async applyBatchInventoryCount(ctx: RequestContext, input: BatchInventoryCountInput) {
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    const batchId = String(input.batchId ?? '').trim();
+    if (!stockItemId || !batchId) throw new BadRequestException('stockItemId e batchId obrigatorios.');
+
+    const countedQuantity = Number(input.countedQuantity ?? 0);
+    if (!Number.isFinite(countedQuantity) || countedQuantity < 0) {
+      throw new BadRequestException('countedQuantity invalido em inventario de lote.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.stockBatch.findUnique({
+        where: { id: batchId },
+        include: { stockItem: true },
+      });
+      if (!batch || batch.stockItemId !== stockItemId || batch.stockItem?.companyId !== ctx.companyId) {
+        throw new NotFoundException('Lote de estoque nao encontrado para inventario.');
+      }
+      if (ctx.branchId && batch.branchId && batch.branchId !== ctx.branchId) {
+        throw new NotFoundException('Lote de estoque nao encontrado para a filial atual.');
+      }
+      if (['DISCARDED', 'EXPIRED'].includes(String(batch.status)) && countedQuantity > 0) {
+        throw new BadRequestException('Lote descartado ou expirado nao pode receber saldo por inventario.');
+      }
+
+      const previousBatchQuantity = Number(batch.quantityRemaining ?? 0);
+      const delta = countedQuantity - previousBatchQuantity;
+      if (delta === 0) {
+        return {
+          stockItemId,
+          batchId,
+          previousBatchQuantity,
+          countedQuantity,
+          delta,
+          movementId: null,
+        };
+      }
+
+      const previousStock = Number(batch.stockItem.currentQuantity ?? 0);
+      const nextStock = previousStock + delta;
+      if (nextStock < 0 && !batch.stockItem.allowNegativeStock) {
+        throw new BadRequestException('Inventario do lote deixaria o item com saldo negativo.');
+      }
+
+      const nextStatus = countedQuantity <= 0
+        ? 'EXHAUSTED'
+        : String(batch.status) === 'EXHAUSTED'
+          ? 'OPENED'
+          : batch.status;
+
+      const updatedBatch = await tx.stockBatch.update({
+        where: { id: batchId },
+        data: {
+          quantityRemaining: this.decimal(countedQuantity),
+          status: nextStatus,
+          sanitaryNotes: this.clean(input.notes) ?? batch.sanitaryNotes,
+        },
+      });
+
+      const updatedItem = await tx.stockItem.update({
+        where: { id: stockItemId },
+        data: { currentQuantity: this.decimal(nextStock) },
+      });
+
+      const branchId = batch.branchId ?? ctx.branchId;
+      if (branchId) {
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId } },
+          update: { currentQuantity: this.decimal(nextStock), companyId: ctx.companyId },
+          create: { branchId, stockItemId, companyId: ctx.companyId, currentQuantity: this.decimal(nextStock) },
+        });
+      }
+
+      const movement = await tx.stockMovement.create({
+        data: {
+          stockItemId,
+          branchId,
+          batchId,
+          movementType: 'ADJUSTMENT',
+          movementTypeDetailed: 'batch_inventory_count_adjustment',
+          sourceModule: 'admin_inventory_batch',
+          sourceId: ctx.requestId,
+          actorId: ctx.userId,
+          requestId: ctx.requestId,
+          quantity: this.decimal(Math.abs(delta)),
+          unitCost: this.decimal(Number(batch.unitCost ?? batch.stockItem.averageCost ?? 0)),
+          totalCost: this.decimal(Math.abs(delta) * Number(batch.unitCost ?? batch.stockItem.averageCost ?? 0)),
+          previousStock: this.decimal(previousStock),
+          newStock: this.decimal(nextStock),
+          reasonCode: this.clean(input.reasonCode) ?? 'batch_inventory_count',
+          notes: this.clean(input.notes),
+        },
+      });
+
+      return {
+        stockItemId,
+        batchId,
+        previousBatchQuantity,
+        countedQuantity,
+        delta,
+        movementId: movement.id,
+        batch: updatedBatch,
+        item: updatedItem,
+      };
+    });
+  }
+
   async consumeByOrder(ctx: RequestContext, orderId: string) {
     const existing = await this.prisma.stockMovement.findFirst({
       where: {
@@ -614,6 +862,13 @@ export class StockService {
             where: { id: stock.id },
             data: { currentQuantity: this.decimal(next) },
           });
+          const allocations = await this.allocateFefoBatches(tx, {
+            ctx,
+            item: stock,
+            quantity: consumeQty,
+            explicitBatchId: null,
+            insufficientMessage: `Lotes insuficientes para baixa automatica do item ${stock.id}.`,
+          });
 
           if (ctx.branchId) {
             await tx.stockLocationBalance.upsert({
@@ -628,26 +883,40 @@ export class StockService {
             });
           }
 
-          await tx.stockMovement.create({
-            data: {
-              stockItemId: stock.id,
-              branchId: ctx.branchId,
-              orderItemId: item.id,
-              movementType: 'SALE_CONSUMPTION',
-              movementTypeDetailed: 'sale_consumption_recipe',
-              sourceModule: 'orders',
-              sourceId: order.id,
-              actorId: ctx.userId,
-              requestId: ctx.requestId,
-              quantity: this.decimal(consumeQty),
-              unitCost: this.decimal(Number(updated.averageCost ?? 0)),
-              totalCost: this.decimal(consumeQty * Number(updated.averageCost ?? 0)),
-              previousStock: this.decimal(previous),
-              newStock: this.decimal(next),
-              reasonCode: 'order_sale_consumption',
-            },
-          });
-          movementsCreated += 1;
+          const movementBase: any = {
+            stockItemId: stock.id,
+            branchId: ctx.branchId,
+            orderItemId: item.id,
+            movementType: 'SALE_CONSUMPTION',
+            movementTypeDetailed: 'sale_consumption_recipe',
+            sourceModule: 'orders',
+            sourceId: order.id,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity: this.decimal(consumeQty),
+            unitCost: this.decimal(Number(updated.averageCost ?? 0)),
+            totalCost: this.decimal(consumeQty * Number(updated.averageCost ?? 0)),
+            previousStock: this.decimal(previous),
+            newStock: this.decimal(next),
+            reasonCode: 'order_sale_consumption',
+          };
+          if (allocations.length > 0) {
+            for (const allocation of allocations) {
+              await tx.stockMovement.create({
+                data: {
+                  ...movementBase,
+                  batchId: allocation.batchId,
+                  quantity: this.decimal(allocation.quantity),
+                  unitCost: this.decimal(allocation.unitCost),
+                  totalCost: this.decimal(allocation.quantity * allocation.unitCost),
+                },
+              });
+              movementsCreated += 1;
+            }
+          } else {
+            await tx.stockMovement.create({ data: movementBase });
+            movementsCreated += 1;
+          }
         }
       }
 
@@ -695,6 +964,17 @@ export class StockService {
           ...(unitCost > 0 ? { averageCost: this.decimal(unitCost), lastCost: this.decimal(unitCost) } : {}),
         },
       });
+      const allocations = movementType === 'EXIT'
+        ? await this.allocateFefoBatches(tx, {
+            ctx,
+            item,
+            quantity,
+            explicitBatchId: this.clean(input.batchId),
+            insufficientMessage: options?.movementType === 'LOSS'
+              ? 'Lotes insuficientes para registrar perda/quebra.'
+              : 'Lotes insuficientes para saida FEFO.',
+          })
+        : [];
 
       if (ctx.branchId) {
         await tx.stockLocationBalance.upsert({
@@ -709,28 +989,110 @@ export class StockService {
         });
       }
 
-      const movement = await tx.stockMovement.create({
+      const movementBase: any = {
+        stockItemId,
+        branchId: ctx.branchId,
+        movementType: options?.movementType ?? movementType,
+        movementTypeDetailed: options?.movementTypeDetailed ?? (movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit'),
+        sourceModule: options?.sourceModule ?? 'admin_stock',
+        sourceId: ctx.requestId,
+        actorId: ctx.userId,
+        requestId: ctx.requestId,
+        quantity: this.decimal(quantity),
+        unitCost: this.decimal(unitCost),
+        totalCost: this.decimal(quantity * unitCost),
+        previousStock: this.decimal(previous),
+        newStock: this.decimal(next),
+        reasonCode: this.clean(input.reasonCode),
+        notes: this.clean(input.notes),
+      };
+
+      const movements = [];
+      if (allocations.length > 0) {
+        for (const allocation of allocations) {
+          movements.push(await tx.stockMovement.create({
+            data: {
+              ...movementBase,
+              batchId: allocation.batchId,
+              quantity: this.decimal(allocation.quantity),
+              unitCost: this.decimal(unitCost > 0 ? unitCost : allocation.unitCost),
+              totalCost: this.decimal(allocation.quantity * (unitCost > 0 ? unitCost : allocation.unitCost)),
+            },
+          }));
+        }
+      } else {
+        movements.push(await tx.stockMovement.create({ data: movementBase }));
+      }
+
+      return { item: updated, movement: movements[0], movements };
+    });
+  }
+
+  private async allocateFefoBatches(
+    tx: any,
+    input: {
+      ctx: RequestContext;
+      item: any;
+      quantity: number;
+      explicitBatchId?: string | null;
+      insufficientMessage: string;
+    },
+  ): Promise<Array<{ batchId: string; quantity: number; unitCost: number }>> {
+    if (!input.item.controlsBatch && !input.item.requiresFefo) return [];
+
+    const batches = await tx.stockBatch.findMany({
+      where: {
+        stockItemId: input.item.id,
+        quantityRemaining: { gt: 0 },
+        status: { in: ['AVAILABLE', 'OPENED'] },
+        ...(input.explicitBatchId ? { id: input.explicitBatchId } : {}),
+        ...(input.ctx.branchId ? { OR: [{ branchId: input.ctx.branchId }, { branchId: null }] } : {}),
+      },
+      select: {
+        id: true,
+        branchId: true,
+        expirationDate: true,
+        receivedDate: true,
+        quantityRemaining: true,
+        unitCost: true,
+        createdAt: true,
+      },
+    });
+
+    const orderedBatches = [...batches].sort((left, right) => {
+      const leftExpiration = left.expirationDate ? new Date(left.expirationDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightExpiration = right.expirationDate ? new Date(right.expirationDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftExpiration !== rightExpiration) return leftExpiration - rightExpiration;
+      const leftReceived = left.receivedDate ? new Date(left.receivedDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightReceived = right.receivedDate ? new Date(right.receivedDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftReceived !== rightReceived) return leftReceived - rightReceived;
+      return new Date(left.createdAt ?? 0).getTime() - new Date(right.createdAt ?? 0).getTime();
+    });
+
+    let remaining = input.quantity;
+    const allocations: Array<{ batchId: string; quantity: number; unitCost: number }> = [];
+    for (const batch of orderedBatches) {
+      if (remaining <= 0) break;
+      const available = Number(batch.quantityRemaining ?? 0);
+      if (!Number.isFinite(available) || available <= 0) continue;
+      const consumed = Math.min(available, remaining);
+      const nextQuantity = available - consumed;
+      await tx.stockBatch.update({
+        where: { id: batch.id },
         data: {
-          stockItemId,
-          branchId: ctx.branchId,
-          movementType: options?.movementType ?? movementType,
-          movementTypeDetailed: options?.movementTypeDetailed ?? (movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit'),
-          sourceModule: options?.sourceModule ?? 'admin_stock',
-          sourceId: ctx.requestId,
-          actorId: ctx.userId,
-          requestId: ctx.requestId,
-          quantity: this.decimal(quantity),
-          unitCost: this.decimal(unitCost),
-          totalCost: this.decimal(quantity * unitCost),
-          previousStock: this.decimal(previous),
-          newStock: this.decimal(next),
-          reasonCode: this.clean(input.reasonCode),
-          notes: this.clean(input.notes),
+          quantityRemaining: this.decimal(nextQuantity),
+          status: nextQuantity <= 0.0001 ? 'EXHAUSTED' : 'OPENED',
         },
       });
+      allocations.push({ batchId: batch.id, quantity: consumed, unitCost: Number(batch.unitCost ?? 0) });
+      remaining = Number((remaining - consumed).toFixed(6));
+    }
 
-      return { item: updated, movement };
-    });
+    if (remaining > 0.0001 && !input.item.allowNegativeStock) {
+      throw new BadRequestException(input.insufficientMessage);
+    }
+
+    return allocations;
   }
 
   private clean(value: unknown): string | null {

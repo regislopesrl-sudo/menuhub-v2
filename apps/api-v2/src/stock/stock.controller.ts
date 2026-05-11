@@ -72,17 +72,35 @@ export class StockController {
     return this.stockService.createBatch(ctx, { ...body, stockItemId: id });
   }
 
+  @Patch('items/:id/batches/:batchId/status')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  updateBatchStatus(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Param('batchId') batchId: string,
+    @Body() body: { status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED'; notes?: string },
+  ) {
+    return this.stockService.updateBatchStatus(ctx, { ...body, stockItemId: id, batchId });
+  }
+
   @Get('movements')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
-  listMovements(@CurrentContext() ctx: RequestContext, @Query('stockItemId') stockItemId?: string) {
-    return this.stockService.listMovements(ctx, stockItemId);
+  listMovements(
+    @CurrentContext() ctx: RequestContext,
+    @Query('stockItemId') stockItemId?: string,
+    @Query('batchId') batchId?: string,
+    @Query('movementType') movementType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.stockService.listMovements(ctx, { stockItemId, batchId, movementType, from, to });
   }
 
   @Post('movements/entry')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   manualEntry(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.manualEntry(ctx, body);
   }
@@ -91,7 +109,7 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   manualExit(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.manualExit(ctx, body);
   }
@@ -103,6 +121,15 @@ export class StockController {
     @Body() body: { counts: Array<{ stockItemId: string; countedQuantity: number; reasonCode?: string; notes?: string }>; notes?: string },
   ) {
     return this.stockService.applyInventoryCount(ctx, body);
+  }
+
+  @Post('inventory/batch-counts')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  applyBatchInventoryCount(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { stockItemId: string; batchId: string; countedQuantity: number; reasonCode?: string; notes?: string },
+  ) {
+    return this.stockService.applyBatchInventoryCount(ctx, body);
   }
 
   @Post('conversions/estimate')
@@ -124,7 +151,7 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   registerLoss(
     @CurrentContext() ctx: RequestContext,
-    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; reasonCode?: string; notes?: string },
+    @Body() body: { stockItemId: string; quantity: number; unitCost?: number; batchId?: string; reasonCode?: string; notes?: string },
   ) {
     return this.stockService.registerLoss(ctx, body);
   }

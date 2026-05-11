@@ -20,11 +20,13 @@ import {
   stockManualExit,
   stockRegisterLoss,
   updateStockItem,
+  applyBatchInventoryCount,
   applyInventoryCounts,
   type StockItem,
   type StockBreakageAlert,
   type StockBatch,
   type StockMovement,
+  updateStockBatchStatus,
 } from '@/features/stock/stock.api';
 import styles from './page.module.css';
 
@@ -62,7 +64,10 @@ export default function AdminStockPage() {
   const [moveQty, setMoveQty] = useState('');
   const [moveCost, setMoveCost] = useState('0');
   const [moveReason, setMoveReason] = useState('manual');
+  const [moveBatchId, setMoveBatchId] = useState('');
   const [countedQty, setCountedQty] = useState('');
+  const [batchCountId, setBatchCountId] = useState('');
+  const [batchCountQty, setBatchCountQty] = useState('');
   const [lossQty, setLossQty] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [batchExpiration, setBatchExpiration] = useState('');
@@ -71,8 +76,25 @@ export default function AdminStockPage() {
   const [convFrom, setConvFrom] = useState('un');
   const [convTo, setConvTo] = useState('un');
   const [convResult, setConvResult] = useState<string | null>(null);
+  const [movementItemFilter, setMovementItemFilter] = useState('');
+  const [movementBatchFilter, setMovementBatchFilter] = useState('');
+  const [movementTypeFilter, setMovementTypeFilter] = useState('');
 
   const selected = useMemo(() => items.find((it) => it.id === selectedItemId) ?? null, [items, selectedItemId]);
+  const stockKpis = useMemo(() => {
+    const totalValue = items.reduce((acc, item) => acc + Number(item.currentQuantity ?? 0) * Number(item.averageCost ?? 0), 0);
+    const belowMinimum = items.filter((item) => Number(item.currentQuantity ?? 0) <= Number(item.minimumQuantity ?? 0)).length;
+    const perishable = items.filter((item) => item.controlsExpiry || item.isPerishable).length;
+    const batchBlocked = batches.filter((batch) => ['QUARANTINED', 'DISCARDED', 'EXPIRED'].includes(batch.status)).length;
+    return { totalValue, belowMinimum, perishable, batchBlocked };
+  }, [items, batches]);
+
+  const filteredMovements = useMemo(() => movements.filter((movement) => {
+    if (movementItemFilter && movement.stockItemId !== movementItemFilter) return false;
+    if (movementBatchFilter && movement.batchId !== movementBatchFilter) return false;
+    if (movementTypeFilter && movement.movementType !== movementTypeFilter) return false;
+    return true;
+  }), [movements, movementBatchFilter, movementItemFilter, movementTypeFilter]);
 
   function resetItemForm() {
     setItemName('');
@@ -192,14 +214,17 @@ export default function AdminStockPage() {
         stockItemId: selectedItemId,
         quantity: qty,
         unitCost: Number(moveCost || '0'),
+        batchId: moveBatchId || undefined,
         reasonCode: 'breakage_manual',
       });
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
-      setMovements((prev) => [result.movement, ...prev]);
+      setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setLossQty('');
+      setMoveBatchId('');
       setNotice('Perda/quebra registrada.');
       const refreshedAlerts = await listStockBreakageAlerts();
       setAlerts(refreshedAlerts);
+      await loadBatches(selectedItemId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar perda.');
     } finally {
@@ -279,6 +304,29 @@ export default function AdminStockPage() {
     }
   }
 
+  async function changeBatchStatus(batchId: string, status: 'AVAILABLE' | 'OPENED' | 'QUARANTINED' | 'DISCARDED' | 'EXPIRED') {
+    if (!selectedItemId) return setError('Selecione um item.');
+    const notes = status === 'QUARANTINED'
+      ? 'Lote em quarentena operacional.'
+      : status === 'DISCARDED'
+        ? 'Lote descartado operacionalmente.'
+        : status === 'EXPIRED'
+          ? 'Lote expirado operacionalmente.'
+          : undefined;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateStockBatchStatus(selectedItemId, batchId, { status, notes });
+      await load();
+      await loadBatches(selectedItemId);
+      setNotice(`Status do lote atualizado para ${status}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao atualizar lote.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function runConversionEstimate() {
     if (!selectedItemId) return setError('Selecione um item.');
     setSaving(true);
@@ -311,13 +359,16 @@ export default function AdminStockPage() {
         stockItemId: selectedItemId,
         quantity: Number(moveQty || '0'),
         unitCost: Number(moveCost || '0'),
+        batchId: type === 'exit' ? moveBatchId || undefined : undefined,
         reasonCode: moveReason,
       };
       const result = type === 'entry' ? await stockManualEntry(payload) : await stockManualExit(payload);
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
-      setMovements((prev) => [result.movement, ...prev]);
+      setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setMoveQty('');
+      if (type === 'exit') setMoveBatchId('');
       setNotice(type === 'entry' ? 'Entrada manual registrada.' : 'Saida manual registrada.');
+      if (type === 'exit') await loadBatches(selectedItemId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar movimentacao.');
     } finally {
@@ -351,6 +402,42 @@ export default function AdminStockPage() {
     }
   }
 
+  async function submitBatchInventoryCount() {
+    if (!selectedItemId) {
+      setError('Selecione um item.');
+      return;
+    }
+    if (!batchCountId) {
+      setError('Selecione um lote para inventario.');
+      return;
+    }
+    const counted = Number(batchCountQty || '0');
+    if (!Number.isFinite(counted) || counted < 0) {
+      setError('Quantidade contada do lote invalida.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await applyBatchInventoryCount({
+        stockItemId: selectedItemId,
+        batchId: batchCountId,
+        countedQuantity: counted,
+        reasonCode: 'batch_inventory_count',
+      });
+      if (result.item) setItems((prev) => prev.map((item) => (item.id === result.item?.id ? { ...item, ...result.item } : item)));
+      await loadBatches(selectedItemId);
+      const stockMovements = await listStockMovements();
+      setMovements(stockMovements);
+      setNotice('Inventario por lote aplicado com sucesso.');
+      setBatchCountQty('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao aplicar inventario por lote.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <main className={styles.page}><LoadingState label="Carregando estoque..." /></main>;
 
   return (
@@ -363,6 +450,29 @@ export default function AdminStockPage() {
 
       {error ? <Card className={styles.card}><Badge tone="danger">Erro</Badge><span>{error}</span></Card> : null}
       {notice ? <Card className={styles.card}><Badge tone="success">OK</Badge><span>{notice}</span></Card> : null}
+      <section className={styles.kpiGrid}>
+        <Card className={styles.kpiCard}>
+          <span>Valor em estoque</span>
+          <strong>R$ {stockKpis.totalValue.toFixed(2)}</strong>
+          <small>Saldo atual x custo medio</small>
+        </Card>
+        <Card className={styles.kpiCard}>
+          <span>Itens abaixo do minimo</span>
+          <strong>{stockKpis.belowMinimum}</strong>
+          <small>Inclui ruptura e ponto critico</small>
+        </Card>
+        <Card className={styles.kpiCard}>
+          <span>Itens pereciveis</span>
+          <strong>{stockKpis.perishable}</strong>
+          <small>Controlam validade ou lote</small>
+        </Card>
+        <Card className={styles.kpiCard}>
+          <span>Lotes bloqueados</span>
+          <strong>{stockKpis.batchBlocked}</strong>
+          <small>Do item selecionado</small>
+        </Card>
+      </section>
+
       <Card className={styles.card}>
         <h2>Alertas de ruptura</h2>
         {alerts.length === 0 ? <span>Sem alertas no momento.</span> : null}
@@ -445,6 +555,17 @@ export default function AdminStockPage() {
             <Input placeholder="Quantidade" value={moveQty} onChange={(e) => setMoveQty(e.target.value)} />
             <Input placeholder="Custo unitario" value={moveCost} onChange={(e) => setMoveCost(e.target.value)} />
             <Input placeholder="Motivo" value={moveReason} onChange={(e) => setMoveReason(e.target.value)} />
+            <select className={styles.select} value={moveBatchId} onChange={(e) => setMoveBatchId(e.target.value)}>
+              <option value="">FEFO automatico</option>
+              {batches
+                .filter((batch) => Number(batch.quantityRemaining) > 0 && ['AVAILABLE', 'OPENED'].includes(batch.status))
+                .map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.batchNumber ?? batch.id} - saldo {Number(batch.quantityRemaining).toFixed(3)}
+                    {batch.expirationDate ? ` - ${new Date(batch.expirationDate).toLocaleDateString('pt-BR')}` : ''}
+                  </option>
+                ))}
+            </select>
           </div>
           <div className={styles.actions}>
             <Button disabled={saving || !selectedItemId} onClick={() => void submitMovement('entry')}>Entrada manual</Button>
@@ -457,6 +578,20 @@ export default function AdminStockPage() {
             </Button>
           </div>
           <div className={styles.formRow}>
+            <select className={styles.select} value={batchCountId} onChange={(e) => setBatchCountId(e.target.value)}>
+              <option value="">Selecionar lote para inventario</option>
+              {batches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {batch.batchNumber ?? batch.id} - saldo {Number(batch.quantityRemaining).toFixed(3)} - {batch.status}
+                </option>
+              ))}
+            </select>
+            <Input placeholder="Quantidade contada no lote" value={batchCountQty} onChange={(e) => setBatchCountQty(e.target.value)} />
+            <Button disabled={saving || !selectedItemId || !batchCountId} onClick={() => void submitBatchInventoryCount()}>
+              Inventario por lote
+            </Button>
+          </div>
+          <div className={styles.formRow}>
             <Input placeholder="Quantidade perda/quebra" value={lossQty} onChange={(e) => setLossQty(e.target.value)} />
             <Button variant="danger" disabled={saving || !selectedItemId} onClick={() => void submitLoss()}>
               Registrar perda/quebra
@@ -464,14 +599,34 @@ export default function AdminStockPage() {
           </div>
 
           <h3>Ultimas movimentacoes</h3>
+          <div className={styles.filterRow}>
+            <select className={styles.select} value={movementItemFilter} onChange={(e) => setMovementItemFilter(e.target.value)}>
+              <option value="">Todos os itens</option>
+              {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <select className={styles.select} value={movementBatchFilter} onChange={(e) => setMovementBatchFilter(e.target.value)}>
+              <option value="">Todos os lotes</option>
+              {batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchNumber ?? batch.id}</option>)}
+            </select>
+            <select className={styles.select} value={movementTypeFilter} onChange={(e) => setMovementTypeFilter(e.target.value)}>
+              <option value="">Todos os tipos</option>
+              <option value="ENTRY">Entrada</option>
+              <option value="EXIT">Saida</option>
+              <option value="ADJUSTMENT">Ajuste</option>
+              <option value="LOSS">Perda</option>
+              <option value="SALE_CONSUMPTION">Venda</option>
+            </select>
+          </div>
           <div className={styles.movementsList}>
-            {movements.length === 0 ? <EmptyState title="Sem movimentacoes" /> : null}
-            {movements.map((mv) => (
+            {filteredMovements.length === 0 ? <EmptyState title="Sem movimentacoes" /> : null}
+            {filteredMovements.map((mv) => (
               <div key={mv.id} className={styles.row}>
                 <strong>{mv.movementTypeDetailed ?? mv.movementType}</strong>
                 <div className={styles.meta}>
                   <span>Item: {mv.stockItemId}</span>
                   <span>Qtd: {Number(mv.quantity).toFixed(3)}</span>
+                  {mv.batchId ? <span>Lote: {mv.batch?.batchNumber ?? mv.batchId}</span> : null}
+                  {mv.batch?.expirationDate ? <span>Validade: {new Date(mv.batch.expirationDate).toLocaleDateString('pt-BR')}</span> : null}
                   <span>Anterior: {mv.previousStock ?? '-'}</span>
                   <span>Novo: {mv.newStock ?? '-'}</span>
                 </div>
@@ -500,6 +655,20 @@ export default function AdminStockPage() {
                   <span>Inicial: {Number(batch.initialQuantity).toFixed(3)}</span>
                   <span>Saldo: {Number(batch.quantityRemaining).toFixed(3)}</span>
                   <span>Status: {batch.status}</span>
+                </div>
+                <div className={styles.actions}>
+                  <Button disabled={saving || batch.status === 'QUARANTINED'} onClick={() => void changeBatchStatus(batch.id, 'QUARANTINED')}>
+                    Quarentena
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} variant="danger" onClick={() => void changeBatchStatus(batch.id, 'DISCARDED')}>
+                    Descartar saldo
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} variant="danger" onClick={() => void changeBatchStatus(batch.id, 'EXPIRED')}>
+                    Expirar
+                  </Button>
+                  <Button disabled={saving || Number(batch.quantityRemaining) <= 0} onClick={() => void changeBatchStatus(batch.id, 'AVAILABLE')}>
+                    Reativar
+                  </Button>
                 </div>
               </div>
             ))}
