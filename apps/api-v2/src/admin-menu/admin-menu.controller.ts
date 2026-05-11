@@ -10,6 +10,7 @@ import { ModuleGuard } from '../modules/module.guard';
 import {
   CreateAddonGroupDto,
   CreateAddonOptionDto,
+  CreateComboDto,
   CreateCategoryDto,
   CreateProductDto,
   CreateProductVariationDto,
@@ -20,6 +21,7 @@ import {
   UpdateAddonGroupDto,
   UpdateAddonOptionDto,
   UpdateAvailabilityDto,
+  UpdateComboDto,
   UpdateProductDto,
   UpdateProductVariationDto,
 } from './dto/admin-menu.dto';
@@ -171,6 +173,34 @@ export class AdminMenuUtilityController {
   @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
   async deleteCategory(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
     return this.adminMenuService.deleteCategory(id, ctx);
+  }
+
+  @Get('combos')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async listCombos(@CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.listCombos(ctx);
+  }
+
+  @Post('combos')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async createCombo(@CurrentContext() ctx: RequestContext, @Body() body: CreateComboDto) {
+    return this.adminMenuService.createCombo(ctx, body);
+  }
+
+  @Patch('combos/:comboId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async updateCombo(
+    @Param('comboId') comboId: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: UpdateComboDto,
+  ) {
+    return this.adminMenuService.updateCombo(comboId, ctx, body);
+  }
+
+  @Delete('combos/:comboId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async deleteCombo(@Param('comboId') comboId: string, @CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.deleteCombo(comboId, ctx);
   }
 
   @Post('import/commit')

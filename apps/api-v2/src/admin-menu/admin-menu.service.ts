@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import type {
   CreateAddonGroupDto,
   CreateAddonOptionDto,
+  CreateComboDto,
   CreateCategoryDto,
   CreateProductDto,
   CreateProductVariationDto,
@@ -13,6 +14,7 @@ import type {
   UpdateAddonGroupDto,
   UpdateAddonOptionDto,
   UpdateAvailabilityDto,
+  UpdateComboDto,
   UpdateCategoryDto,
   UpdateProductDto,
   UpdateProductVariationDto,
@@ -26,6 +28,7 @@ type AdminMenuRecommendationInput = ProductRecommendationDto;
 type AdminMenuAddonGroupInput = CreateAddonGroupDto | UpdateAddonGroupDto;
 type AdminMenuAddonOptionInput = CreateAddonOptionDto | UpdateAddonOptionDto;
 type AdminMenuVariationInput = CreateProductVariationDto | UpdateProductVariationDto;
+type AdminMenuComboInput = CreateComboDto | UpdateComboDto;
 
 @Injectable()
 export class AdminMenuService {
@@ -317,6 +320,84 @@ export class AdminMenuService {
     return this.mapVariation(variation);
   }
 
+  async listCombos(ctx: RequestContext) {
+    await this.assertBranchBelongsToCompany(ctx);
+    const combos = await this.prisma.combo.findMany({
+      where: { companyId: ctx.companyId },
+      include: this.comboInclude(),
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+    return combos.map((combo: any) => this.mapCombo(combo));
+  }
+
+  async createCombo(ctx: RequestContext, input: AdminMenuComboInput) {
+    await this.assertBranchBelongsToCompany(ctx);
+    const data = await this.buildComboData(ctx, input, true);
+    const comboItems = data.items ?? [];
+    const combo = await this.prisma.combo.create({
+      data: {
+        companyId: ctx.companyId,
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        isActive: data.isActive,
+        items: {
+          create: comboItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        },
+      } as any,
+      include: this.comboInclude(),
+    });
+    return this.mapCombo(combo);
+  }
+
+  async updateCombo(comboId: string, ctx: RequestContext, input: AdminMenuComboInput) {
+    await this.findComboOrThrow(comboId, ctx);
+    const data = await this.buildComboData(ctx, input, false);
+    const scalarData: Record<string, unknown> = {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.price !== undefined ? { price: data.price } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+    };
+
+    if (Object.keys(scalarData).length === 0 && data.items === undefined) {
+      throw new BadRequestException('Informe pelo menos um campo do combo para atualizar.');
+    }
+
+    if (data.items !== undefined) {
+      await this.prisma.comboItem.deleteMany({ where: { comboId } });
+      if (data.items.length > 0) {
+        await this.prisma.comboItem.createMany({
+          data: data.items.map((item) => ({
+            comboId,
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        });
+      }
+    }
+
+    const combo = await this.prisma.combo.update({
+      where: { id: comboId },
+      data: scalarData,
+      include: this.comboInclude(),
+    });
+    return this.mapCombo(combo);
+  }
+
+  async deleteCombo(comboId: string, ctx: RequestContext) {
+    await this.findComboOrThrow(comboId, ctx);
+    const combo = await this.prisma.combo.update({
+      where: { id: comboId },
+      data: { isActive: false },
+      include: this.comboInclude(),
+    });
+    return this.mapCombo(combo);
+  }
+
   async createProductAddonGroup(productId: string, ctx: RequestContext, input: AdminMenuAddonGroupInput) {
     const product = await this.findProductOrThrow(productId, ctx);
     const data = this.buildAddonGroupData(input, true);
@@ -586,6 +667,21 @@ export class AdminMenuService {
     return variation as any;
   }
 
+  private async findComboOrThrow(comboId: string, ctx: RequestContext) {
+    await this.assertBranchBelongsToCompany(ctx);
+    const combo = await this.prisma.combo.findFirst({
+      where: {
+        id: comboId,
+        companyId: ctx.companyId,
+      },
+      include: this.comboInclude(),
+    });
+    if (!combo) {
+      throw new NotFoundException(`Combo '${comboId}' nao encontrado para a empresa atual.`);
+    }
+    return combo as any;
+  }
+
   private async assertBranchBelongsToCompany(ctx: RequestContext) {
     if (!ctx.branchId) return;
     const branch = await this.prisma.branch.findFirst({
@@ -631,6 +727,26 @@ export class AdminMenuService {
         select: {
           productId: true,
         },
+      },
+    };
+  }
+
+  private comboInclude(): any {
+    return {
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              salePrice: true,
+              deliveryPickupPrice: true,
+              isActive: true,
+              deletedAt: true,
+            },
+          },
+        },
+        orderBy: [{ product: { name: 'asc' as const } }],
       },
     };
   }
@@ -687,6 +803,25 @@ export class AdminMenuService {
       deliveryPriceDelta: Number(variation.deliveryPriceDelta ?? 0),
       active: variation.isActive !== false,
       sortOrder: Number(variation.sortOrder ?? 0),
+    };
+  }
+
+  private mapCombo(combo: any) {
+    return {
+      id: combo.id,
+      name: combo.name,
+      description: combo.description ?? undefined,
+      price: Number(combo.price ?? 0),
+      active: combo.isActive !== false,
+      itemCount: (combo.items ?? []).length,
+      items: (combo.items ?? []).map((item: any) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.product?.name ?? undefined,
+        quantity: Number(item.quantity ?? 1),
+        productPrice: item.product ? Number(item.product.deliveryPickupPrice || item.product.salePrice || 0) : undefined,
+        productActive: item.product ? Boolean(item.product.isActive && !item.product.deletedAt) : undefined,
+      })),
     };
   }
 
@@ -899,6 +1034,80 @@ export class AdminMenuService {
       ...(typeof input.active === 'boolean' ? { isActive: input.active } : creating ? { isActive: true } : {}),
       ...(sortOrder !== undefined ? { sortOrder } : creating ? { sortOrder: 0 } : {}),
     };
+  }
+
+  private async buildComboData(ctx: RequestContext, input: AdminMenuComboInput, creating: boolean) {
+    const name = input.name?.trim();
+    if (creating && !name) {
+      throw new BadRequestException('Nome do combo e obrigatorio.');
+    }
+    if (!creating && input.name !== undefined && !name) {
+      throw new BadRequestException('Nome do combo nao pode ser vazio.');
+    }
+
+    const price = input.price === undefined ? undefined : Number(input.price);
+    if (price !== undefined) {
+      this.assertNonNegative(price, 'Preco do combo deve ser maior ou igual a zero.');
+    }
+
+    const description =
+      input.description === undefined ? undefined : this.normalizeOptionalDescription(input.description);
+
+    const items =
+      input.items === undefined
+        ? undefined
+        : await this.normalizeComboItems(ctx, input.items);
+
+    if (creating && (!items || items.length === 0)) {
+      throw new BadRequestException('Combo deve possuir ao menos um produto.');
+    }
+
+    return {
+      ...(name ? { name } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(price !== undefined ? { price } : creating ? { price: 0 } : {}),
+      ...(typeof input.active === 'boolean' ? { isActive: input.active } : creating ? { isActive: true } : {}),
+      ...(items !== undefined ? { items } : {}),
+    };
+  }
+
+  private async normalizeComboItems(ctx: RequestContext, items: NonNullable<AdminMenuComboInput['items']>) {
+    if (!Array.isArray(items)) {
+      throw new BadRequestException('Itens do combo devem ser informados em lista.');
+    }
+
+    const normalized = items.map((item) => ({
+      productId: item.productId?.trim(),
+      quantity: Number(item.quantity),
+    }));
+
+    if (normalized.some((item) => !item.productId)) {
+      throw new BadRequestException('Produto do item do combo e obrigatorio.');
+    }
+    if (normalized.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+      throw new BadRequestException('Quantidade do item do combo deve ser maior que zero.');
+    }
+
+    const uniqueIds = new Set(normalized.map((item) => item.productId));
+    if (uniqueIds.size !== normalized.length) {
+      throw new BadRequestException('Combo nao pode repetir o mesmo produto.');
+    }
+
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: [...uniqueIds] },
+        companyId: ctx.companyId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const foundIds = new Set(products.map((product: any) => product.id));
+    const missing = [...uniqueIds].filter((productId) => !foundIds.has(productId));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Produtos invalidos para o combo: ${missing.join(', ')}.`);
+    }
+
+    return normalized as Array<{ productId: string; quantity: number }>;
   }
 
   private mapChannelData(channels?: AdminMenuProductInput['channels']) {

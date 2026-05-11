@@ -260,3 +260,39 @@ export class CreateProductVariationDto {
 }
 
 export class UpdateProductVariationDto extends CreateProductVariationDto {}
+
+export class ComboItemDto {
+  @IsString()
+  productId!: string;
+
+  @IsNumber()
+  @Min(0.001)
+  quantity!: number;
+}
+
+export class CreateComboDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ComboItemDto)
+  items?: ComboItemDto[];
+}
+
+export class UpdateComboDto extends CreateComboDto {}

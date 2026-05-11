@@ -1,5 +1,6 @@
 export interface MenuProduct {
   id: string;
+  type?: 'product' | 'combo';
   name: string;
   description: string;
   price: number;
@@ -24,6 +25,7 @@ export interface MenuProduct {
     waiter?: boolean;
   };
   variations?: MenuProductVariation[];
+  comboItems?: MenuComboItem[];
   addonGroups?: Array<{
     id: string;
     name: string;
@@ -49,6 +51,25 @@ export type MenuProductVariation = {
   deliveryPriceDelta: number;
   active: boolean;
   sortOrder: number;
+};
+
+export type MenuComboItem = {
+  id?: string;
+  productId: string;
+  productName?: string;
+  quantity: number;
+  productPrice?: number;
+  productActive?: boolean;
+};
+
+export type MenuCombo = {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  active: boolean;
+  itemCount: number;
+  items: MenuComboItem[];
 };
 
 export interface MenuRecommendationConfig {

@@ -635,3 +635,54 @@
   }
 }
 
+
+.comboWorkspace {
+  display: grid;
+  gap: 18px;
+}
+
+.comboBuilder {
+  display: grid;
+  gap: 18px;
+}
+
+.comboBuilder span {
+  color: var(--muted-foreground, #64748b);
+  display: block;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.comboItemsEditor {
+  display: grid;
+  gap: 10px;
+}
+
+.comboItemRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 120px auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.comboItemsSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.comboItemsSummary span {
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+@media (max-width: 720px) {
+  .comboItemRow {
+    grid-template-columns: 1fr;
+  }
+}
