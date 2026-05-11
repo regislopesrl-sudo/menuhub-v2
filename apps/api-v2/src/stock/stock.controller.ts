@@ -1,13 +1,16 @@
-﻿import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import { RequireAdminGuard } from '../common/require-admin.guard';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
 import type { RequestContext } from '../common/request-context';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import { StockService } from './stock.service';
 
 @Controller('v2/admin/stock')
-@UseGuards(RequireAdminGuard)
+@UseGuards(RequireAdminGuard, ModuleGuard)
+@ModuleAccess('stock')
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 
