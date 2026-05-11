@@ -117,6 +117,7 @@ export default function DeliveryPage() {
     () => ({
       companyId: process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo',
       branchId: process.env.NEXT_PUBLIC_MOCK_BRANCH_ID,
+      companySlug: process.env.NEXT_PUBLIC_PUBLIC_COMPANY_SLUG ?? process.env.NEXT_PUBLIC_MOCK_COMPANY_SLUG ?? 'company-demo',
     }),
     [],
   );

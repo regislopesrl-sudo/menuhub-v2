@@ -1,5 +1,5 @@
 import { MenuService } from './menu.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 describe('MenuService', () => {
   const ctx = {
@@ -8,6 +8,16 @@ describe('MenuService', () => {
     requestId: 'req_1',
   };
 
+  function createService(prismaMock: any, moduleAccess = { allowed: true }) {
+    const modulesService = {
+      checkAccess: jest.fn().mockResolvedValue(moduleAccess),
+    };
+    return {
+      service: new MenuService(prismaMock, modulesService as any),
+      modulesService,
+    };
+  }
+
   it('menu so retorna produtos da empresa', async () => {
     const prismaMock = {
       product: {
@@ -15,9 +25,14 @@ describe('MenuService', () => {
       },
     } as any;
 
-    const service = new MenuService(prismaMock);
+    const { service, modulesService } = createService(prismaMock);
     await service.list(ctx);
 
+    expect(modulesService.checkAccess).toHaveBeenCalledWith({
+      companyId: 'company_a',
+      moduleKey: 'menu',
+      isAdmin: false,
+    });
     expect(prismaMock.product.findMany).toHaveBeenCalledWith({
       where: {
         companyId: 'company_a',
@@ -73,7 +88,7 @@ describe('MenuService', () => {
       },
     } as any;
 
-    const service = new MenuService(prismaMock);
+    const { service } = createService(prismaMock);
     const result = await service.list(ctx);
 
     expect(result).toEqual([
@@ -127,7 +142,7 @@ describe('MenuService', () => {
       },
     } as any;
 
-    const service = new MenuService(prismaMock);
+    const { service } = createService(prismaMock);
     const result = await service.list(ctx);
 
     expect(result).toEqual([
@@ -179,7 +194,7 @@ describe('MenuService', () => {
       },
     } as any;
 
-    const service = new MenuService(prismaMock);
+    const { service } = createService(prismaMock);
     const result = await service.list(ctx);
 
     expect(result).toEqual([]);
@@ -191,7 +206,7 @@ describe('MenuService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
     } as any;
-    const service = new MenuService(prismaMock);
+    const { service } = createService(prismaMock);
 
     await expect(service.list({ companyId: '' } as any)).rejects.toBeInstanceOf(BadRequestException);
     expect(prismaMock.product.findMany).not.toHaveBeenCalled();
@@ -219,9 +234,89 @@ describe('MenuService', () => {
       },
     } as any;
 
-    const service = new MenuService(prismaMock);
+    const { service } = createService(prismaMock);
     const result = await service.list(ctx);
 
     expect(result).toEqual([]);
+  });
+
+  it('carrega menu publico por slug da empresa sem depender de header x-company-id', async () => {
+    const prismaMock = {
+      company: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'company_a' }),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock);
+
+    await service.listPublicByCompanySlug('Company-A');
+
+    expect(prismaMock.company.findFirst).toHaveBeenCalledWith({
+      where: { slug: 'company-a', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    expect(prismaMock.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ companyId: 'company_a' }),
+      }),
+    );
+  });
+
+  it('bloqueia menu publico quando modulo menu nao esta ativo', async () => {
+    const prismaMock = {
+      company: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'company_a' }),
+      },
+      product: {
+        findMany: jest.fn(),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock, { allowed: false });
+
+    await expect(service.listPublicByCompanySlug('company-a')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prismaMock.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('retorna not found para slug publico inexistente ou empresa inativa', async () => {
+    const prismaMock = {
+      company: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      product: {
+        findMany: jest.fn(),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock);
+
+    await expect(service.listPublicByCompanySlug('empresa-inativa')).rejects.toBeInstanceOf(NotFoundException);
+    expect(prismaMock.product.findMany).not.toHaveBeenCalled();
+  });
+
+  it('valida filial publica quando branchId e informado', async () => {
+    const prismaMock = {
+      company: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'company_a' }),
+      },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_a' }),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock);
+
+    await service.listPublicByCompanySlug('company-a', 'branch_a');
+
+    expect(prismaMock.branch.findFirst).toHaveBeenCalledWith({
+      where: { id: 'branch_a', companyId: 'company_a', isActive: true },
+      select: { id: true },
+    });
   });
 });

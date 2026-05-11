@@ -39,16 +39,24 @@ type MenuApiItem = {
 export async function fetchDeliveryMenu(input: {
   companyId: string;
   branchId?: string;
+  companySlug?: string;
 }): Promise<MenuProduct[]> {
-  const payload = await apiFetch<unknown>('/v2/menu', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-company-id': input.companyId,
-      ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
-      'x-channel': 'delivery',
-    },
-  });
+  const companySlug = input.companySlug?.trim();
+  const publicPath = companySlug
+    ? `/v2/menu/public/${encodeURIComponent(companySlug)}${input.branchId ? `?branchId=${encodeURIComponent(input.branchId)}` : ''}`
+    : null;
+
+  const payload = publicPath
+    ? await apiFetch<unknown>(publicPath, { method: 'GET' })
+    : await apiFetch<unknown>('/v2/menu', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-company-id': input.companyId,
+          ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
+          'x-channel': 'delivery',
+        },
+      });
 
   const items = Array.isArray(payload) ? (payload as MenuApiItem[]) : [];
   return items

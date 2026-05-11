@@ -13,6 +13,7 @@ import { DeliveryController } from '../delivery/delivery.controller';
 import { PaymentsController } from '../payments/payments.controller';
 import { BillingWebhookController } from '../billing/billing.webhook.controller';
 import { AdminMenuController, AdminMenuUtilityController } from '../admin-menu/admin-menu.controller';
+import { MenuController } from '../menu/menu.controller';
 import { ChannelsController } from '../channels/channels.controller';
 import { DeveloperController } from '../developer/developer.controller';
 import { OnboardingController } from '../onboarding/onboarding.controller';
@@ -144,6 +145,10 @@ describe('RBAC route permissions metadata', () => {
     expect(methodPermissions(AdminMenuUtilityController.prototype, 'deleteCategory')).toEqual([
       TENANT_PERMISSIONS.CATALOG_MANAGE,
     ]);
+  });
+
+  it('menu publico por slug e rota publica sem JWT', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, MenuController.prototype.listPublicByCompanySlug)).toBe(true);
   });
 
   it('channels pdv checkout exige pdv.operate', () => {
