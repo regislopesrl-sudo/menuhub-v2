@@ -12,9 +12,16 @@ export type StockItem = {
   minimumQuantity: number;
   reorderPoint: number;
   averageCost: number;
+  lastCost?: number;
+  leadTimeDays?: number;
+  controlsStock?: boolean;
   controlsBatch: boolean;
   controlsExpiry: boolean;
+  requiresFefo?: boolean;
   isPerishable: boolean;
+  isFractionable?: boolean;
+  isCritical?: boolean;
+  isHighTurnover?: boolean;
   allowNegativeStock: boolean;
   updatedAt: string;
 };
@@ -42,7 +49,10 @@ export type StockBreakageAlert = {
   minimumQuantity: number;
   reorderPoint: number;
   severity: 'medium' | 'high' | 'critical';
-  type: 'stockout' | 'below_minimum' | 'below_reorder';
+  type: 'stockout' | 'below_minimum' | 'below_reorder' | 'batch_expired' | 'batch_expiring';
+  batchId?: string;
+  batchNumber?: string | null;
+  expirationDate?: string;
 };
 
 export type StockBatch = {
@@ -73,9 +83,49 @@ export function createStockItem(input: {
   minimumQuantity?: number;
   reorderPoint?: number;
   averageCost?: number;
+  leadTimeDays?: number;
+  controlsStock?: boolean;
+  controlsBatch?: boolean;
+  controlsExpiry?: boolean;
+  requiresFefo?: boolean;
+  isPerishable?: boolean;
+  isFractionable?: boolean;
+  isCritical?: boolean;
+  isHighTurnover?: boolean;
+  allowNegativeStock?: boolean;
 }) {
   return apiFetch<StockItem>('/v2/admin/stock/items', {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateStockItem(
+  id: string,
+  input: Partial<{
+    name: string;
+    code: string;
+    stockUnit: string;
+    purchaseUnit: string;
+    productionUnit: string;
+    conversionFactor: number;
+    minimumQuantity: number;
+    reorderPoint: number;
+    averageCost: number;
+    leadTimeDays: number;
+    controlsStock: boolean;
+    controlsBatch: boolean;
+    controlsExpiry: boolean;
+    requiresFefo: boolean;
+    isPerishable: boolean;
+    isFractionable: boolean;
+    isCritical: boolean;
+    isHighTurnover: boolean;
+    allowNegativeStock: boolean;
+  }>,
+) {
+  return apiFetch<StockItem>(`/v2/admin/stock/items/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
 }

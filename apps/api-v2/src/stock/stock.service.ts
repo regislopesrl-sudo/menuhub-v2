@@ -12,9 +12,15 @@ export type StockItemInput = {
   minimumQuantity?: number;
   reorderPoint?: number;
   averageCost?: number;
+  leadTimeDays?: number;
+  controlsStock?: boolean;
   controlsBatch?: boolean;
   controlsExpiry?: boolean;
+  requiresFefo?: boolean;
   isPerishable?: boolean;
+  isFractionable?: boolean;
+  isCritical?: boolean;
+  isHighTurnover?: boolean;
   allowNegativeStock?: boolean;
 };
 
@@ -65,13 +71,22 @@ export class StockService {
         code: true,
         purchaseUnit: true,
         stockUnit: true,
+        productionUnit: true,
+        conversionFactor: true,
         currentQuantity: true,
         minimumQuantity: true,
         reorderPoint: true,
         averageCost: true,
+        lastCost: true,
+        leadTimeDays: true,
+        controlsStock: true,
         controlsBatch: true,
         controlsExpiry: true,
+        requiresFefo: true,
         isPerishable: true,
+        isFractionable: true,
+        isCritical: true,
+        isHighTurnover: true,
         allowNegativeStock: true,
         updatedAt: true,
       },
@@ -86,6 +101,10 @@ export class StockService {
     if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
       throw new BadRequestException('conversionFactor deve ser maior que zero.');
     }
+    this.assertNonNegative(input.minimumQuantity ?? 0, 'minimumQuantity invalida.');
+    this.assertNonNegative(input.reorderPoint ?? 0, 'reorderPoint invalido.');
+    this.assertNonNegative(input.averageCost ?? 0, 'averageCost invalido.');
+    const leadTimeDays = this.parseNonNegativeInteger(input.leadTimeDays ?? 0, 'leadTimeDays invalido.');
 
     return this.prisma.stockItem.create({
       data: {
@@ -99,9 +118,15 @@ export class StockService {
         minimumQuantity: this.decimal(input.minimumQuantity ?? 0),
         reorderPoint: this.decimal(input.reorderPoint ?? 0),
         averageCost: this.decimal(input.averageCost ?? 0),
+        leadTimeDays,
+        controlsStock: input.controlsStock === undefined ? true : Boolean(input.controlsStock),
         controlsBatch: Boolean(input.controlsBatch),
         controlsExpiry: Boolean(input.controlsExpiry),
+        requiresFefo: Boolean(input.requiresFefo),
         isPerishable: Boolean(input.isPerishable),
+        isFractionable: Boolean(input.isFractionable),
+        isCritical: Boolean(input.isCritical),
+        isHighTurnover: Boolean(input.isHighTurnover),
         allowNegativeStock: Boolean(input.allowNegativeStock),
       },
     });
@@ -130,12 +155,27 @@ export class StockService {
       }
       payload.conversionFactor = this.decimal(conversionFactor);
     }
-    if (input.minimumQuantity !== undefined) payload.minimumQuantity = this.decimal(input.minimumQuantity);
-    if (input.reorderPoint !== undefined) payload.reorderPoint = this.decimal(input.reorderPoint);
-    if (input.averageCost !== undefined) payload.averageCost = this.decimal(input.averageCost);
+    if (input.minimumQuantity !== undefined) {
+      this.assertNonNegative(input.minimumQuantity, 'minimumQuantity invalida.');
+      payload.minimumQuantity = this.decimal(input.minimumQuantity);
+    }
+    if (input.reorderPoint !== undefined) {
+      this.assertNonNegative(input.reorderPoint, 'reorderPoint invalido.');
+      payload.reorderPoint = this.decimal(input.reorderPoint);
+    }
+    if (input.averageCost !== undefined) {
+      this.assertNonNegative(input.averageCost, 'averageCost invalido.');
+      payload.averageCost = this.decimal(input.averageCost);
+    }
+    if (input.leadTimeDays !== undefined) payload.leadTimeDays = this.parseNonNegativeInteger(input.leadTimeDays, 'leadTimeDays invalido.');
+    if (input.controlsStock !== undefined) payload.controlsStock = Boolean(input.controlsStock);
     if (input.controlsBatch !== undefined) payload.controlsBatch = Boolean(input.controlsBatch);
     if (input.controlsExpiry !== undefined) payload.controlsExpiry = Boolean(input.controlsExpiry);
+    if (input.requiresFefo !== undefined) payload.requiresFefo = Boolean(input.requiresFefo);
     if (input.isPerishable !== undefined) payload.isPerishable = Boolean(input.isPerishable);
+    if (input.isFractionable !== undefined) payload.isFractionable = Boolean(input.isFractionable);
+    if (input.isCritical !== undefined) payload.isCritical = Boolean(input.isCritical);
+    if (input.isHighTurnover !== undefined) payload.isHighTurnover = Boolean(input.isHighTurnover);
     if (input.allowNegativeStock !== undefined) payload.allowNegativeStock = Boolean(input.allowNegativeStock);
 
     if (Object.keys(payload).length === 0) {
@@ -353,7 +393,7 @@ export class StockService {
       },
     });
 
-    return items
+    const stockAlerts = items
       .map((item) => {
         const current = Number(item.currentQuantity);
         const minimum = Number(item.minimumQuantity);
@@ -373,6 +413,58 @@ export class StockService {
         };
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+    const now = new Date();
+    const expiringLimit = new Date(now);
+    expiringLimit.setDate(expiringLimit.getDate() + 7);
+    const batches = await this.prisma.stockBatch.findMany({
+      where: {
+        quantityRemaining: { gt: 0 },
+        status: { in: ['AVAILABLE', 'OPENED'] },
+        expirationDate: { lte: expiringLimit },
+        stockItem: { companyId: ctx.companyId, isActive: true },
+      },
+      orderBy: [{ expirationDate: 'asc' }, { createdAt: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        stockItemId: true,
+        batchNumber: true,
+        expirationDate: true,
+        quantityRemaining: true,
+        stockItem: {
+          select: {
+            name: true,
+            stockUnit: true,
+            minimumQuantity: true,
+            reorderPoint: true,
+            isCritical: true,
+          },
+        },
+      },
+    });
+
+    const batchAlerts = batches
+      .filter((batch: any) => batch.expirationDate)
+      .map((batch: any) => {
+        const expirationDate = new Date(batch.expirationDate);
+        const expired = expirationDate.getTime() < now.getTime();
+        return {
+          stockItemId: batch.stockItemId,
+          batchId: batch.id,
+          batchNumber: batch.batchNumber ?? null,
+          name: batch.stockItem?.name ?? batch.stockItemId,
+          stockUnit: batch.stockItem?.stockUnit ?? null,
+          currentQuantity: Number(batch.quantityRemaining ?? 0),
+          minimumQuantity: Number(batch.stockItem?.minimumQuantity ?? 0),
+          reorderPoint: Number(batch.stockItem?.reorderPoint ?? 0),
+          severity: expired || batch.stockItem?.isCritical ? 'critical' : 'high',
+          type: expired ? 'batch_expired' : 'batch_expiring',
+          expirationDate: expirationDate.toISOString(),
+        };
+      });
+
+    return [...stockAlerts, ...batchAlerts];
   }
 
   async applyInventoryCount(ctx: RequestContext, input: { counts: InventoryCountInput[]; notes?: string }) {
@@ -648,5 +740,20 @@ export class StockService {
 
   private decimal(value: number) {
     return Number(value.toFixed(4));
+  }
+
+  private assertNonNegative(value: unknown, message: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  private parseNonNegativeInteger(value: unknown, message: string) {
+    const parsed = Number(value ?? 0);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new BadRequestException(message);
+    }
+    return parsed;
   }
 }

@@ -40,6 +40,23 @@
   gap: 6px;
 }
 
+.selectedRow {
+  border-color: rgba(49, 85, 255, 0.55);
+  background: rgba(49, 85, 255, 0.06);
+}
+
+.check {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
 .meta {
   display: flex;
   gap: 8px;

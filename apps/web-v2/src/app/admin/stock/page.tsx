@@ -19,6 +19,7 @@ import {
   stockManualEntry,
   stockManualExit,
   stockRegisterLoss,
+  updateStockItem,
   applyInventoryCounts,
   type StockItem,
   type StockBreakageAlert,
@@ -38,8 +39,24 @@ export default function AdminStockPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const [itemName, setItemName] = useState('');
+  const [itemCode, setItemCode] = useState('');
   const [itemUnit, setItemUnit] = useState('un');
+  const [itemPurchaseUnit, setItemPurchaseUnit] = useState('un');
+  const [itemProductionUnit, setItemProductionUnit] = useState('un');
+  const [itemConversionFactor, setItemConversionFactor] = useState('1');
   const [itemCost, setItemCost] = useState('0');
+  const [itemMinimum, setItemMinimum] = useState('0');
+  const [itemReorder, setItemReorder] = useState('0');
+  const [itemLeadTimeDays, setItemLeadTimeDays] = useState('0');
+  const [itemControlsStock, setItemControlsStock] = useState(true);
+  const [itemControlsBatch, setItemControlsBatch] = useState(false);
+  const [itemControlsExpiry, setItemControlsExpiry] = useState(false);
+  const [itemRequiresFefo, setItemRequiresFefo] = useState(false);
+  const [itemPerishable, setItemPerishable] = useState(false);
+  const [itemFractionable, setItemFractionable] = useState(false);
+  const [itemCritical, setItemCritical] = useState(false);
+  const [itemHighTurnover, setItemHighTurnover] = useState(false);
+  const [itemAllowNegative, setItemAllowNegative] = useState(false);
 
   const [selectedItemId, setSelectedItemId] = useState('');
   const [moveQty, setMoveQty] = useState('');
@@ -56,6 +73,74 @@ export default function AdminStockPage() {
   const [convResult, setConvResult] = useState<string | null>(null);
 
   const selected = useMemo(() => items.find((it) => it.id === selectedItemId) ?? null, [items, selectedItemId]);
+
+  function resetItemForm() {
+    setItemName('');
+    setItemCode('');
+    setItemUnit('un');
+    setItemPurchaseUnit('un');
+    setItemProductionUnit('un');
+    setItemConversionFactor('1');
+    setItemCost('0');
+    setItemMinimum('0');
+    setItemReorder('0');
+    setItemLeadTimeDays('0');
+    setItemControlsStock(true);
+    setItemControlsBatch(false);
+    setItemControlsExpiry(false);
+    setItemRequiresFefo(false);
+    setItemPerishable(false);
+    setItemFractionable(false);
+    setItemCritical(false);
+    setItemHighTurnover(false);
+    setItemAllowNegative(false);
+  }
+
+  function fillItemForm(item: StockItem) {
+    setItemName(item.name ?? '');
+    setItemCode(item.code ?? '');
+    setItemUnit(item.stockUnit ?? 'un');
+    setItemPurchaseUnit(item.purchaseUnit ?? item.stockUnit ?? 'un');
+    setItemProductionUnit(item.productionUnit ?? item.stockUnit ?? 'un');
+    setItemConversionFactor(String(item.conversionFactor ?? 1));
+    setItemCost(String(item.averageCost ?? 0));
+    setItemMinimum(String(item.minimumQuantity ?? 0));
+    setItemReorder(String(item.reorderPoint ?? 0));
+    setItemLeadTimeDays(String(item.leadTimeDays ?? 0));
+    setItemControlsStock(item.controlsStock !== false);
+    setItemControlsBatch(item.controlsBatch === true);
+    setItemControlsExpiry(item.controlsExpiry === true);
+    setItemRequiresFefo(item.requiresFefo === true);
+    setItemPerishable(item.isPerishable === true);
+    setItemFractionable(item.isFractionable === true);
+    setItemCritical(item.isCritical === true);
+    setItemHighTurnover(item.isHighTurnover === true);
+    setItemAllowNegative(item.allowNegativeStock === true);
+  }
+
+  function buildItemPayload() {
+    return {
+      name: itemName.trim(),
+      code: itemCode.trim() || undefined,
+      stockUnit: itemUnit.trim() || 'un',
+      purchaseUnit: itemPurchaseUnit.trim() || itemUnit.trim() || 'un',
+      productionUnit: itemProductionUnit.trim() || itemUnit.trim() || 'un',
+      conversionFactor: Number(itemConversionFactor || '1'),
+      averageCost: Number(itemCost || '0'),
+      minimumQuantity: Number(itemMinimum || '0'),
+      reorderPoint: Number(itemReorder || '0'),
+      leadTimeDays: Number(itemLeadTimeDays || '0'),
+      controlsStock: itemControlsStock,
+      controlsBatch: itemControlsBatch,
+      controlsExpiry: itemControlsExpiry,
+      requiresFefo: itemRequiresFefo,
+      isPerishable: itemPerishable,
+      isFractionable: itemFractionable,
+      isCritical: itemCritical,
+      isHighTurnover: itemHighTurnover,
+      allowNegativeStock: itemAllowNegative,
+    };
+  }
 
   async function load() {
     setLoading(true);
@@ -137,19 +222,32 @@ export default function AdminStockPage() {
     setError(null);
     try {
       const created = await createStockItem({
-        name: itemName,
-        stockUnit: itemUnit,
-        purchaseUnit: itemUnit,
-        productionUnit: itemUnit,
-        conversionFactor: 1,
-        averageCost: Number(itemCost || '0'),
+        ...buildItemPayload(),
       });
       setItems((prev) => [created, ...prev]);
       setSelectedItemId(created.id);
-      setItemName('');
+      resetItemForm();
       setNotice('Item de estoque criado.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar item.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onUpdateItem() {
+    if (!selectedItemId) {
+      setError('Selecione um item para editar.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateStockItem(selectedItemId, buildItemPayload());
+      setItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+      setNotice('Item de estoque atualizado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao atualizar item.');
     } finally {
       setSaving(false);
     }
@@ -269,7 +367,7 @@ export default function AdminStockPage() {
         <h2>Alertas de ruptura</h2>
         {alerts.length === 0 ? <span>Sem alertas no momento.</span> : null}
         {alerts.map((alert) => (
-          <div key={alert.stockItemId} className={styles.row}>
+          <div key={`${alert.stockItemId}-${alert.batchId ?? alert.type}`} className={styles.row}>
             <strong>{alert.name}</strong>
             <div className={styles.meta}>
               <span>Tipo: {alert.type}</span>
@@ -277,6 +375,8 @@ export default function AdminStockPage() {
               <span>Atual: {alert.currentQuantity}</span>
               <span>Min: {alert.minimumQuantity}</span>
               <span>Reorder: {alert.reorderPoint}</span>
+              {alert.batchNumber ? <span>Lote: {alert.batchNumber}</span> : null}
+              {alert.expirationDate ? <span>Validade: {new Date(alert.expirationDate).toLocaleDateString('pt-BR')}</span> : null}
             </div>
           </div>
         ))}
@@ -284,23 +384,54 @@ export default function AdminStockPage() {
 
       <section className={styles.grid}>
         <Card className={styles.card}>
-          <h2>Cadastrar item</h2>
+          <h2>{selected ? 'Cadastrar / editar item' : 'Cadastrar item'}</h2>
           <form onSubmit={(e) => void onCreateItem(e)} className={styles.formRow}>
             <Input placeholder="Nome do item" value={itemName} onChange={(e) => setItemName(e.target.value)} />
-            <Input placeholder="Unidade" value={itemUnit} onChange={(e) => setItemUnit(e.target.value)} />
+            <Input placeholder="Codigo interno" value={itemCode} onChange={(e) => setItemCode(e.target.value)} />
+            <Input placeholder="Unidade estoque" value={itemUnit} onChange={(e) => setItemUnit(e.target.value)} />
+            <Input placeholder="Unidade compra" value={itemPurchaseUnit} onChange={(e) => setItemPurchaseUnit(e.target.value)} />
+            <Input placeholder="Unidade producao" value={itemProductionUnit} onChange={(e) => setItemProductionUnit(e.target.value)} />
+            <Input placeholder="Fator conversao" value={itemConversionFactor} onChange={(e) => setItemConversionFactor(e.target.value)} />
             <Input placeholder="Custo medio" value={itemCost} onChange={(e) => setItemCost(e.target.value)} />
+            <Input placeholder="Estoque minimo" value={itemMinimum} onChange={(e) => setItemMinimum(e.target.value)} />
+            <Input placeholder="Ponto reposicao" value={itemReorder} onChange={(e) => setItemReorder(e.target.value)} />
+            <Input placeholder="Lead time dias" value={itemLeadTimeDays} onChange={(e) => setItemLeadTimeDays(e.target.value)} />
+            <label className={styles.check}><input type="checkbox" checked={itemControlsStock} onChange={(e) => setItemControlsStock(e.target.checked)} /> Controla estoque</label>
+            <label className={styles.check}><input type="checkbox" checked={itemControlsBatch} onChange={(e) => setItemControlsBatch(e.target.checked)} /> Controla lote</label>
+            <label className={styles.check}><input type="checkbox" checked={itemControlsExpiry} onChange={(e) => setItemControlsExpiry(e.target.checked)} /> Controla validade</label>
+            <label className={styles.check}><input type="checkbox" checked={itemRequiresFefo} onChange={(e) => setItemRequiresFefo(e.target.checked)} /> FEFO</label>
+            <label className={styles.check}><input type="checkbox" checked={itemPerishable} onChange={(e) => setItemPerishable(e.target.checked)} /> Perecivel</label>
+            <label className={styles.check}><input type="checkbox" checked={itemFractionable} onChange={(e) => setItemFractionable(e.target.checked)} /> Fracionavel</label>
+            <label className={styles.check}><input type="checkbox" checked={itemCritical} onChange={(e) => setItemCritical(e.target.checked)} /> Critico</label>
+            <label className={styles.check}><input type="checkbox" checked={itemHighTurnover} onChange={(e) => setItemHighTurnover(e.target.checked)} /> Alto giro</label>
+            <label className={styles.check}><input type="checkbox" checked={itemAllowNegative} onChange={(e) => setItemAllowNegative(e.target.checked)} /> Permite negativo</label>
             <Button type="submit" disabled={saving}>Criar</Button>
+            <Button type="button" disabled={saving || !selectedItemId} onClick={() => void onUpdateItem()}>Salvar edicao</Button>
+            <Button type="button" onClick={resetItemForm}>Limpar</Button>
           </form>
 
           <div className={styles.itemsList}>
             {items.length === 0 ? <EmptyState title="Sem itens" description="Cadastre o primeiro item de estoque." /> : null}
             {items.map((item) => (
-              <button key={item.id} className={styles.row} onClick={() => setSelectedItemId(item.id)} type="button">
+              <button
+                key={item.id}
+                className={`${styles.row} ${selectedItemId === item.id ? styles.selectedRow : ''}`.trim()}
+                onClick={() => {
+                  setSelectedItemId(item.id);
+                  fillItemForm(item);
+                }}
+                type="button"
+              >
                 <strong>{item.name}</strong>
                 <div className={styles.meta}>
+                  <span>Codigo: {item.code ?? '-'}</span>
                   <span>Qtd atual: {Number(item.currentQuantity).toFixed(3)} {item.stockUnit ?? 'un'}</span>
                   <span>Min: {Number(item.minimumQuantity).toFixed(3)}</span>
+                  <span>Reposicao: {Number(item.reorderPoint).toFixed(3)}</span>
                   <span>Custo: R$ {Number(item.averageCost).toFixed(2)}</span>
+                  <span>{item.controlsBatch ? 'Lote' : 'Sem lote'}</span>
+                  <span>{item.controlsExpiry ? 'Validade' : 'Sem validade'}</span>
+                  <span>{item.requiresFefo ? 'FEFO' : 'FIFO/manual'}</span>
                 </div>
               </button>
             ))}

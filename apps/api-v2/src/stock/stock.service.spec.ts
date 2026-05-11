@@ -44,12 +44,47 @@ describe('StockService', () => {
         stockBatch: prisma.stockBatch,
       }),
     );
+    prisma.stockBatch.findMany.mockResolvedValue([]);
   });
 
   it('cria item com name obrigatorio', async () => {
     prisma.stockItem.create.mockResolvedValue({ id: 's1' });
-    await service.createItem(ctx, { name: 'Farinha', stockUnit: 'kg' });
-    expect(prisma.stockItem.create).toHaveBeenCalled();
+    await service.createItem(ctx, {
+      name: 'Farinha',
+      code: 'FAR-001',
+      stockUnit: 'kg',
+      purchaseUnit: 'sc',
+      productionUnit: 'g',
+      conversionFactor: 25,
+      minimumQuantity: 5,
+      reorderPoint: 10,
+      leadTimeDays: 3,
+      controlsBatch: true,
+      controlsExpiry: true,
+      requiresFefo: true,
+      isPerishable: true,
+      isFractionable: true,
+      isCritical: true,
+      isHighTurnover: true,
+    });
+    expect(prisma.stockItem.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        code: 'FAR-001',
+        purchaseUnit: 'sc',
+        productionUnit: 'g',
+        conversionFactor: 25,
+        minimumQuantity: 5,
+        reorderPoint: 10,
+        leadTimeDays: 3,
+        controlsBatch: true,
+        controlsExpiry: true,
+        requiresFefo: true,
+        isPerishable: true,
+        isFractionable: true,
+        isCritical: true,
+        isHighTurnover: true,
+      }),
+    }));
   });
 
   it('bloqueia item sem nome', async () => {
@@ -97,6 +132,42 @@ describe('StockService', () => {
     const alerts = await service.listBreakageAlerts(ctx);
     expect(alerts.length).toBe(2);
     expect(alerts[0].type).toBe('stockout');
+  });
+
+  it('gera alertas de validade de lote', async () => {
+    prisma.stockItem.findMany.mockResolvedValue([]);
+    prisma.stockBatch.findMany.mockResolvedValue([
+      {
+        id: 'b1',
+        stockItemId: 's1',
+        batchNumber: 'L-001',
+        expirationDate: new Date('2026-05-10T00:00:00.000Z'),
+        quantityRemaining: 2,
+        stockItem: {
+          name: 'Queijo',
+          stockUnit: 'kg',
+          minimumQuantity: 1,
+          reorderPoint: 2,
+          isCritical: false,
+        },
+      },
+    ]);
+    const alerts = await service.listBreakageAlerts(ctx);
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        stockItemId: 's1',
+        batchId: 'b1',
+        batchNumber: 'L-001',
+        type: 'batch_expired',
+        severity: 'critical',
+      }),
+    ]);
+  });
+
+  it('bloqueia dados invalidos de item premium', async () => {
+    await expect(service.createItem(ctx, { name: 'Farinha', conversionFactor: 0 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createItem(ctx, { name: 'Farinha', minimumQuantity: -1 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createItem(ctx, { name: 'Farinha', leadTimeDays: 1.5 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('cria lote e gera movimento de entrada', async () => {
