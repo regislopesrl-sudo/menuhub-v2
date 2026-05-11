@@ -35,9 +35,15 @@ export class StockController {
       minimumQuantity?: number;
       reorderPoint?: number;
       averageCost?: number;
+      leadTimeDays?: number;
+      controlsStock?: boolean;
       controlsBatch?: boolean;
       controlsExpiry?: boolean;
+      requiresFefo?: boolean;
       isPerishable?: boolean;
+      isFractionable?: boolean;
+      isCritical?: boolean;
+      isHighTurnover?: boolean;
       allowNegativeStock?: boolean;
     },
   ) {
