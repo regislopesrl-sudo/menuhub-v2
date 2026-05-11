@@ -119,6 +119,8 @@ Essa decisao deve ser feita em PR propria, sem misturar com blocos funcionais.
 
 Ter migrations autossuficientes, pequenas e por dominio, de forma que um banco novo consiga subir com `migrate deploy` em ambiente controlado.
 
+Para novas migrations por bloco, seguir `docs/prisma-future-migration-strategy.md`.
+
 ## Checklist antes de alterar schema
 
 ```text
