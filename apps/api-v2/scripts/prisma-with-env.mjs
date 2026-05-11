@@ -35,7 +35,9 @@ if (args.length === 0) {
   process.exit(1);
 }
 
-const prismaCli = resolve(repoRoot, 'node_modules/prisma/build/index.js');
+const workspacePrismaCli = resolve(apiRoot, 'node_modules/prisma/build/index.js');
+const rootPrismaCli = resolve(repoRoot, 'node_modules/prisma/build/index.js');
+const prismaCli = existsSync(workspacePrismaCli) ? workspacePrismaCli : rootPrismaCli;
 const result = spawnSync(process.execPath, [prismaCli, ...args], {
   cwd: apiRoot,
   env: process.env,
