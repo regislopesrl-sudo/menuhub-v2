@@ -5,6 +5,8 @@ import { AdminMenuService } from './admin-menu.service';
 import { RequireAdminGuard } from '../common/require-admin.guard';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import {
   CreateAddonGroupDto,
   CreateAddonOptionDto,
@@ -21,7 +23,8 @@ import {
 } from './dto/admin-menu.dto';
 
 @Controller('v2/admin/menu/products')
-@UseGuards(RequireAdminGuard)
+@UseGuards(RequireAdminGuard, ModuleGuard)
+@ModuleAccess('menu')
 export class AdminMenuController {
   constructor(private readonly adminMenuService: AdminMenuService) {}
 
@@ -113,7 +116,8 @@ export class AdminMenuController {
 }
 
 @Controller('v2/admin/menu')
-@UseGuards(RequireAdminGuard)
+@UseGuards(RequireAdminGuard, ModuleGuard)
+@ModuleAccess('menu')
 export class AdminMenuUtilityController {
   constructor(private readonly adminMenuService: AdminMenuService) {}
 
