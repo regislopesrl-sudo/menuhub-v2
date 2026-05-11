@@ -22,7 +22,13 @@ export class OrderPrismaRepository {
     result: CheckoutResult,
     ctx: RequestContext,
     deliveryQuote?: DeliveryQuoteResponse,
-    options?: { pdvSessionId?: string; pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND'; commandReference?: string },
+    options?: {
+      pdvSessionId?: string;
+      pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND';
+      commandReference?: string;
+      orderTypeOverride?: 'DELIVERY' | 'PICKUP';
+      checkoutMetadata?: Record<string, unknown>;
+    },
   ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
@@ -45,7 +51,10 @@ export class OrderPrismaRepository {
             branchId,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
-            orderType: result.order.channel === 'pdv' ? (options?.pdvOrderType ?? 'COUNTER') : 'DELIVERY',
+            orderType:
+              result.order.channel === 'pdv'
+                ? (options?.pdvOrderType ?? 'COUNTER')
+                : (options?.orderTypeOverride ?? 'DELIVERY'),
             channel: result.order.channel === 'pdv' ? 'PDV' : 'WEB',
             status: this.mapOrderStatus(result.order.status),
             paymentStatus: result.payment.status === 'APPROVED' ? 'PAID' : 'UNPAID',
@@ -72,6 +81,7 @@ export class OrderPrismaRepository {
                 : undefined,
               checkoutSnapshot: customerSnapshot,
               deliveryQuote,
+              checkoutMetadata: options?.checkoutMetadata,
             }),
             items: {
               create: result.order.items.map((item) => ({

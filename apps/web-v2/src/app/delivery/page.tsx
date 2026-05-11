@@ -72,6 +72,8 @@ export default function DeliveryPage() {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('PIX');
+  const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'TAKEOUT'>('DELIVERY');
+  const [scheduledAt, setScheduledAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
@@ -132,7 +134,7 @@ export default function DeliveryPage() {
   const estimatedTotal = quote?.total ?? Math.max(0, subtotal + deliveryFee);
   const etaMinutes = quote?.deliveryQuote.durationSeconds ? Math.ceil(quote.deliveryQuote.durationSeconds / 60) : null;
 
-  const hasAddress = cep.replace(/\D/g, '').length === 8 && !!number.trim();
+  const hasAddress = fulfillmentType === 'TAKEOUT' || (cep.replace(/\D/g, '').length === 8 && !!number.trim());
   const hasCustomer = !!customerName.trim() && !!customerPhone.trim();
   const checkoutStep = !items.length ? 1 : !hasAddress ? 2 : paymentMethod ? 3 : 3;
   const featuredProducts = useMemo(
@@ -206,7 +208,7 @@ export default function DeliveryPage() {
   useEffect(() => {
     let active = true;
     const loadQuote = async () => {
-      if (access.loading || !access.allowed || !hasAddress) {
+      if (access.loading || !access.allowed || !hasAddress || fulfillmentType === 'TAKEOUT') {
         setQuote(null);
         setQuoteError(null);
         setQuoteLoading(false);
@@ -239,7 +241,7 @@ export default function DeliveryPage() {
     return () => {
       active = false;
     };
-  }, [access.allowed, access.loading, hasAddress, headers, cep, number, items, couponCode]);
+  }, [access.allowed, access.loading, hasAddress, fulfillmentType, headers, cep, number, items, couponCode]);
 
   useEffect(() => {
     if (access.loading || !access.allowed || !success?.providerPaymentId || success.paymentStatus !== 'PENDING') return;
@@ -332,11 +334,14 @@ export default function DeliveryPage() {
   const validateCheckoutForm = (cardPaymentOverride?: OnlineCardPaymentInput): string | null => {
     if (!customerName.trim()) return 'Informe seu nome para continuar.';
     if (!customerPhone.trim()) return 'Informe seu telefone para contato.';
-    if (!hasAddress) return 'Preencha um CEP valido e numero.';
-    if (!street.trim()) return 'Informe a rua.';
-    if (!neighborhood.trim()) return 'Informe o bairro.';
+    if (fulfillmentType === 'DELIVERY') {
+      if (!hasAddress) return 'Preencha um CEP valido e numero.';
+      if (!street.trim()) return 'Informe a rua.';
+      if (!neighborhood.trim()) return 'Informe o bairro.';
+    }
     if (!items.length) return 'Seu carrinho esta vazio.';
-    if (!quote) return 'Nao foi possivel calcular o pre-checkout.';
+    if (fulfillmentType === 'DELIVERY' && !quote) return 'Nao foi possivel calcular o pre-checkout.';
+    if (scheduledAt.trim() && Number.isNaN(new Date(scheduledAt).getTime())) return 'Data/hora de agendamento invalida.';
     if (paymentMethod === 'CREDIT_CARD') {
       const effectiveCardPayment = cardPaymentOverride ?? {
         cardToken: '',
@@ -387,6 +392,8 @@ export default function DeliveryPage() {
       const response = await submitDeliveryCheckout({
         headers,
         storeId: 'store-demo',
+        fulfillmentType,
+        scheduledAt: scheduledAt.trim() || undefined,
         customer: { name: customerName.trim(), phone: customerPhone.trim() },
         deliveryAddress: {
           cep: cep.trim(),
@@ -561,6 +568,19 @@ export default function DeliveryPage() {
               <h2 className={styles.sectionTitle}>Endereço e cliente</h2>
               <div className={styles.inline}>
                 <div>
+                  <label className="ui-label">Tipo de atendimento</label>
+                  <Select value={fulfillmentType} onChange={(e) => setFulfillmentType(e.target.value as 'DELIVERY' | 'TAKEOUT')}>
+                    <option value="DELIVERY">Entrega</option>
+                    <option value="TAKEOUT">Retirada</option>
+                  </Select>
+                </div>
+                <div>
+                  <label className="ui-label">Agendamento (opcional)</label>
+                  <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+                </div>
+              </div>
+              <div className={styles.inline}>
+                <div>
                   <label className="ui-label">Nome</label>
                   <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Seu nome" />
                 </div>
@@ -574,38 +594,44 @@ export default function DeliveryPage() {
                 </div>
               </div>
 
-              <div className={styles.inline}>
-                <div>
-                  <label className="ui-label">CEP</label>
-                  <Input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" />
-                </div>
-                <div>
-                  <label className="ui-label">Número</label>
-                  <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
-                </div>
-              </div>
+              {fulfillmentType === 'DELIVERY' ? (
+                <>
+                  <div className={styles.inline}>
+                    <div>
+                      <label className="ui-label">CEP</label>
+                      <Input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" />
+                    </div>
+                    <div>
+                      <label className="ui-label">Número</label>
+                      <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
+                    </div>
+                  </div>
 
-              <div className={styles.inline}>
-                <div>
-                  <label className="ui-label">Rua</label>
-                  <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
-                </div>
-                <div>
-                  <label className="ui-label">Bairro</label>
-                  <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
-                </div>
-              </div>
+                  <div className={styles.inline}>
+                    <div>
+                      <label className="ui-label">Rua</label>
+                      <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
+                    </div>
+                    <div>
+                      <label className="ui-label">Bairro</label>
+                      <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
+                    </div>
+                  </div>
 
-              <div className={styles.inline}>
-                <div>
-                  <label className="ui-label">Cidade (opcional)</label>
-                  <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
-                </div>
-                <div>
-                  <label className="ui-label">Referência (opcional)</label>
-                  <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ponto de referência" />
-                </div>
-              </div>
+                  <div className={styles.inline}>
+                    <div>
+                      <label className="ui-label">Cidade (opcional)</label>
+                      <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
+                    </div>
+                    <div>
+                      <label className="ui-label">Referência (opcional)</label>
+                      <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ponto de referência" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.muted}>Retirada selecionada: não é necessário informar endereço para concluir o pedido.</div>
+              )}
             </Card>
           </section>
 
@@ -708,7 +734,7 @@ export default function DeliveryPage() {
                     <MercadoPagoCardBrick
                       publicKey={mercadoPagoPublicKey}
                       amount={estimatedTotal}
-                      disabled={loading || quoteLoading || !quote?.deliveryQuote.available}
+                      disabled={loading || quoteLoading || (fulfillmentType === 'DELIVERY' && !quote?.deliveryQuote.available)}
                       onSubmit={handleMercadoPagoSubmit}
                     />
                   )}
@@ -717,8 +743,11 @@ export default function DeliveryPage() {
               {paymentMethod === 'CASH' ? <div className={styles.muted}>Pagamento em dinheiro sera cobrado na entrega.</div> : null}
 
               <div className={styles.row}><span>Subtotal</span><strong>{brl(subtotal)}</strong></div>
-              <div className={styles.row}><span>Frete {quoteLoading ? '(cotando...)' : ''}</span><strong>{brl(deliveryFee)}</strong></div>
-              {quote ? (
+              <div className={styles.row}>
+                <span>{fulfillmentType === 'TAKEOUT' ? 'Retirada' : `Frete ${quoteLoading ? '(cotando...)' : ''}`}</span>
+                <strong>{fulfillmentType === 'TAKEOUT' ? 'Sem frete' : brl(deliveryFee)}</strong>
+              </div>
+              {fulfillmentType === 'DELIVERY' && quote ? (
                 <div className={styles.muted}>
                   Área: {quote.deliveryQuote.areaName ?? '-'} | Distância: {quote.deliveryQuote.distanceKm ?? 0} km | Tempo: {Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min
                 </div>
@@ -766,7 +795,7 @@ export default function DeliveryPage() {
 
               <Button
                 variant="primary"
-                disabled={loading || quoteLoading || !quote?.deliveryQuote.available || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
+                disabled={loading || quoteLoading || (fulfillmentType === 'DELIVERY' && !quote?.deliveryQuote.available) || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
                 onClick={() => void handleCheckout()}
               >
                 {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
