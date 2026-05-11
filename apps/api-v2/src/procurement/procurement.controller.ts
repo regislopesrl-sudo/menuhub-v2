@@ -117,5 +117,49 @@ export class ProcurementController {
   listAccountsPayable(@CurrentContext() ctx: RequestContext) {
     return this.procurementService.listAccountsPayable(ctx);
   }
+
+  @Get('fiscal-documents')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  listPurchaseDocuments(@CurrentContext() ctx: RequestContext) {
+    return this.procurementService.listPurchaseDocuments(ctx);
+  }
+
+  @Post('fiscal-documents/import-by-access-key')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  importFiscalDocumentByAccessKey(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { accessKey: string; supplierId?: string; documentType?: 'NFE' | 'NFCE' },
+  ) {
+    return this.procurementService.importFiscalDocumentByAccessKey(ctx, body);
+  }
+
+  @Get('fiscal-documents/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getPurchaseDocument(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.getPurchaseDocument(ctx, id);
+  }
+
+  @Patch('fiscal-documents/:id/items/:itemId/mapping')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  mapPurchaseDocumentItem(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: { stockItemId: string; conversionFactor?: number },
+  ) {
+    return this.procurementService.mapPurchaseDocumentItem(ctx, id, itemId, body);
+  }
+
+  @Patch('fiscal-documents/:id/items/:itemId/ignore')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  ignorePurchaseDocumentItem(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.procurementService.ignorePurchaseDocumentItem(ctx, id, itemId);
+  }
+
+  @Post('fiscal-documents/:id/confirm-stock-entry')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  confirmPurchaseDocumentStockEntry(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.confirmPurchaseDocumentStockEntry(ctx, id);
+  }
 }
 

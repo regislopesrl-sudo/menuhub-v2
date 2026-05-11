@@ -219,6 +219,32 @@ enum StockMovementType {
   RETURN
 }
 
+enum PurchaseFiscalDocumentStatus {
+  PENDING_REVIEW
+  PARTIALLY_MAPPED
+  READY_TO_CONFIRM
+  CONFIRMED
+  CANCELED
+  LOOKUP_FAILED
+}
+
+enum PurchaseFiscalDocumentItemStatus {
+  UNMAPPED
+  MAPPED
+  IGNORED
+  CONFIRMED
+}
+
+enum PurchaseFiscalDocumentSource {
+  MANUAL_KEY
+  MOCK_PROVIDER
+}
+
+enum PurchaseFiscalDocumentType {
+  NFE
+  NFCE
+}
+
 enum ConversationStatus {
   BOT_ACTIVE
   WAITING_HUMAN

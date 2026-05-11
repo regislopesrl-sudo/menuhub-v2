@@ -1,9 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import type { RequestContext } from '../common/request-context';
+import { AUDIT_ACTIONS } from '../common/audit-log';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
+import { decodeFiscalAccessKey } from './fiscal-access-key';
+import { LocalMockFiscalDocumentLookupProvider } from './fiscal-document-lookup.provider';
 
 @Injectable()
 export class ProcurementService {
+  private readonly fiscalLookupProvider = new LocalMockFiscalDocumentLookupProvider();
+
   constructor(private readonly prisma: PrismaService) {}
 
   async listSuppliers(ctx: RequestContext) {
@@ -406,6 +412,308 @@ export class ProcurementService {
     });
   }
 
+  async listPurchaseDocuments(ctx: RequestContext) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    return this.prisma.purchaseDocument.findMany({
+      where: { companyId: ctx.companyId, branchId: ctx.branchId },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  async importFiscalDocumentByAccessKey(
+    ctx: RequestContext,
+    input: { accessKey: string; supplierId?: string; documentType?: 'NFE' | 'NFCE' },
+  ) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    const branchId = ctx.branchId;
+    const metadata = decodeFiscalAccessKey(input.accessKey);
+    const requestedType = input.documentType ?? metadata.documentType;
+    if (requestedType !== metadata.documentType) {
+      throw new BadRequestException('documentType diverge do modelo fiscal da chave.');
+    }
+
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_IMPORT_REQUESTED,
+      outcome: 'pending',
+      ctx,
+      metadata: {
+        accessKey: metadata.accessKey,
+        documentType: metadata.documentType,
+        issuerCnpj: metadata.issuerCnpj,
+      },
+    });
+
+    const existing = await this.prisma.purchaseDocument.findFirst({
+      where: { companyId: ctx.companyId, accessKey: metadata.accessKey },
+      select: { id: true, status: true },
+    });
+    if (existing) throw new BadRequestException(`Cupom fiscal ja importado: ${existing.id}.`);
+
+    if (input.supplierId) {
+      const supplier = await this.prisma.supplier.findUnique({ where: { id: input.supplierId } });
+      if (!supplier || supplier.companyId !== ctx.companyId) throw new NotFoundException('Fornecedor nao encontrado.');
+    }
+
+    try {
+      const lookup = await this.fiscalLookupProvider.lookupByAccessKey({ metadata });
+      const document = await this.prisma.purchaseDocument.create({
+        data: {
+          companyId: ctx.companyId,
+          branchId,
+          supplierId: this.clean(input.supplierId),
+          documentType: metadata.documentType,
+          accessKey: metadata.accessKey,
+          issuerCnpj: lookup.issuerCnpj,
+          issuerName: lookup.issuerName,
+          emittedAt: lookup.emittedAt,
+          totalAmount: lookup.totalAmount,
+          status: 'PENDING_REVIEW',
+          source: 'MANUAL_KEY',
+          providerName: lookup.providerName,
+          rawProvider: {
+            providerName: lookup.providerName,
+            stateCode: metadata.stateCode,
+            model: metadata.model,
+            series: metadata.series,
+            number: metadata.number,
+            itemsCount: lookup.items.length,
+          },
+          createdByUserId: ctx.userId,
+          items: {
+            create: lookup.items.map((item) => ({
+              companyId: ctx.companyId,
+              branchId,
+              lineNumber: item.lineNumber,
+              fiscalCode: this.clean(item.fiscalCode),
+              ean: this.clean(item.ean),
+              description: item.description,
+              quantity: item.quantity,
+              unit: this.clean(item.unit),
+              unitPrice: item.unitPrice,
+              totalAmount: item.totalAmount,
+              batchNumber: this.clean(item.batchNumber),
+              expirationDate: item.expirationDate ?? null,
+              status: 'UNMAPPED',
+            })),
+          },
+        },
+        include: { items: true },
+      }) as any;
+
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_LOOKUP_SUCCESS,
+        outcome: 'success',
+        ctx,
+        target: { type: 'purchase_document', id: document.id, label: document.accessKey },
+        metadata: { documentType: document.documentType, itemsCount: document.items?.length ?? 0, totalAmount: document.totalAmount },
+      });
+
+      return document;
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_LOOKUP_FAILED,
+        outcome: 'failure',
+        ctx,
+        metadata: { accessKey: metadata.accessKey, documentType: metadata.documentType, error: error instanceof Error ? error.message : 'unknown' },
+      });
+      throw error;
+    }
+  }
+
+  async getPurchaseDocument(ctx: RequestContext, id: string) {
+    return this.getPurchaseDocumentInScope(ctx, id);
+  }
+
+  async mapPurchaseDocumentItem(
+    ctx: RequestContext,
+    documentId: string,
+    itemId: string,
+    input: { stockItemId: string; conversionFactor?: number },
+  ) {
+    const doc = await this.getPurchaseDocumentInScope(ctx, documentId);
+    this.assertDocumentEditable(doc.status);
+    const stockItemId = String(input.stockItemId ?? '').trim();
+    if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio.');
+    const conversionFactor = Number(input.conversionFactor ?? 1);
+    if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) throw new BadRequestException('conversionFactor deve ser maior que zero.');
+
+    const stockItem = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
+    if (!stockItem || stockItem.companyId !== ctx.companyId) throw new NotFoundException('Insumo de estoque nao encontrado.');
+
+    const item = doc.items.find((row: any) => row.id === itemId);
+    if (!item) throw new NotFoundException('Item fiscal nao encontrado.');
+    const updated = await this.prisma.purchaseDocumentItem.update({
+      where: { id: itemId },
+      data: { mappedStockItemId: stockItemId, conversionFactor, status: 'MAPPED' },
+    });
+    await this.refreshPurchaseDocumentStatus(documentId);
+
+    await this.prisma.supplierItemMapping.create({
+      data: {
+        companyId: ctx.companyId,
+        supplierId: doc.supplierId,
+        issuerCnpj: doc.issuerCnpj,
+        fiscalCode: item.fiscalCode,
+        ean: item.ean,
+        fiscalName: item.description,
+        stockItemId,
+        inputUnit: item.unit,
+        conversionFactor,
+      },
+    }).catch(() => null);
+
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_ITEM_MAPPED,
+      outcome: 'success',
+      ctx,
+      target: { type: 'purchase_document_item', id: itemId, label: item.description },
+      metadata: { documentId, stockItemId, conversionFactor },
+    });
+
+    return updated;
+  }
+
+  async ignorePurchaseDocumentItem(ctx: RequestContext, documentId: string, itemId: string) {
+    const doc = await this.getPurchaseDocumentInScope(ctx, documentId);
+    this.assertDocumentEditable(doc.status);
+    const item = doc.items.find((row: any) => row.id === itemId);
+    if (!item) throw new NotFoundException('Item fiscal nao encontrado.');
+    const updated = await this.prisma.purchaseDocumentItem.update({
+      where: { id: itemId },
+      data: { mappedStockItemId: null, status: 'IGNORED' },
+    });
+    await this.refreshPurchaseDocumentStatus(documentId);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_ITEM_IGNORED,
+      outcome: 'success',
+      ctx,
+      target: { type: 'purchase_document_item', id: itemId, label: item.description },
+      metadata: { documentId },
+    });
+    return updated;
+  }
+
+  async confirmPurchaseDocumentStockEntry(ctx: RequestContext, documentId: string) {
+    const doc = await this.getPurchaseDocumentInScope(ctx, documentId);
+    const branchId = ctx.branchId!;
+    if (doc.status === 'CONFIRMED') return { documentId, confirmed: false, reason: 'already_confirmed' as const };
+    if (doc.status === 'CANCELED') throw new BadRequestException('Documento cancelado nao pode ser confirmado.');
+    const pending = doc.items.filter((item: any) => item.status === 'UNMAPPED');
+    if (pending.length > 0) throw new BadRequestException('Todos os itens devem ser mapeados ou ignorados antes da confirmacao.');
+    const mapped = doc.items.filter((item: any) => item.status === 'MAPPED' && item.mappedStockItemId);
+    if (mapped.length === 0) throw new BadRequestException('Nenhum item mapeado para confirmar.');
+
+    const existingMovement = await this.prisma.stockMovement.findFirst({
+      where: { sourceModule: 'purchase_fiscal_document', sourceId: doc.id },
+      select: { id: true },
+    });
+    if (existingMovement) return { documentId, confirmed: false, reason: 'already_consumed' as const };
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      let movementsCreated = 0;
+      for (const row of mapped) {
+        const mappedStockItemId = String(row.mappedStockItemId ?? '').trim();
+        if (!mappedStockItemId) throw new BadRequestException('Item fiscal sem insumo mapeado.');
+        const stock = await tx.stockItem.findUnique({ where: { id: mappedStockItemId } });
+        if (!stock || stock.companyId !== ctx.companyId) throw new NotFoundException('Insumo mapeado nao encontrado.');
+        const quantity = Number(row.quantity) * Number(row.conversionFactor ?? 1);
+        if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('Quantidade convertida invalida.');
+        const unitCost = Number(row.unitPrice ?? row.totalAmount ?? 0) / Number(row.quantity || 1);
+        const previous = Number(stock.currentQuantity ?? 0);
+        const next = previous + quantity;
+        let batchId: string | null = null;
+        if (row.batchNumber || row.expirationDate) {
+          const existingBatch = row.batchNumber
+            ? await tx.stockBatch.findFirst({
+                where: { stockItemId: stock.id, branchId, batchNumber: row.batchNumber },
+              })
+            : null;
+          const batch = existingBatch
+            ? await tx.stockBatch.update({
+                where: { id: existingBatch.id },
+                data: {
+                  initialQuantity: Number(existingBatch.initialQuantity ?? 0) + quantity,
+                  quantityRemaining: Number(existingBatch.quantityRemaining ?? 0) + quantity,
+                  unitCost,
+                  expirationDate: row.expirationDate ?? existingBatch.expirationDate,
+                  supplierId: doc.supplierId,
+                  receivedDate: new Date(),
+                  status: 'AVAILABLE',
+                },
+              })
+            : await tx.stockBatch.create({
+                data: {
+                  stockItemId: stock.id,
+                  branchId,
+                  supplierId: doc.supplierId,
+                  batchNumber: row.batchNumber,
+                  receivedDate: new Date(),
+                  expirationDate: row.expirationDate,
+                  initialQuantity: quantity,
+                  quantityRemaining: quantity,
+                  unitCost,
+                  status: 'AVAILABLE',
+                },
+              });
+          batchId = batch.id;
+        }
+
+        await tx.stockItem.update({
+          where: { id: stock.id },
+          data: {
+            currentQuantity: next,
+            averageCost: unitCost,
+            lastCost: unitCost,
+            ...(batchId ? { controlsBatch: true, controlsExpiry: Boolean(row.expirationDate) || stock.controlsExpiry } : {}),
+          },
+        });
+        await tx.stockLocationBalance.upsert({
+          where: { branchId_stockItemId: { branchId, stockItemId: stock.id } },
+          create: { branchId, stockItemId: stock.id, companyId: ctx.companyId, currentQuantity: next },
+          update: { currentQuantity: next, companyId: ctx.companyId },
+        });
+        await tx.stockMovement.create({
+          data: {
+            stockItemId: stock.id,
+            branchId,
+            batchId,
+            movementType: 'ENTRY',
+            movementTypeDetailed: 'purchase_fiscal_document_entry',
+            sourceModule: 'purchase_fiscal_document',
+            sourceId: doc.id,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity,
+            unitCost,
+            totalCost: Number((quantity * unitCost).toFixed(2)),
+            previousStock: previous,
+            newStock: next,
+            reasonCode: 'purchase_fiscal_document_confirmed',
+          },
+        });
+        await tx.purchaseDocumentItem.update({ where: { id: row.id }, data: { status: 'CONFIRMED' } });
+        movementsCreated += 1;
+      }
+      const updatedDocument = await tx.purchaseDocument.update({
+        where: { id: doc.id },
+        data: { status: 'CONFIRMED', confirmedAt: new Date() },
+      });
+      return { documentId: doc.id, confirmed: true as const, movementsCreated, document: updatedDocument };
+    });
+
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.PURCHASE_DOCUMENT_STOCK_ENTRY_CONFIRMED,
+      outcome: 'success',
+      ctx,
+      target: { type: 'purchase_document', id: doc.id, label: doc.accessKey },
+      metadata: { movementsCreated: result.movementsCreated },
+    });
+
+    return result;
+  }
+
   private async getPurchaseOrderInCompany(ctx: RequestContext, id: string) {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id },
@@ -413,6 +721,34 @@ export class ProcurementService {
     });
     if (!po || po.supplier.companyId !== ctx.companyId) throw new NotFoundException('Pedido de compra nao encontrado.');
     return po;
+  }
+
+  private async getPurchaseDocumentInScope(ctx: RequestContext, id: string) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    const doc = await this.prisma.purchaseDocument.findFirst({
+      where: { id, companyId: ctx.companyId, branchId: ctx.branchId },
+      include: { items: { orderBy: { lineNumber: 'asc' } } },
+    });
+    if (!doc) throw new NotFoundException('Documento fiscal de compra nao encontrado.');
+    return doc;
+  }
+
+  private assertDocumentEditable(status: string) {
+    if (['CONFIRMED', 'CANCELED'].includes(status)) {
+      throw new BadRequestException('Documento fiscal nao pode mais ser alterado.');
+    }
+  }
+
+  private async refreshPurchaseDocumentStatus(documentId: string) {
+    const rows = await this.prisma.purchaseDocumentItem.findMany({
+      where: { purchaseDocumentId: documentId },
+      select: { status: true },
+    });
+    const actionable = rows.filter((row) => row.status !== 'IGNORED');
+    const allMappedOrIgnored = rows.every((row) => row.status === 'MAPPED' || row.status === 'IGNORED');
+    const anyMapped = actionable.some((row) => row.status === 'MAPPED');
+    const status = allMappedOrIgnored && anyMapped ? 'READY_TO_CONFIRM' : anyMapped ? 'PARTIALLY_MAPPED' : 'PENDING_REVIEW';
+    await this.prisma.purchaseDocument.update({ where: { id: documentId }, data: { status } });
   }
 
   private clean(value: unknown) {
