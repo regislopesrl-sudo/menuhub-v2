@@ -469,6 +469,33 @@
   gap: 10px;
 }
 
+.variationPanel,
+.variationList {
+  display: grid;
+  gap: 12px;
+}
+
+.variationRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.variationRow > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.variationRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .addonEditor {
   display: grid;
   gap: 12px;

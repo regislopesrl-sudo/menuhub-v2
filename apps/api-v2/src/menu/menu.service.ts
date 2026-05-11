@@ -26,6 +26,16 @@ export interface MenuItemDto {
       available: boolean;
     }>;
   }>;
+  variations?: Array<{
+    id: string;
+    name: string;
+    sku?: string;
+    priceDelta: number;
+    localPriceDelta: number;
+    deliveryPriceDelta: number;
+    active: boolean;
+    sortOrder: number;
+  }>;
 }
 
 @Injectable()
@@ -117,6 +127,12 @@ export class MenuService {
             },
           },
         },
+        variations: {
+          where: {
+            isActive: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
@@ -145,6 +161,16 @@ export class MenuService {
           available: Boolean(item.isActive),
         })),
       }));
+      const variations = (product.variations ?? []).map((variation: any) => ({
+        id: variation.id,
+        name: variation.name,
+        sku: variation.sku ?? undefined,
+        priceDelta: Number(variation.priceDelta ?? 0),
+        localPriceDelta: Number(variation.localPriceDelta ?? 0),
+        deliveryPriceDelta: Number(variation.deliveryPriceDelta ?? 0),
+        active: variation.isActive !== false,
+        sortOrder: Number(variation.sortOrder ?? 0),
+      }));
 
         return {
         id: product.id,
@@ -153,8 +179,9 @@ export class MenuService {
         imageUrl: product.imageUrl ?? undefined,
         price: resolvedPrice,
         categoryName: product.category?.name ?? undefined,
-          available: isProductVisibleOnChannel(product, 'delivery'),
+        available: isProductVisibleOnChannel(product, 'delivery'),
         addonGroups,
+        variations,
       };
       });
   }

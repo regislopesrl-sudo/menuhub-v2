@@ -39,6 +39,23 @@ describe('AdminMenuService', () => {
       deletedAt: null,
       category: { id: 'cat_1', name: 'Lanches' },
       addonLinks: [],
+      variations: [],
+      ...overrides,
+    };
+  }
+
+  function variation(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'variation_1',
+      productId: 'prod_1',
+      name: 'Grande',
+      sku: 'BURGER-G',
+      priceDelta: 8,
+      localPriceDelta: 6,
+      deliveryPriceDelta: 9,
+      isActive: true,
+      sortOrder: 0,
+      product: { id: 'prod_1', companyId: 'company_a' },
       ...overrides,
     };
   }
@@ -97,6 +114,11 @@ describe('AdminMenuService', () => {
         create: jest.fn().mockImplementation((args) => Promise.resolve(product({ ...args.data, id: 'prod_new', addonLinks: [] }))),
         update: jest.fn().mockImplementation((args) => Promise.resolve(product({ ...args.data }))),
         updateMany: jest.fn().mockResolvedValue({ count: 3 }),
+      },
+      productVariation: {
+        findFirst: jest.fn().mockResolvedValue(variation()),
+        create: jest.fn().mockImplementation((args) => Promise.resolve(variation({ ...args.data, id: 'variation_new' }))),
+        update: jest.fn().mockImplementation((args) => Promise.resolve(variation({ ...args.data }))),
       },
       addonGroup: {
         findFirst: jest.fn().mockResolvedValue(addonGroup()),
@@ -552,6 +574,51 @@ describe('AdminMenuService', () => {
       limit: 2,
       active: true,
       productIds: ['prod_2'],
+    });
+  });
+
+  it('cria variacao premium do produto', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.createProductVariation('prod_1', ctx, {
+      name: 'Grande',
+      sku: 'BURGER-G',
+      priceDelta: 8,
+      localPriceDelta: 6,
+      deliveryPriceDelta: 9,
+      sortOrder: 1,
+    });
+
+    expect(prisma.productVariation.create).toHaveBeenCalledWith({
+      data: {
+        productId: 'prod_1',
+        name: 'Grande',
+        sku: 'BURGER-G',
+        priceDelta: 8,
+        localPriceDelta: 6,
+        deliveryPriceDelta: 9,
+        isActive: true,
+        sortOrder: 1,
+      },
+    });
+    expect(result).toEqual(expect.objectContaining({ id: 'variation_new', name: 'Grande', active: true }));
+  });
+
+  it('bloqueia variacao invalida e desativa variacao sem apagar historico', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.createProductVariation('prod_1', ctx, { name: '', priceDelta: 1 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createProductVariation('prod_1', ctx, { name: 'Pequena', priceDelta: -1 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    await service.deleteProductVariation('variation_1', ctx);
+
+    expect(prisma.productVariation.update).toHaveBeenCalledWith({
+      where: { id: 'variation_1' },
+      data: { isActive: false },
     });
   });
 

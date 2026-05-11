@@ -2,8 +2,8 @@
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input, Select } from '@/components/ui/Input';
-import type { AdminMenuProductPayload } from '@/features/menu/menu.api';
-import type { MenuProduct, MenuRecommendationConfig } from '@/features/menu/menu.mock';
+import type { AdminMenuProductPayload, AdminMenuVariationPayload } from '@/features/menu/menu.api';
+import type { MenuProduct, MenuProductVariation, MenuRecommendationConfig } from '@/features/menu/menu.mock';
 import { CHANNEL_LABELS, type ModalMode } from '../menu-view-model';
 import styles from '../page.module.css';
 import { AddonGroupsPanel } from './AddonGroupsPanel';
@@ -26,6 +26,7 @@ export function ProductModal({
   onProductChanged,
   onError,
   onNotice,
+  variationApi,
   recommendationConfig,
   products,
   saving,
@@ -40,11 +41,26 @@ export function ProductModal({
   onProductChanged: (product: MenuProduct) => void;
   onError: (message: string) => void;
   onNotice: (message: string) => void;
+  variationApi: {
+    fetch: (input: { companyId: string; branchId?: string; productId: string }) => Promise<MenuProductVariation[]>;
+    create: (input: { companyId: string; branchId?: string; productId: string; payload: AdminMenuVariationPayload }) => Promise<MenuProductVariation>;
+    update: (input: { companyId: string; branchId?: string; variationId: string; payload: AdminMenuVariationPayload }) => Promise<MenuProductVariation>;
+    remove: (input: { companyId: string; branchId?: string; variationId: string }) => Promise<MenuProductVariation>;
+  };
   recommendationConfig: MenuRecommendationConfig | null;
   products: MenuProduct[];
   saving: boolean;
 }) {
-  const title = mode === 'create' ? 'Novo produto' : mode === 'addons' ? 'Adicionais e opcionais' : mode === 'recommendations' ? 'Peca tambem' : 'Editar produto';
+  const title =
+    mode === 'create'
+      ? 'Novo produto'
+      : mode === 'addons'
+        ? 'Adicionais e opcionais'
+        : mode === 'variations'
+          ? 'Variacoes do produto'
+          : mode === 'recommendations'
+            ? 'Peca tambem'
+            : 'Editar produto';
   const [name, setName] = useState(product?.name ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
   const [sku, setSku] = useState(product?.sku ?? '');
@@ -131,6 +147,16 @@ export function ProductModal({
             onError={onError}
             onNotice={onNotice}
           />
+        ) : mode === 'variations' ? (
+          <ProductVariationsPanel
+            product={product}
+            companyId={companyId}
+            branchId={branchId}
+            variationApi={variationApi}
+            onProductChanged={onProductChanged}
+            onError={onError}
+            onNotice={onNotice}
+          />
         ) : (
           <ProductForm
             name={name}
@@ -181,11 +207,15 @@ export function ProductModal({
                 onClose();
                 return;
               }
+              if (mode === 'variations') {
+                onClose();
+                return;
+              }
               submit();
             }}
             disabled={saving}
           >
-            {saving ? 'Salvando...' : mode === 'addons' ? 'Fechar adicionais' : 'Salvar'}
+            {saving ? 'Salvando...' : mode === 'addons' || mode === 'variations' ? 'Fechar' : 'Salvar'}
           </Button>
         </div>
       </Card>
@@ -316,6 +346,171 @@ function ProductForm({
             </label>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductVariationsPanel({
+  product,
+  companyId,
+  branchId,
+  variationApi,
+  onProductChanged,
+  onError,
+  onNotice,
+}: {
+  product?: MenuProduct;
+  companyId: string;
+  branchId?: string;
+  variationApi: {
+    fetch: (input: { companyId: string; branchId?: string; productId: string }) => Promise<MenuProductVariation[]>;
+    create: (input: { companyId: string; branchId?: string; productId: string; payload: AdminMenuVariationPayload }) => Promise<MenuProductVariation>;
+    update: (input: { companyId: string; branchId?: string; variationId: string; payload: AdminMenuVariationPayload }) => Promise<MenuProductVariation>;
+    remove: (input: { companyId: string; branchId?: string; variationId: string }) => Promise<MenuProductVariation>;
+  };
+  onProductChanged: (product: MenuProduct) => void;
+  onError: (message: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [items, setItems] = useState<MenuProductVariation[]>(product?.variations ?? []);
+  const [loading, setLoading] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<AdminMenuVariationPayload>({
+    name: '',
+    sku: '',
+    priceDelta: 0,
+    localPriceDelta: 0,
+    deliveryPriceDelta: 0,
+    sortOrder: 0,
+    active: true,
+  });
+
+  const syncProduct = (next: MenuProductVariation[]) => {
+    if (!product) return;
+    onProductChanged({ ...product, variations: next });
+  };
+
+  useEffect(() => {
+    if (!product?.id) return;
+    let active = true;
+    setLoading(true);
+    variationApi.fetch({ companyId, branchId, productId: product.id })
+      .then((next) => {
+        if (!active) return;
+        setItems(next);
+        syncProduct(next);
+      })
+      .catch((err) => onError(err instanceof Error ? err.message : 'Falha ao carregar variacoes.'))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [branchId, companyId, product?.id]);
+
+  if (!product) {
+    return <p className={styles.addonSummaryEmpty}>Salve o produto antes de configurar variacoes.</p>;
+  }
+
+  const createVariation = async () => {
+    setSavingId('new');
+    try {
+      const created = await variationApi.create({ companyId, branchId, productId: product.id, payload: draft });
+      const next = [...items, created].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+      setItems(next);
+      syncProduct(next);
+      setDraft({ name: '', sku: '', priceDelta: 0, localPriceDelta: 0, deliveryPriceDelta: 0, sortOrder: 0, active: true });
+      onNotice('Variacao criada.');
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Falha ao criar variacao.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const patchVariation = async (variation: MenuProductVariation, payload: AdminMenuVariationPayload) => {
+    setSavingId(variation.id);
+    try {
+      const updated = await variationApi.update({ companyId, branchId, variationId: variation.id, payload });
+      const next = items.map((item) => (item.id === updated.id ? updated : item));
+      setItems(next);
+      syncProduct(next);
+      onNotice('Variacao atualizada.');
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Falha ao atualizar variacao.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const disableVariation = async (variation: MenuProductVariation) => {
+    setSavingId(variation.id);
+    try {
+      const updated = await variationApi.remove({ companyId, branchId, variationId: variation.id });
+      const next = items.map((item) => (item.id === updated.id ? updated : item));
+      setItems(next);
+      syncProduct(next);
+      onNotice('Variacao desativada.');
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Falha ao desativar variacao.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className={styles.variationPanel}>
+      <div className={styles.formGrid}>
+        <label>
+          Nome da variacao
+          <Input value={draft.name ?? ''} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Ex: Grande" />
+        </label>
+        <label>
+          SKU
+          <Input value={String(draft.sku ?? '')} onChange={(event) => setDraft({ ...draft, sku: event.target.value })} placeholder="Ex: BURGER-G" />
+        </label>
+        <label>
+          Delta base
+          <Input value={String(draft.priceDelta ?? 0)} onChange={(event) => setDraft({ ...draft, priceDelta: Number(event.target.value || 0) })} inputMode="decimal" />
+        </label>
+        <label>
+          Delta local
+          <Input value={String(draft.localPriceDelta ?? 0)} onChange={(event) => setDraft({ ...draft, localPriceDelta: Number(event.target.value || 0) })} inputMode="decimal" />
+        </label>
+        <label>
+          Delta delivery
+          <Input value={String(draft.deliveryPriceDelta ?? 0)} onChange={(event) => setDraft({ ...draft, deliveryPriceDelta: Number(event.target.value || 0) })} inputMode="decimal" />
+        </label>
+        <label>
+          Ordem
+          <Input value={String(draft.sortOrder ?? 0)} onChange={(event) => setDraft({ ...draft, sortOrder: Number(event.target.value || 0) })} inputMode="numeric" />
+        </label>
+      </div>
+      <Button variant="primary" onClick={() => void createVariation()} disabled={savingId === 'new'}>
+        {savingId === 'new' ? 'Criando...' : 'Criar variacao'}
+      </Button>
+
+      {loading ? <p className={styles.addonSummaryEmpty}>Carregando variacoes...</p> : null}
+      {!loading && items.length === 0 ? <p className={styles.addonSummaryEmpty}>Nenhuma variacao cadastrada para este produto.</p> : null}
+      <div className={styles.variationList}>
+        {items.map((variation) => (
+          <div key={variation.id} className={styles.variationRow}>
+            <div>
+              <strong>{variation.name}</strong>
+              <span>{variation.sku ?? 'Sem SKU'} | Base +{variation.priceDelta} | Local +{variation.localPriceDelta} | Delivery +{variation.deliveryPriceDelta}</span>
+            </div>
+            <div className={styles.managementActions}>
+              <Button onClick={() => void patchVariation(variation, { active: !variation.active })} disabled={savingId === variation.id}>
+                {variation.active ? 'Desativar' : 'Ativar'}
+              </Button>
+              <Button onClick={() => void disableVariation(variation)} disabled={savingId === variation.id || !variation.active}>
+                Remover
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -224,3 +224,39 @@ export class CreateAddonOptionDto {
 }
 
 export class UpdateAddonOptionDto extends CreateAddonOptionDto {}
+
+export class CreateProductVariationDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  sku?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  priceDelta?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  localPriceDelta?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deliveryPriceDelta?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class UpdateProductVariationDto extends CreateProductVariationDto {}

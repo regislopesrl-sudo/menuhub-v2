@@ -23,6 +23,7 @@ export interface MenuProduct {
     kiosk?: boolean;
     waiter?: boolean;
   };
+  variations?: MenuProductVariation[];
   addonGroups?: Array<{
     id: string;
     name: string;
@@ -38,6 +39,17 @@ export interface MenuProduct {
     }>;
   }>;
 }
+
+export type MenuProductVariation = {
+  id: string;
+  name: string;
+  sku?: string;
+  priceDelta: number;
+  localPriceDelta: number;
+  deliveryPriceDelta: number;
+  active: boolean;
+  sortOrder: number;
+};
 
 export interface MenuRecommendationConfig {
   title: string;
