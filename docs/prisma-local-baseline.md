@@ -52,6 +52,9 @@ npm run prisma:db:push:local --workspace @delivery-futuro/api-v2
 
 Esses comandos carregam `apps/api-v2/.env` e `apps/api-v2/.env.local` via `apps/api-v2/scripts/prisma-with-env.mjs`.
 
+O schema Prisma atual e modular e fica em `apps/api-v2/prisma/schema`.
+O arquivo `apps/api-v2/prisma/schema/schema.prisma` e apenas o entrypoint com `generator` e `datasource`.
+
 ## Uso seguro em ambiente local
 
 Para validar schema e client:

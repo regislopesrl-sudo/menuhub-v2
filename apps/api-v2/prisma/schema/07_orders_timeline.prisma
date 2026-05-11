@@ -1,0 +1,276 @@
+// orders timeline
+
+
+
+model Order {
+  id                String  @id @default(uuid()) @map("id")
+  companyId         String  @map("company_id")
+  branchId          String  @map("branch_id")
+  customerId        String? @map("customer_id")
+  commandId         String? @map("command_id")
+  deliveryAreaId    String? @map("delivery_area_id")
+  driverId          String? @map("driver_id")
+  customerAddressId String? @map("customer_address_id")
+  createdById       String? @map("created_by_id")
+
+  orderNumber    String                    @map("order_number")
+  idempotencyKey String?                   @map("idempotency_key")
+  version        Int                       @default(1) @map("version")
+  orderType      OrderType                 @map("order_type")
+  channel        Channel                   @map("channel")
+  status         OrderStatus               @map("status")
+  paymentStatus  OrderPaymentSummaryStatus @default(UNPAID) @map("payment_status")
+  priority       Int                       @default(0) @map("priority")
+
+  subtotal       Decimal @default(0) @map("subtotal") @db.Decimal(12, 2)
+  discountAmount Decimal @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  deliveryFee    Decimal @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  extraFee       Decimal @default(0) @map("extra_fee") @db.Decimal(12, 2)
+  paidAmount     Decimal @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  refundedAmount Decimal @default(0) @map("refunded_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal @default(0) @map("total_amount") @db.Decimal(12, 2)
+
+  deliveryLatitude       Decimal? @map("delivery_latitude") @db.Decimal(10, 7)
+  deliveryLongitude      Decimal? @map("delivery_longitude") @db.Decimal(10, 7)
+  outsideDeliveryZone    Boolean  @default(false) @map("outside_delivery_zone")
+  deliveryDistanceMeters Decimal  @default(0) @map("delivery_distance_meters") @db.Decimal(12, 2)
+  deliveryDurationSec    Decimal  @default(0) @map("delivery_duration_sec") @db.Decimal(12, 2)
+
+  notes              String? @map("notes")
+  internalNotes      String? @map("internal_notes")
+  publicTrackingToken String? @unique @map("public_tracking_token")
+  cancellationReason String? @map("cancellation_reason")
+
+  confirmedAt          DateTime? @map("confirmed_at")
+  preparationStartedAt DateTime? @map("preparation_started_at")
+  readyAt              DateTime? @map("ready_at")
+  dispatchedAt         DateTime? @map("dispatched_at")
+  deliveredAt          DateTime? @map("delivered_at")
+  finalizedAt          DateTime? @map("finalized_at")
+  canceledAt           DateTime? @map("canceled_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  deletedAt            DateTime? @map("deleted_at")
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch          Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  deliveryArea    DeliveryArea?    @relation("deliveryAreaOrders", fields: [deliveryAreaId], references: [id], onDelete: SetNull)
+  customerAddress CustomerAddress? @relation(fields: [customerAddressId], references: [id], onDelete: SetNull)
+  driver          DeliveryDriver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  command         Command?         @relation(fields: [commandId], references: [id], onDelete: SetNull)
+  createdBy       User?            @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  items                OrderItem[]
+  payments             OrderPayment[]
+  statusLogs           OrderStatusLog[]
+  timelineEvents       OrderTimelineEvent[]
+  receivables          AccountsReceivable[]
+  cashMovements        CashMovement[]
+  financialLedgerEntries FinancialLedgerEntry[]
+  financialReconciliationItems FinancialReconciliationItem[]
+  courierDeliveries    CourierDelivery[]
+  loyaltyTransactions  LoyaltyTransaction[]
+  reviews              Review[]
+  fiscalDocuments      FiscalDocument[] @relation("OrderFiscalDocuments")
+  realtimeOutboxEvents RealtimeOutboxEvent[]
+
+  @@unique([branchId, orderNumber])
+  @@unique([branchId, idempotencyKey])
+  @@index([companyId, branchId])
+  @@index([customerId])
+  @@index([deliveryAreaId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
+  @@index([branchId, status, createdAt])
+  @@index([companyId, status, createdAt])
+  @@index([branchId, channel, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                      String          @id @default(uuid()) @map("id")
+  orderId                 String          @map("order_id")
+  productId               String?         @map("product_id")
+  productVariationId      String?         @map("product_variation_id")
+  comboId                 String?         @map("combo_id")
+  productNameSnapshot     String          @map("product_name_snapshot")
+  variationNameSnapshot   String?         @map("variation_name_snapshot")
+  variationPriceDeltaSnapshot Decimal?    @map("variation_price_delta_snapshot") @db.Decimal(12, 2)
+  station                 KitchenStation? @map("station")
+  quantity                Decimal         @default(1) @map("quantity") @db.Decimal(12, 3)
+  unitPrice               Decimal         @default(0) @map("unit_price") @db.Decimal(12, 2)
+  costSnapshot            Decimal         @default(0) @map("cost_snapshot") @db.Decimal(12, 2)
+  theoreticalCostSnapshot Decimal?        @map("theoretical_cost_snapshot") @db.Decimal(12, 2)
+  totalPrice              Decimal         @default(0) @map("total_price") @db.Decimal(12, 2)
+  notes                   String?         @map("notes")
+  sentToKds               Boolean         @default(false) @map("sent_to_kds")
+  sentToKdsAt             DateTime?       @map("sent_to_kds_at")
+  kdsDispatchError        String?         @map("kds_dispatch_error")
+  status                  OrderItemStatus @default(PENDING) @map("status")
+  startedAt               DateTime?       @map("started_at")
+  finishedAt              DateTime?       @map("finished_at")
+  createdAt               DateTime        @default(now()) @map("created_at")
+
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariation ProductVariation? @relation(fields: [productVariationId], references: [id], onDelete: SetNull)
+  combo            Combo?            @relation(fields: [comboId], references: [id], onDelete: SetNull)
+  addons           OrderItemAddon[]
+  stockMovements   StockMovement[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([productVariationId])
+  @@index([comboId])
+  @@index([station])
+  @@map("order_items")
+}
+
+model OrderItemAddon {
+  id            String  @id @default(uuid()) @map("id")
+  orderItemId   String  @map("order_item_id")
+  addonItemId   String? @map("addon_item_id")
+  nameSnapshot  String  @map("name_snapshot")
+  priceSnapshot Decimal @default(0) @map("price_snapshot") @db.Decimal(12, 2)
+  quantity      Decimal @default(1) @map("quantity") @db.Decimal(12, 3)
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+  @@map("order_item_addons")
+}
+
+model OrderPayment {
+  id                    String             @id @default(uuid()) @map("id")
+  orderId               String             @map("order_id")
+  version               Int                @default(1) @map("version")
+  idempotencyKey        String?            @map("idempotency_key")
+  requestId             String?            @map("request_id")
+  traceId               String?            @map("trace_id")
+  paymentMethod         OrderPaymentMethod @map("payment_method")
+  amount                Decimal            @map("amount") @db.Decimal(12, 2)
+  refundedAmount        Decimal            @default(0) @map("refunded_amount") @db.Decimal(12, 2)
+  status                OrderPaymentStatus @default(PENDING) @map("status")
+  transactionReference  String?            @map("transaction_reference")
+  provider              String?            @map("provider")
+  providerTransactionId String?            @map("provider_transaction_id")
+  authorizedAt          DateTime?          @map("authorized_at")
+  capturedAt            DateTime?          @map("captured_at")
+  canceledAt            DateTime?          @map("canceled_at")
+  refundedAt            DateTime?          @map("refunded_at")
+  metadata              Json?              @map("metadata")
+  paidAt                DateTime?          @map("paid_at")
+
+  order   Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds OrderPaymentRefund[]
+  cashMovements          CashMovement[]
+  receivableSettlements  ReceivableSettlement[]
+  receivables            AccountsReceivable[]
+  financialReconciliationItems FinancialReconciliationItem[]
+  financialLedgerEntries FinancialLedgerEntry[]
+
+  @@index([orderId])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("order_payments")
+}
+
+model OrderStatusLog {
+  id             String       @id @default(uuid()) @map("id")
+  orderId        String       @map("order_id")
+  userId         String?      @map("user_id")
+  previousStatus OrderStatus? @map("previous_status")
+  newStatus      OrderStatus  @map("new_status")
+  notes          String?      @map("notes")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_status_logs")
+}
+
+model OrderTimelineEvent {
+  id             String                 @id @default(uuid()) @map("id")
+  orderId        String                 @map("order_id")
+  actorType      OrderTimelineActorType @default(SYSTEM) @map("actor_type")
+  actorUserId    String?                @map("actor_user_id")
+  eventType      String                 @map("event_type")
+  previousStatus String?                @map("previous_status")
+  newStatus      String?                @map("new_status")
+  sourceModule   String?                @map("source_module")
+  sourceAction   String?                @map("source_action")
+  reasonCode     String?                @map("reason_code")
+  reasonText     String?                @map("reason_text")
+  channel        Channel?               @map("channel")
+  correlationId  String?                @map("correlation_id")
+  payload        Json?                  @map("payload")
+  createdAt      DateTime               @default(now()) @map("created_at")
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([actorUserId])
+  @@index([eventType])
+  @@map("order_timeline_events")
+}
+
+model IdempotencyRequest {
+  id                 String                   @id @default(uuid()) @map("id")
+  key                String                   @map("key")
+  scope              String                   @map("scope")
+  fingerprint        String                   @map("fingerprint")
+  companyId          String?                  @map("company_id")
+  branchId           String?                  @map("branch_id")
+  actorId            String?                  @map("actor_id")
+  requestId          String?                  @map("request_id")
+  traceId            String?                  @map("trace_id")
+  status             IdempotencyRequestStatus @default(PROCESSING) @map("status")
+  resourceType       String?                  @map("resource_type")
+  resourceId         String?                  @map("resource_id")
+  responseStatusCode Int?                     @map("response_status_code")
+  responseBody       Json?                    @map("response_body")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  expiresAt          DateTime                 @map("expires_at")
+
+  @@unique([scope, key])
+  @@index([companyId, branchId])
+  @@index([expiresAt])
+  @@index([status, expiresAt])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("idempotency_requests")
+}
+
+model OrderPaymentRefund {
+  id                String                   @id @default(uuid()) @map("id")
+  orderPaymentId    String                   @map("order_payment_id")
+  orderId           String                   @map("order_id")
+  idempotencyKey    String?                  @map("idempotency_key")
+  requestId         String?                  @map("request_id")
+  traceId           String?                  @map("trace_id")
+  amount            Decimal                  @map("amount") @db.Decimal(12, 2)
+  reasonCode        String                   @map("reason_code")
+  reasonText        String?                  @map("reason_text")
+  externalReference String?                  @map("external_reference")
+  status            OrderPaymentRefundStatus @default(COMPLETED) @map("status")
+  metadata          Json?                    @map("metadata")
+  requestedById     String?                  @map("requested_by_id")
+  processedAt       DateTime?                @map("processed_at")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  payment OrderPayment @relation(fields: [orderPaymentId], references: [id], onDelete: Cascade)
+
+  @@index([orderPaymentId])
+  @@index([orderId, createdAt])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("order_payment_refunds")
+}
+
