@@ -1,4 +1,4 @@
-﻿import { mockMenuProducts, type MenuProduct, type MenuRecommendationConfig } from './menu.mock';
+﻿import { mockMenuProducts, type MenuProduct, type MenuProductVariation, type MenuRecommendationConfig } from './menu.mock';
 import { apiFetch } from '@/lib/api-fetch';
 
 type MenuApiItem = {
@@ -24,6 +24,7 @@ type MenuApiItem = {
   featured?: boolean;
   featuredSortOrder?: number;
   recommendations?: MenuRecommendationConfig;
+  variations?: MenuProductVariation[];
   addonGroups?: Array<{
     id: string;
     name: string;
@@ -116,6 +117,7 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     featured: item.featured === true,
     featuredSortOrder: Number(item.featuredSortOrder ?? 0),
     recommendations: item.recommendations,
+    variations: (item.variations ?? []).map(mapVariation),
     channels: {
       delivery: item.availableDelivery ?? available,
       pdv: item.availablePdv ?? true,
@@ -171,12 +173,34 @@ export type AdminMenuAddonOptionPayload = {
 
 export type MenuAddonGroup = NonNullable<MenuProduct['addonGroups']>[number];
 export type MenuAddonOption = MenuAddonGroup['options'][number];
+export type AdminMenuVariationPayload = {
+  name?: string;
+  sku?: string | null;
+  priceDelta?: number;
+  localPriceDelta?: number;
+  deliveryPriceDelta?: number;
+  active?: boolean;
+  sortOrder?: number;
+};
 export type AdminMenuCategory = {
   id: string;
   name: string;
   count: number;
   active: boolean;
 };
+
+function mapVariation(item: MenuProductVariation): MenuProductVariation {
+  return {
+    id: item.id,
+    name: item.name,
+    sku: item.sku,
+    priceDelta: Number(item.priceDelta ?? 0),
+    localPriceDelta: Number(item.localPriceDelta ?? 0),
+    deliveryPriceDelta: Number(item.deliveryPriceDelta ?? 0),
+    active: item.active !== false,
+    sortOrder: Number(item.sortOrder ?? 0),
+  };
+}
 
 function adminHeaders(input: { companyId: string; branchId?: string }) {
   return {
@@ -453,4 +477,53 @@ export async function deleteAdminMenuAddonOption(input: {
     headers: adminHeaders(input),
   });
 }
+
+export async function fetchAdminMenuProductVariations(input: {
+  companyId: string;
+  branchId?: string;
+  productId: string;
+}): Promise<MenuProductVariation[]> {
+  return apiFetch<MenuProductVariation[]>(`/v2/admin/menu/products/${input.productId}/variations`, {
+    method: 'GET',
+    headers: adminHeaders(input),
+  });
+}
+
+export async function createAdminMenuProductVariation(input: {
+  companyId: string;
+  branchId?: string;
+  productId: string;
+  payload: AdminMenuVariationPayload;
+}): Promise<MenuProductVariation> {
+  return apiFetch<MenuProductVariation>(`/v2/admin/menu/products/${input.productId}/variations`, {
+    method: 'POST',
+    headers: adminHeaders(input),
+    body: JSON.stringify(input.payload),
+  });
+}
+
+export async function updateAdminMenuProductVariation(input: {
+  companyId: string;
+  branchId?: string;
+  variationId: string;
+  payload: AdminMenuVariationPayload;
+}): Promise<MenuProductVariation> {
+  return apiFetch<MenuProductVariation>(`/v2/admin/menu/variations/${input.variationId}`, {
+    method: 'PATCH',
+    headers: adminHeaders(input),
+    body: JSON.stringify(input.payload),
+  });
+}
+
+export async function deleteAdminMenuProductVariation(input: {
+  companyId: string;
+  branchId?: string;
+  variationId: string;
+}): Promise<MenuProductVariation> {
+  return apiFetch<MenuProductVariation>(`/v2/admin/menu/variations/${input.variationId}`, {
+    method: 'DELETE',
+    headers: adminHeaders(input),
+  });
+}
+
 

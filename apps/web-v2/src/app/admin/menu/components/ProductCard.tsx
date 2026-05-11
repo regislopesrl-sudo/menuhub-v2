@@ -10,6 +10,7 @@ export function ProductCard({
   product,
   onEdit,
   onAddons,
+  onVariations,
   onToggle,
   onDuplicate,
   onFeatured,
@@ -19,6 +20,7 @@ export function ProductCard({
   product: MenuProduct;
   onEdit: () => void;
   onAddons: () => void;
+  onVariations: () => void;
   onToggle: () => void;
   onDuplicate: () => void;
   onFeatured: () => void;
@@ -80,6 +82,7 @@ export function ProductCard({
           <Badge>{product.categoryName ?? 'Sem categoria'}</Badge>
           {product.sku ? <Badge>{product.sku}</Badge> : null}
           <Badge>{product.prepTimeMinutes ? `${product.prepTimeMinutes} min` : 'Sem tempo'}</Badge>
+          <Badge tone={(product.variations ?? []).length > 0 ? 'success' : 'default'}>{(product.variations ?? []).length} variacoes</Badge>
           <Badge tone={addonCount > 0 ? 'warning' : 'default'}>{addonCount} grupos</Badge>
         </div>
 
@@ -96,6 +99,7 @@ export function ProductCard({
           <Button onClick={onFeatured} disabled={actionLoading === `featured-${product.id}`}>
             {product.featured ? 'Remover destaque' : 'Destacar'}
           </Button>
+          <Button onClick={onVariations}>Variacoes</Button>
           <Button onClick={onAddons}>Adicionais</Button>
           <Button onClick={onRecommendations}>Peca tambem</Button>
         </div>

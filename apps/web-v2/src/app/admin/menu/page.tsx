@@ -16,18 +16,22 @@ import {
   createAdminMenuCategory,
   commitAdminMenuImport,
   deleteAdminMenuCategory,
+  deleteAdminMenuProductVariation,
   duplicateAdminMenuProduct,
   fetchAdminMenuCategories,
+  fetchAdminMenuProductVariations,
   fetchAdminMenuRecommendations,
   fetchAdminMenu,
   getMenuFallback,
   previewAdminMenuImport,
   reorderAdminMenuFeatured,
   saveAdminMenuRecommendations,
+  createAdminMenuProductVariation,
   updateAdminMenuCategory,
   updateAdminMenuProduct,
   updateAdminMenuProductAvailability,
   updateAdminMenuProductFeatured,
+  updateAdminMenuProductVariation,
   type AdminMenuProductPayload,
   type AdminMenuCategory,
   type MenuImportPreview,
@@ -497,6 +501,7 @@ export default function AdminMenuPage() {
                     product={product}
                     onEdit={() => setModal({ mode: 'edit', product })}
                     onAddons={() => setModal({ mode: 'addons', product })}
+                    onVariations={() => setModal({ mode: 'variations', product })}
                     onToggle={() => void toggleAvailability(product)}
                     onDuplicate={() => void duplicateProduct(product)}
                     onFeatured={() => void toggleFeatured(product)}
@@ -569,6 +574,12 @@ export default function AdminMenuPage() {
           onProductChanged={upsertProduct}
           onError={(message) => setError(message)}
           onNotice={(message) => setNotice(message)}
+          variationApi={{
+            fetch: fetchAdminMenuProductVariations,
+            create: createAdminMenuProductVariation,
+            update: updateAdminMenuProductVariation,
+            remove: deleteAdminMenuProductVariation,
+          }}
           recommendationConfig={recommendationConfig}
           products={products}
           saving={savingAction === 'save' || savingAction === 'save-recommendations'}

@@ -12,6 +12,7 @@ import {
   CreateAddonOptionDto,
   CreateCategoryDto,
   CreateProductDto,
+  CreateProductVariationDto,
   FeaturedReorderDto,
   ImportPreviewDto,
   ProductRecommendationDto,
@@ -20,6 +21,7 @@ import {
   UpdateAddonOptionDto,
   UpdateAvailabilityDto,
   UpdateProductDto,
+  UpdateProductVariationDto,
 } from './dto/admin-menu.dto';
 
 @Controller('v2/admin/menu/products')
@@ -86,6 +88,22 @@ export class AdminMenuController {
     @Body() body: CreateAddonGroupDto,
   ) {
     return this.adminMenuService.createProductAddonGroup(id, ctx, body);
+  }
+
+  @Get(':id/variations')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async listVariations(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.listProductVariations(id, ctx);
+  }
+
+  @Post(':id/variations')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async createVariation(
+    @Param('id') id: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: CreateProductVariationDto,
+  ) {
+    return this.adminMenuService.createProductVariation(id, ctx, body);
   }
 
   @Patch(':id/featured')
@@ -207,5 +225,21 @@ export class AdminMenuUtilityController {
   @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
   async deleteAddonOption(@Param('optionId') optionId: string, @CurrentContext() ctx: RequestContext) {
     return this.adminMenuService.deleteAddonOption(optionId, ctx);
+  }
+
+  @Patch('variations/:variationId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async updateVariation(
+    @Param('variationId') variationId: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: UpdateProductVariationDto,
+  ) {
+    return this.adminMenuService.updateProductVariation(variationId, ctx, body);
+  }
+
+  @Delete('variations/:variationId')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async deleteVariation(@Param('variationId') variationId: string, @CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.deleteProductVariation(variationId, ctx);
   }
 }

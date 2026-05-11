@@ -6,6 +6,7 @@ import type {
   CreateAddonOptionDto,
   CreateCategoryDto,
   CreateProductDto,
+  CreateProductVariationDto,
   FeaturedReorderDto,
   ImportPreviewDto,
   ProductRecommendationDto,
@@ -14,6 +15,7 @@ import type {
   UpdateAvailabilityDto,
   UpdateCategoryDto,
   UpdateProductDto,
+  UpdateProductVariationDto,
 } from './dto/admin-menu.dto';
 
 type AdminMenuProductInput = CreateProductDto | UpdateProductDto;
@@ -23,6 +25,7 @@ type AdminMenuImportInput = ImportPreviewDto;
 type AdminMenuRecommendationInput = ProductRecommendationDto;
 type AdminMenuAddonGroupInput = CreateAddonGroupDto | UpdateAddonGroupDto;
 type AdminMenuAddonOptionInput = CreateAddonOptionDto | UpdateAddonOptionDto;
+type AdminMenuVariationInput = CreateProductVariationDto | UpdateProductVariationDto;
 
 @Injectable()
 export class AdminMenuService {
@@ -275,6 +278,45 @@ export class AdminMenuService {
     return this.mapProduct(product).addonGroups;
   }
 
+  async listProductVariations(productId: string, ctx: RequestContext) {
+    const product = await this.findProductOrThrow(productId, ctx);
+    return this.mapProduct(product).variations;
+  }
+
+  async createProductVariation(productId: string, ctx: RequestContext, input: AdminMenuVariationInput) {
+    await this.findProductOrThrow(productId, ctx);
+    const data = this.buildVariationData(input, true);
+    const variation = await this.prisma.productVariation.create({
+      data: {
+        productId,
+        ...data,
+      } as any,
+    });
+    return this.mapVariation(variation);
+  }
+
+  async updateProductVariation(variationId: string, ctx: RequestContext, input: AdminMenuVariationInput) {
+    await this.findVariationOrThrow(variationId, ctx);
+    const data = this.buildVariationData(input, false);
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Informe pelo menos um campo da variacao para atualizar.');
+    }
+    const variation = await this.prisma.productVariation.update({
+      where: { id: variationId },
+      data,
+    });
+    return this.mapVariation(variation);
+  }
+
+  async deleteProductVariation(variationId: string, ctx: RequestContext) {
+    await this.findVariationOrThrow(variationId, ctx);
+    const variation = await this.prisma.productVariation.update({
+      where: { id: variationId },
+      data: { isActive: false },
+    });
+    return this.mapVariation(variation);
+  }
+
   async createProductAddonGroup(productId: string, ctx: RequestContext, input: AdminMenuAddonGroupInput) {
     const product = await this.findProductOrThrow(productId, ctx);
     const data = this.buildAddonGroupData(input, true);
@@ -519,6 +561,31 @@ export class AdminMenuService {
     return item as any;
   }
 
+  private async findVariationOrThrow(variationId: string, ctx: RequestContext) {
+    await this.assertBranchBelongsToCompany(ctx);
+    const variation = await this.prisma.productVariation.findFirst({
+      where: {
+        id: variationId,
+        product: {
+          companyId: ctx.companyId,
+          deletedAt: null,
+        },
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            companyId: true,
+          },
+        },
+      },
+    });
+    if (!variation) {
+      throw new NotFoundException(`Variacao '${variationId}' nao encontrada para a empresa atual.`);
+    }
+    return variation as any;
+  }
+
   private async assertBranchBelongsToCompany(ctx: RequestContext) {
     if (!ctx.branchId) return;
     const branch = await this.prisma.branch.findFirst({
@@ -548,6 +615,9 @@ export class AdminMenuService {
             },
           },
         },
+      },
+      variations: {
+        orderBy: [{ sortOrder: 'asc' as const }, { name: 'asc' as const }],
       },
     };
   }
@@ -602,7 +672,21 @@ export class AdminMenuService {
         waiter: Boolean(product.availableTable),
       },
       recommendations: recommendation ? this.normalizeRecommendation(recommendation) : undefined,
+      variations: (product.variations ?? []).map((variation: any) => this.mapVariation(variation)),
       addonGroups: (product.addonLinks ?? []).map((link: any) => this.mapAddonGroup(link.addonGroup)),
+    };
+  }
+
+  private mapVariation(variation: any) {
+    return {
+      id: variation.id,
+      name: variation.name,
+      sku: variation.sku ?? undefined,
+      priceDelta: Number(variation.priceDelta ?? 0),
+      localPriceDelta: Number(variation.localPriceDelta ?? 0),
+      deliveryPriceDelta: Number(variation.deliveryPriceDelta ?? 0),
+      active: variation.isActive !== false,
+      sortOrder: Number(variation.sortOrder ?? 0),
     };
   }
 
@@ -779,6 +863,40 @@ export class AdminMenuService {
       ...(name ? { name } : {}),
       ...(price !== undefined ? { price } : creating ? { price: 0 } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : creating ? { isActive: true } : {}),
+      ...(sortOrder !== undefined ? { sortOrder } : creating ? { sortOrder: 0 } : {}),
+    };
+  }
+
+  private buildVariationData(input: AdminMenuVariationInput, creating: boolean) {
+    const name = input.name?.trim();
+    if (creating && !name) {
+      throw new BadRequestException('Nome da variacao e obrigatorio.');
+    }
+    if (!creating && input.name !== undefined && !name) {
+      throw new BadRequestException('Nome da variacao nao pode ser vazio.');
+    }
+
+    const priceDelta = input.priceDelta === undefined ? undefined : Number(input.priceDelta);
+    const localPriceDelta = input.localPriceDelta === undefined ? undefined : Number(input.localPriceDelta);
+    const deliveryPriceDelta = input.deliveryPriceDelta === undefined ? undefined : Number(input.deliveryPriceDelta);
+    if (priceDelta !== undefined) this.assertNonNegative(priceDelta, 'Delta de preco da variacao deve ser maior ou igual a zero.');
+    if (localPriceDelta !== undefined) this.assertNonNegative(localPriceDelta, 'Delta de preco local deve ser maior ou igual a zero.');
+    if (deliveryPriceDelta !== undefined) this.assertNonNegative(deliveryPriceDelta, 'Delta de preco delivery deve ser maior ou igual a zero.');
+
+    const sortOrder = input.sortOrder === undefined ? undefined : Number(input.sortOrder);
+    if (sortOrder !== undefined && (!Number.isInteger(sortOrder) || sortOrder < 0)) {
+      throw new BadRequestException('Ordenacao da variacao deve ser um inteiro maior ou igual a zero.');
+    }
+
+    const normalizedSku = input.sku === undefined ? undefined : this.normalizeOptionalSku(input.sku);
+
+    return {
+      ...(name ? { name } : {}),
+      ...(normalizedSku !== undefined ? { sku: normalizedSku } : {}),
+      ...(priceDelta !== undefined ? { priceDelta } : creating ? { priceDelta: 0 } : {}),
+      ...(localPriceDelta !== undefined ? { localPriceDelta } : creating ? { localPriceDelta: 0 } : {}),
+      ...(deliveryPriceDelta !== undefined ? { deliveryPriceDelta } : creating ? { deliveryPriceDelta: 0 } : {}),
+      ...(typeof input.active === 'boolean' ? { isActive: input.active } : creating ? { isActive: true } : {}),
       ...(sortOrder !== undefined ? { sortOrder } : creating ? { sortOrder: 0 } : {}),
     };
   }

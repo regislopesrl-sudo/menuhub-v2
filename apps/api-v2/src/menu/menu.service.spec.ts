@@ -61,6 +61,12 @@ describe('MenuService', () => {
             },
           },
         },
+        variations: {
+          where: {
+            isActive: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        },
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
@@ -83,6 +89,7 @@ describe('MenuService', () => {
             deletedAt: null,
             category: { name: 'Pizzas' },
             addonLinks: [],
+            variations: [],
           },
         ]),
       },
@@ -101,6 +108,7 @@ describe('MenuService', () => {
         categoryName: 'Pizzas',
         available: true,
         addonGroups: [],
+        variations: [],
       },
     ]);
   });
@@ -121,6 +129,18 @@ describe('MenuService', () => {
             availableDelivery: true,
             deletedAt: null,
             category: { name: 'Lanches' },
+            variations: [
+              {
+                id: 'var_1',
+                name: 'Grande',
+                sku: 'BURGER-G',
+                priceDelta: 8,
+                localPriceDelta: 6,
+                deliveryPriceDelta: 9,
+                isActive: true,
+                sortOrder: 1,
+              },
+            ],
             addonLinks: [
               {
                 addonGroup: {
@@ -166,6 +186,18 @@ describe('MenuService', () => {
               { id: 'add_1', name: 'Queijo', price: 4, available: true },
               { id: 'add_2', name: 'Bacon', price: 6, available: true },
             ],
+          },
+        ],
+        variations: [
+          {
+            id: 'var_1',
+            name: 'Grande',
+            sku: 'BURGER-G',
+            priceDelta: 8,
+            localPriceDelta: 6,
+            deliveryPriceDelta: 9,
+            active: true,
+            sortOrder: 1,
           },
         ],
       },
