@@ -19,6 +19,7 @@ import { OnboardingController } from '../onboarding/onboarding.controller';
 import { BranchesController } from '../branches/branches.controller';
 import { PLATFORM_PERMISSIONS } from './rbac';
 import { RecipesController } from '../recipes/recipes.controller';
+import { StockController } from '../stock/stock.controller';
 import { MODULE_ACCESS_KEY } from '../modules/module-access.decorator';
 
 function methodPermissions(target: object, methodName: string): string[] {
@@ -159,6 +160,29 @@ describe('RBAC route permissions metadata', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, ChannelsController.prototype.kioskCheckout)).toBe(true);
   });
 
+  it('stock usa modulo stock e permissions de inventario', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, StockController)).toBe('stock');
+    expect(methodPermissions(StockController.prototype, 'listItems')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_READ,
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+    expect(methodPermissions(StockController.prototype, 'createItem')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+    expect(methodPermissions(StockController.prototype, 'manualEntry')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+    expect(methodPermissions(StockController.prototype, 'manualExit')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+    expect(methodPermissions(StockController.prototype, 'applyInventoryCount')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+    expect(methodPermissions(StockController.prototype, 'listBreakageAlerts')).toEqual([
+      TENANT_PERMISSIONS.INVENTORY_READ,
+      TENANT_PERMISSIONS.INVENTORY_MANAGE,
+    ]);
+  });
   it('recipes usa modulo stock e permissoes premium de ficha/producao/custo', () => {
     expect(Reflect.getMetadata(MODULE_ACCESS_KEY, RecipesController)).toBe('stock');
     expect(methodPermissions(RecipesController.prototype, 'listRecipes')).toEqual([
