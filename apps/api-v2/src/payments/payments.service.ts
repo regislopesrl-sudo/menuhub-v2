@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { RequestContext } from '../common/request-context';
 import { OrderPrismaRepository } from '../orders/order.prisma';
 import { OrdersEventsService } from '../orders/orders-events.service';
@@ -9,6 +9,8 @@ import { sanitizeAuditMetadata } from '../common/audit-log';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     @Inject(PAYMENT_PROVIDER_TOKEN) private readonly provider: PaymentProvider,
     private readonly orderRepository: OrderPrismaRepository,
@@ -58,8 +60,8 @@ export class PaymentsService {
 
     const claimed = await this.tryClaimWebhookEvent(provider, eventId, payload);
     if (!claimed.canProcess) {
-      console.warn(
-        `[PaymentsService] Webhook duplicado ja processado. provider=${provider} eventId=${eventId}`,
+      this.logger.warn(
+        `Webhook duplicado ja processado. provider=${provider} eventId=${eventId}`,
       );
       return {
         provider,
@@ -121,14 +123,14 @@ export class PaymentsService {
       }
 
       await this.markWebhookEventProcessed(provider, eventId);
-      console.info(
-        `[PaymentsService] Webhook processado com sucesso. provider=${provider} eventId=${eventId}`,
+      this.logger.log(
+        `Webhook processado com sucesso. provider=${provider} eventId=${eventId}`,
       );
       return result;
     } catch (error) {
       await this.releaseUnprocessedWebhookEvent(provider, eventId);
-      console.warn(
-        `[PaymentsService] Webhook falhou e ficou elegivel para retry. provider=${provider} eventId=${eventId}`,
+      this.logger.warn(
+        `Webhook falhou e ficou elegivel para retry. provider=${provider} eventId=${eventId}`,
       );
       throw error;
     }
@@ -164,8 +166,8 @@ export class PaymentsService {
         if (existing?.processedAt) {
           return { canProcess: false };
         }
-        console.warn(
-          `[PaymentsService] Webhook existente sem processedAt. Tentando reprocessar. provider=${provider} eventId=${eventId}`,
+        this.logger.warn(
+          `Webhook existente sem processedAt. Tentando reprocessar. provider=${provider} eventId=${eventId}`,
         );
         return { canProcess: true };
       }

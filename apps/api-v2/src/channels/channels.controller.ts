@@ -100,7 +100,7 @@ export class ChannelsController {
 
   @Post('pdv/checkout')
   @UseGuards(ModuleGuard)
-  @ModuleAccess('pdv' as any)
+  @ModuleAccess('pdv')
   @RequirePermissions(TENANT_PERMISSIONS.PDV_OPERATE)
   async pdvCheckout(
     @Body() body: PdvCheckoutRequestBody,

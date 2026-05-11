@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { saveAuthSession } from '@/lib/auth-session';
-import { apiFetch } from '@/lib/api-fetch';
+import { apiFetch, getApiBase } from '@/lib/api-fetch';
 import { readRoleFromAccessToken } from '@/lib/auth-claims';
 
 type LoginResponse = {
@@ -32,6 +32,13 @@ export default function HomePage() {
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'up' | 'down'>('checking');
   const [wsStatus, setWsStatus] = useState<'checking' | 'up' | 'down'>('checking');
+
+  const environmentLabel = useMemo(() => {
+    const base = getApiBase().toLowerCase();
+    if (base.includes('hml')) return 'Ambiente HML';
+    if (base.includes('localhost') || base.includes('127.0.0.1')) return 'Ambiente Local';
+    return 'Ambiente Operacional';
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -119,7 +126,7 @@ export default function HomePage() {
         <p className={styles.subtitle}>Gestão operacional para restaurante, PDV, cozinha e delivery</p>
 
         <div className={styles.badgeRow}>
-          <Badge tone="warning">Ambiente HML</Badge>
+          <Badge tone="warning">{environmentLabel}</Badge>
           <small className={styles.statusText}>
             API: {apiStatus === 'up' ? 'online' : apiStatus === 'down' ? 'offline' : 'verificando'} | WS:{' '}
             {wsStatus === 'up' ? 'conectado' : wsStatus === 'down' ? 'desconectado' : 'verificando'}

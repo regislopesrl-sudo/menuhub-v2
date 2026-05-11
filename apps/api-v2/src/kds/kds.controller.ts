@@ -9,7 +9,7 @@ import { ModuleGuard } from '../modules/module.guard';
 
 @Controller('v2/kds')
 @UseGuards(ModuleGuard)
-@ModuleAccess('kds' as any)
+@ModuleAccess('kds')
 @RequirePermissions(TENANT_PERMISSIONS.KDS_OPERATE)
 export class KdsController {
   constructor(private readonly kdsService: KdsService) {}
