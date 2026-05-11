@@ -1,0 +1,10 @@
+// Prisma schema entrypoint.
+// Domain models are organized in sibling .prisma files in this folder.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

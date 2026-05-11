@@ -1,0 +1,337 @@
+// finance
+
+
+
+model CashRegister {
+  id             String             @id @default(uuid()) @map("id")
+  branchId       String             @map("branch_id")
+  version        Int                @default(1) @map("version")
+  openedById     String?            @map("opened_by_id")
+  closedById     String?            @map("closed_by_id")
+  openingBalance Decimal            @default(0) @map("opening_balance") @db.Decimal(12, 2)
+  closingBalance Decimal?           @map("closing_balance") @db.Decimal(12, 2)
+  expectedClosingBalance Decimal?   @map("expected_closing_balance") @db.Decimal(12, 2)
+  declaredClosingBalance Decimal?   @map("declared_closing_balance") @db.Decimal(12, 2)
+  differenceAmount       Decimal?   @map("difference_amount") @db.Decimal(12, 2)
+  closureNotes           String?    @map("closure_notes")
+  status         CashRegisterStatus @default(OPEN) @map("status")
+  openedAt       DateTime           @default(now()) @map("opened_at")
+  closedAt       DateTime?          @map("closed_at")
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  openedBy  User?  @relation("CashRegisterOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  closedBy  User?  @relation("CashRegisterClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  movements CashMovement[]
+  dailyClosures DailyFinancialClosure[]
+
+  @@index([branchId])
+  @@index([branchId, status])
+  @@map("cash_registers")
+}
+
+model CashMovement {
+  id             String           @id @default(uuid()) @map("id")
+  branchId       String           @map("branch_id")
+  cashRegisterId String           @map("cash_register_id")
+  orderId        String?          @map("order_id")
+  paymentId      String?          @map("payment_id")
+  createdById    String?          @map("created_by_id")
+  movementType   CashMovementType @map("movement_type")
+  referenceType  FinancialOriginType? @map("reference_type")
+  referenceId    String?          @map("reference_id")
+  idempotencyKey String?          @map("idempotency_key")
+  category       String?          @map("category")
+  amount         Decimal          @map("amount") @db.Decimal(12, 2)
+  notes          String?          @map("notes")
+  reversedAt     DateTime?        @map("reversed_at")
+  reversalReason String?          @map("reversal_reason")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  branch              Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  cashRegister        CashRegister  @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+  order               Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment             OrderPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy           User?         @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  financialLedgerEntries FinancialLedgerEntry[]
+
+  @@index([cashRegisterId])
+  @@index([branchId, createdAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([idempotencyKey])
+  @@map("cash_movements")
+}
+
+model AccountsPayable {
+  id              String                @id @default(uuid()) @map("id")
+  branchId        String                @map("branch_id")
+  supplierId      String?               @map("supplier_id")
+  createdById     String?               @map("created_by_id")
+  approvedById    String?               @map("approved_by_id")
+  updatedById     String?               @map("updated_by_id")
+  description     String                @map("description")
+  amount          Decimal               @map("amount") @db.Decimal(12, 2)
+  paidAmount      Decimal               @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  dueDate         DateTime              @map("due_date")
+  status          AccountsPayableStatus @default(PENDING) @map("status")
+  originType      FinancialOriginType   @default(MANUAL) @map("origin_type")
+  originId        String?               @map("origin_id")
+  externalReference String?             @map("external_reference")
+  reasonCode      String?               @map("reason_code")
+  reasonText      String?               @map("reason_text")
+  settledAt       DateTime?             @map("settled_at")
+  canceledAt      DateTime?             @map("canceled_at")
+  purchaseOrderId String?               @map("purchase_order_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+
+  branch   Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  settlements          PayableSettlement[]
+  financialLedgerEntries FinancialLedgerEntry[]
+
+  @@index([branchId])
+  @@index([branchId, status, dueDate])
+  @@index([supplierId])
+  @@index([dueDate])
+  @@map("accounts_payable")
+}
+
+model AccountsReceivable {
+  id          String                   @id @default(uuid()) @map("id")
+  branchId    String                   @map("branch_id")
+  customerId  String?                  @map("customer_id")
+  orderId     String?                  @map("order_id")
+  paymentId   String?                  @map("payment_id")
+  createdById String?                  @map("created_by_id")
+  updatedById String?                  @map("updated_by_id")
+  description String                   @map("description")
+  amount      Decimal                  @map("amount") @db.Decimal(12, 2)
+  paidAmount  Decimal                  @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  dueDate     DateTime?                @map("due_date")
+  expectedSettlementDate DateTime?     @map("expected_settlement_date")
+  settledAt   DateTime?                @map("settled_at")
+  canceledAt  DateTime?                @map("canceled_at")
+  refundedAt  DateTime?                @map("refunded_at")
+  originType  FinancialOriginType      @default(MANUAL) @map("origin_type")
+  originId    String?                  @map("origin_id")
+  externalReference String?            @map("external_reference")
+  reasonCode  String?                  @map("reason_code")
+  reasonText  String?                  @map("reason_text")
+  status      AccountsReceivableStatus @default(PENDING) @map("status")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  branch   Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment  OrderPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  settlements            ReceivableSettlement[]
+  financialLedgerEntries FinancialLedgerEntry[]
+
+  @@index([branchId])
+  @@index([branchId, status, dueDate])
+  @@index([customerId])
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([externalReference])
+  @@map("accounts_receivable")
+}
+
+model ReceivableSettlement {
+  id                   String                   @id @default(uuid()) @map("id")
+  accountsReceivableId String                   @map("accounts_receivable_id")
+  branchId             String                   @map("branch_id")
+  paymentId            String?                  @map("payment_id")
+  createdById          String?                  @map("created_by_id")
+  settlementMethod     FinancialSettlementMethod @default(EXTERNAL) @map("settlement_method")
+  amount               Decimal                  @map("amount") @db.Decimal(12, 2)
+  settledAt            DateTime                 @default(now()) @map("settled_at")
+  externalReference    String?                  @map("external_reference")
+  reasonCode           String?                  @map("reason_code")
+  reasonText           String?                  @map("reason_text")
+  idempotencyKey       String?                  @map("idempotency_key")
+  requestId            String?                  @map("request_id")
+  traceId              String?                  @map("trace_id")
+  metadata             Json?                    @map("metadata")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+
+  receivable AccountsReceivable @relation(fields: [accountsReceivableId], references: [id], onDelete: Cascade)
+  branch     Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  payment    OrderPayment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy  User?              @relation("ReceivableSettlementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  financialLedgerEntries FinancialLedgerEntry[]
+  reconciliationItems    FinancialReconciliationItem[]
+
+  @@index([accountsReceivableId, settledAt])
+  @@index([branchId, settledAt])
+  @@index([paymentId])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("receivable_settlements")
+}
+
+model PayableSettlement {
+  id                 String                   @id @default(uuid()) @map("id")
+  accountsPayableId  String                   @map("accounts_payable_id")
+  branchId           String                   @map("branch_id")
+  createdById        String?                  @map("created_by_id")
+  settlementMethod   FinancialSettlementMethod @default(EXTERNAL) @map("settlement_method")
+  amount             Decimal                  @map("amount") @db.Decimal(12, 2)
+  settledAt          DateTime                 @default(now()) @map("settled_at")
+  externalReference  String?                  @map("external_reference")
+  reasonCode         String?                  @map("reason_code")
+  reasonText         String?                  @map("reason_text")
+  idempotencyKey     String?                  @map("idempotency_key")
+  requestId          String?                  @map("request_id")
+  traceId            String?                  @map("trace_id")
+  metadata           Json?                    @map("metadata")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+
+  payable    AccountsPayable @relation(fields: [accountsPayableId], references: [id], onDelete: Cascade)
+  branch     Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy  User?           @relation("PayableSettlementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  financialLedgerEntries FinancialLedgerEntry[]
+  reconciliationItems    FinancialReconciliationItem[]
+
+  @@index([accountsPayableId, settledAt])
+  @@index([branchId, settledAt])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("payable_settlements")
+}
+
+model FinancialLedgerEntry {
+  id                   String             @id @default(uuid()) @map("id")
+  branchId             String             @map("branch_id")
+  actorUserId          String?            @map("actor_user_id")
+  entryType            String             @map("entry_type")
+  originType           FinancialOriginType @default(ADJUSTMENT) @map("origin_type")
+  originId             String?            @map("origin_id")
+  accountsReceivableId String?            @map("accounts_receivable_id")
+  accountsPayableId    String?            @map("accounts_payable_id")
+  receivableSettlementId String?          @map("receivable_settlement_id")
+  payableSettlementId  String?            @map("payable_settlement_id")
+  cashMovementId       String?            @map("cash_movement_id")
+  paymentId            String?            @map("payment_id")
+  orderId              String?            @map("order_id")
+  amount               Decimal            @map("amount") @db.Decimal(12, 2)
+  statusPrevious       String?            @map("status_previous")
+  statusNew            String?            @map("status_new")
+  reasonCode           String?            @map("reason_code")
+  reasonText           String?            @map("reason_text")
+  externalReference    String?            @map("external_reference")
+  requestId            String?            @map("request_id")
+  traceId              String?            @map("trace_id")
+  idempotencyKey       String?            @map("idempotency_key")
+  metadata             Json?              @map("metadata")
+  createdAt            DateTime           @default(now()) @map("created_at")
+
+  branch              Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  actorUser           User?                @relation("FinancialLedgerEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  receivable          AccountsReceivable?  @relation(fields: [accountsReceivableId], references: [id], onDelete: SetNull)
+  payable             AccountsPayable?     @relation(fields: [accountsPayableId], references: [id], onDelete: SetNull)
+  receivableSettlement ReceivableSettlement? @relation(fields: [receivableSettlementId], references: [id], onDelete: SetNull)
+  payableSettlement   PayableSettlement?   @relation(fields: [payableSettlementId], references: [id], onDelete: SetNull)
+  cashMovement        CashMovement?        @relation(fields: [cashMovementId], references: [id], onDelete: SetNull)
+  payment             OrderPayment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  order               Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, createdAt])
+  @@index([accountsReceivableId])
+  @@index([accountsPayableId])
+  @@index([cashMovementId])
+  @@index([paymentId])
+  @@index([orderId])
+  @@index([requestId])
+  @@index([traceId])
+  @@map("financial_ledger_entries")
+}
+
+model FinancialReconciliationBatch {
+  id             String                      @id @default(uuid()) @map("id")
+  branchId       String                      @map("branch_id")
+  createdById    String?                     @map("created_by_id")
+  periodStart    DateTime                    @map("period_start")
+  periodEnd      DateTime                    @map("period_end")
+  channel        Channel?                    @map("channel")
+  status         FinancialReconciliationStatus @default(PENDING) @map("status")
+  notes          String?                     @map("notes")
+  closedAt       DateTime?                   @map("closed_at")
+  createdAt      DateTime                    @default(now()) @map("created_at")
+  updatedAt      DateTime                    @updatedAt @map("updated_at")
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("FinancialReconciliationBatchCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items     FinancialReconciliationItem[]
+
+  @@index([branchId, status, periodStart])
+  @@map("financial_reconciliation_batches")
+}
+
+model FinancialReconciliationItem {
+  id                    String                        @id @default(uuid()) @map("id")
+  batchId               String                        @map("batch_id")
+  branchId              String                        @map("branch_id")
+  orderId               String?                       @map("order_id")
+  paymentId             String?                       @map("payment_id")
+  receivableSettlementId String?                      @map("receivable_settlement_id")
+  payableSettlementId   String?                       @map("payable_settlement_id")
+  expectedAmount        Decimal                       @map("expected_amount") @db.Decimal(12, 2)
+  actualAmount          Decimal                       @map("actual_amount") @db.Decimal(12, 2)
+  differenceAmount      Decimal                       @map("difference_amount") @db.Decimal(12, 2)
+  status                FinancialReconciliationStatus @default(PENDING) @map("status")
+  reasonCode            String?                       @map("reason_code")
+  reasonText            String?                       @map("reason_text")
+  resolvedById          String?                       @map("resolved_by_id")
+  resolvedAt            DateTime?                     @map("resolved_at")
+  createdAt             DateTime                      @default(now()) @map("created_at")
+  updatedAt             DateTime                      @updatedAt @map("updated_at")
+
+  batch               FinancialReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  branch              Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  order               Order?                       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  payment             OrderPayment?                @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  receivableSettlement ReceivableSettlement?       @relation(fields: [receivableSettlementId], references: [id], onDelete: SetNull)
+  payableSettlement   PayableSettlement?           @relation(fields: [payableSettlementId], references: [id], onDelete: SetNull)
+  resolvedBy          User?                        @relation("FinancialReconciliationItemResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([batchId, status])
+  @@index([branchId, status, createdAt])
+  @@index([orderId])
+  @@index([paymentId])
+  @@map("financial_reconciliation_items")
+}
+
+model DailyFinancialClosure {
+  id                     String                    @id @default(uuid()) @map("id")
+  branchId               String                    @map("branch_id")
+  cashRegisterId         String?                   @map("cash_register_id")
+  closureDate            DateTime                  @map("closure_date")
+  status                 DailyFinancialClosureStatus @default(OPEN) @map("status")
+  totalSales             Decimal                   @default(0) @map("total_sales") @db.Decimal(12, 2)
+  totalReceivables       Decimal                   @default(0) @map("total_receivables") @db.Decimal(12, 2)
+  totalPayables          Decimal                   @default(0) @map("total_payables") @db.Decimal(12, 2)
+  totalRefunds           Decimal                   @default(0) @map("total_refunds") @db.Decimal(12, 2)
+  totalCanceled          Decimal                   @default(0) @map("total_canceled") @db.Decimal(12, 2)
+  expectedCashBalance    Decimal                   @default(0) @map("expected_cash_balance") @db.Decimal(12, 2)
+  declaredCashBalance    Decimal                   @default(0) @map("declared_cash_balance") @db.Decimal(12, 2)
+  differenceAmount       Decimal                   @default(0) @map("difference_amount") @db.Decimal(12, 2)
+  summary                Json?                     @map("summary")
+  notes                  String?                   @map("notes")
+  createdById            String?                   @map("created_by_id")
+  closedById             String?                   @map("closed_by_id")
+  closedAt               DateTime?                 @map("closed_at")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("DailyFinancialClosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  closedBy     User?        @relation("DailyFinancialClosureClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, closureDate])
+  @@index([branchId, status, closureDate])
+  @@map("daily_financial_closures")
+}
+

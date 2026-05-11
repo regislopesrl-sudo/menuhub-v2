@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prisma:generate": "node scripts/prisma-with-env.mjs generate --schema prisma/schema.prisma",
-    "prisma:migrate:deploy": "node scripts/prisma-with-env.mjs migrate deploy --schema prisma/schema.prisma",
+    "prisma:generate": "node scripts/prisma-with-env.mjs generate --schema prisma/schema",
+    "prisma:migrate:deploy": "node scripts/prisma-with-env.mjs migrate deploy --schema prisma/schema",
     "seed:local": "node prisma/seed-local.mjs",
     "seed:technical-admin": "node src/seed/technical-admin.seed.mjs",
     "prebuild": "npm run build --workspace @delivery-futuro/shared-types && npm run build --workspace @delivery-futuro/order-core",
     "build": "tsc -p tsconfig.json",
     "test": "jest --config jest.config.js",
     "start": "node dist/main.js",
-    "prisma:validate": "node scripts/prisma-with-env.mjs validate --schema prisma/schema.prisma",
-    "prisma:migrate:status": "node scripts/prisma-with-env.mjs migrate status --schema prisma/schema.prisma",
-    "prisma:db:push:local": "node scripts/prisma-with-env.mjs db push --schema prisma/schema.prisma"
+    "prisma:validate": "node scripts/prisma-with-env.mjs validate --schema prisma/schema",
+    "prisma:migrate:status": "node scripts/prisma-with-env.mjs migrate status --schema prisma/schema",
+    "prisma:db:push:local": "node scripts/prisma-with-env.mjs db push --schema prisma/schema"
   },
   "dependencies": {
     "@delivery-futuro/order-core": "0.1.0",

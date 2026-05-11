@@ -1,0 +1,148 @@
+// imports
+
+
+
+model MenuImportJob {
+  id                String              @id @default(uuid()) @map("id")
+  companyId         String              @map("company_id")
+  branchId          String?             @map("branch_id")
+  createdById       String?             @map("created_by_id")
+  createdByEmail    String?             @map("created_by_email")
+  fileName          String              @map("file_name")
+  fileMimeType      String              @map("file_mime_type")
+  sourceFormat      String              @map("source_format")
+  mode              MenuImportMode      @default(UPSERT) @map("mode")
+  status            MenuImportJobStatus @default(PREVIEWED) @map("status")
+  detectedDelimiter String?             @map("detected_delimiter")
+  detectedColumns   Json?               @map("detected_columns")
+  rawContent        String              @map("raw_content")
+  totalRows         Int                 @default(0) @map("total_rows")
+  validRows         Int                 @default(0) @map("valid_rows")
+  invalidRows       Int                 @default(0) @map("invalid_rows")
+  createdCount      Int                 @default(0) @map("created_count")
+  updatedCount      Int                 @default(0) @map("updated_count")
+  skippedCount      Int                 @default(0) @map("skipped_count")
+  errorCount        Int                 @default(0) @map("error_count")
+  summary           Json?               @map("summary")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  completedAt       DateTime?           @map("completed_at")
+  rows              MenuImportRow[]
+
+  @@index([companyId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([status, createdAt])
+  @@map("menu_import_jobs")
+}
+
+model SalesImportJob {
+  id                String               @id @default(uuid()) @map("id")
+  companyId         String               @map("company_id")
+  branchId          String?              @map("branch_id")
+  createdById       String?              @map("created_by_id")
+  createdByEmail    String?              @map("created_by_email")
+  fileName          String               @map("file_name")
+  fileMimeType      String               @map("file_mime_type")
+  sourceFormat      String               @map("source_format")
+  mode              SalesImportMode      @default(UPSERT) @map("mode")
+  status            SalesImportJobStatus @default(PREVIEWED) @map("status")
+  detectedDelimiter String?              @map("detected_delimiter")
+  detectedColumns   Json?                @map("detected_columns")
+  rawContent        String               @map("raw_content")
+  totalRows         Int                  @default(0) @map("total_rows")
+  validRows         Int                  @default(0) @map("valid_rows")
+  invalidRows       Int                  @default(0) @map("invalid_rows")
+  createdCount      Int                  @default(0) @map("created_count")
+  updatedCount      Int                  @default(0) @map("updated_count")
+  skippedCount      Int                  @default(0) @map("skipped_count")
+  errorCount        Int                  @default(0) @map("error_count")
+  summary           Json?                @map("summary")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  completedAt       DateTime?            @map("completed_at")
+  rows              SalesImportRow[]
+  sales             ImportedSale[]
+
+  @@index([companyId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([status, createdAt])
+  @@map("sales_import_jobs")
+}
+
+model SalesImportRow {
+  id                String               @id @default(uuid()) @map("id")
+  jobId             String               @map("job_id")
+  lineNumber        Int                  @map("line_number")
+  status            SalesImportRowStatus @default(VALID) @map("status")
+  action            String?              @map("action")
+  entityType        String?              @map("entity_type")
+  entityId          String?              @map("entity_id")
+  rawPayload        Json?                @map("raw_payload")
+  normalizedPayload Json?                @map("normalized_payload")
+  messages          Json?                @map("messages")
+  resultPayload     Json?                @map("result_payload")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  job SalesImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, lineNumber])
+  @@index([status])
+  @@map("sales_import_rows")
+}
+
+model ImportedSale {
+  id                   String    @id @default(uuid()) @map("id")
+  companyId            String    @map("company_id")
+  branchId             String?   @map("branch_id")
+  importJobId          String    @map("import_job_id")
+  externalSaleId       String?   @map("external_sale_id")
+  orderNumber          String?   @map("order_number")
+  dedupKey             String    @map("dedup_key")
+  saleDate             DateTime  @map("sale_date")
+  channel              String    @map("channel")
+  customerName         String?   @map("customer_name")
+  subtotal             Decimal   @default(0) @map("subtotal") @db.Decimal(12, 2)
+  discountAmount       Decimal   @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  deliveryFee          Decimal   @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  totalAmount          Decimal   @default(0) @map("total_amount") @db.Decimal(12, 2)
+  paymentMethod        String?   @map("payment_method")
+  saleStatus           String    @map("sale_status")
+  importedBranchName   String?   @map("imported_branch_name")
+  notes                String?   @map("notes")
+  rawPayload           Json?     @map("raw_payload")
+  normalizedPayload    Json?     @map("normalized_payload")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  lastImportedAt       DateTime  @default(now()) @map("last_imported_at")
+
+  importJob SalesImportJob @relation(fields: [importJobId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, dedupKey])
+  @@index([branchId, saleDate])
+  @@index([importJobId, saleDate])
+  @@index([saleDate])
+  @@map("imported_sales")
+}
+
+model MenuImportRow {
+  id                String              @id @default(uuid()) @map("id")
+  jobId             String              @map("job_id")
+  lineNumber        Int                 @map("line_number")
+  status            MenuImportRowStatus @map("status")
+  action            String?             @map("action")
+  entityType        String?             @map("entity_type")
+  entityId          String?             @map("entity_id")
+  rawPayload        Json?               @map("raw_payload")
+  normalizedPayload Json?               @map("normalized_payload")
+  messages          Json?               @map("messages")
+  resultPayload     Json?               @map("result_payload")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  job               MenuImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, lineNumber])
+  @@index([jobId, status])
+  @@map("menu_import_rows")
+}
+

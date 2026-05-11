@@ -1,0 +1,220 @@
+// catalog menu
+
+
+
+model ProductCategory {
+  id        String  @id @default(uuid()) @map("id")
+  companyId String  @map("company_id")
+  name      String  @map("name")
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@index([companyId])
+  @@map("product_categories")
+}
+
+model Product {
+  id                  String          @id @default(uuid()) @map("id")
+  companyId           String          @map("company_id")
+  categoryId          String?         @map("category_id")
+  name                String          @map("name")
+  description         String?         @map("description")
+  sku                 String?         @map("sku")
+  salePrice           Decimal         @map("sale_price") @db.Decimal(12, 2)
+  promotionalPrice    Decimal?        @map("promotional_price") @db.Decimal(12, 2)
+  costPrice           Decimal         @default(0) @map("cost_price") @db.Decimal(12, 2)
+  localPrice          Decimal         @default(0) @map("local_price") @db.Decimal(12, 2)
+  deliveryPickupPrice Decimal         @default(0) @map("delivery_pickup_price") @db.Decimal(12, 2)
+  pdvCode             String?         @map("pdv_code")
+  prepTimeMinutes     Int             @default(0) @map("prep_time_minutes")
+  imageUrl            String?         @map("image_url")
+  recipeId            String?         @map("recipe_id")
+  kitchenStation      KitchenStation? @map("kitchen_station")
+  isActive            Boolean         @default(true) @map("is_active")
+  isFeatured          Boolean         @default(false) @map("is_featured")
+  controlsStock       Boolean         @default(false) @map("controls_stock")
+  allowNotes          Boolean         @default(true) @map("allow_notes")
+  availableDelivery   Boolean         @default(true) @map("available_delivery")
+  availableCounter    Boolean         @default(true) @map("available_counter")
+  availableKiosk      Boolean         @default(true) @map("available_kiosk")
+  availableTable      Boolean         @default(true) @map("available_table")
+  sortOrder           Int             @default(0) @map("sort_order")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  deletedAt           DateTime?       @map("deleted_at")
+
+  company  Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  recipe   Recipe?          @relation("RecipeProducts", fields: [recipeId], references: [id], onDelete: SetNull)
+
+  addonLinks ProductAddonGroup[]
+  comboItems ComboItem[]
+  orderItems OrderItem[]
+  variations ProductVariation[]
+  fiscalProfile ProductFiscalProfile?
+
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([recipeId])
+  @@map("products")
+}
+
+model ProductFiscalProfile {
+  id          String   @id @default(uuid()) @map("id")
+  productId   String   @unique @map("product_id")
+  enabled     Boolean  @default(true) @map("enabled")
+  ncm         String   @map("ncm")
+  cfop        String   @map("cfop")
+  cst         String?  @map("cst")
+  csosn       String?  @map("csosn")
+  origin      String   @map("origin")
+  fiscalUnit  String   @map("fiscal_unit")
+  cest        String?  @map("cest")
+  fiscalNotes String?  @map("fiscal_notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([enabled])
+  @@map("product_fiscal_profiles")
+}
+
+model ProductVariation {
+  id               String   @id @default(uuid()) @map("id")
+  productId        String   @map("product_id")
+  name             String   @map("name")
+  sku              String?  @map("sku")
+  priceDelta       Decimal  @default(0) @map("price_delta") @db.Decimal(12, 2)
+  localPriceDelta  Decimal  @default(0) @map("local_price_delta") @db.Decimal(12, 2)
+  deliveryPriceDelta Decimal @default(0) @map("delivery_price_delta") @db.Decimal(12, 2)
+  isActive         Boolean  @default(true) @map("is_active")
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@index([productId, isActive, sortOrder])
+  @@unique([productId, name])
+  @@map("product_variations")
+}
+
+model AddonGroup {
+  id            String  @id @default(uuid()) @map("id")
+  companyId     String  @map("company_id")
+  name          String  @map("name")
+  minSelect     Int     @default(0) @map("min_select")
+  maxSelect     Int     @default(1) @map("max_select")
+  required      Boolean @default(false) @map("required")
+  allowMultiple Boolean @default(false) @map("allow_multiple")
+
+  company      Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items        AddonItem[]
+  productLinks ProductAddonGroup[]
+
+  @@index([companyId])
+  @@map("addon_groups")
+}
+
+model AddonItem {
+  id        String  @id @default(uuid()) @map("id")
+  groupId   String  @map("group_id")
+  name      String  @map("name")
+  price     Decimal @map("price") @db.Decimal(12, 2)
+  isActive  Boolean @default(true) @map("is_active")
+  sortOrder Int     @default(0) @map("sort_order")
+
+  group AddonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("addon_items")
+}
+
+model ProductAddonGroup {
+  id           String @id @default(uuid()) @map("id")
+  productId    String @map("product_id")
+  addonGroupId String @map("addon_group_id")
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addonGroup AddonGroup @relation(fields: [addonGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, addonGroupId])
+  @@map("product_addon_groups")
+}
+
+model Combo {
+  id          String   @id @default(uuid()) @map("id")
+  companyId   String   @map("company_id")
+  name        String   @map("name")
+  description String?  @map("description")
+  price       Decimal  @default(0) @map("price") @db.Decimal(12, 2)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items   ComboItem[]
+  orderItems OrderItem[]
+
+  @@index([companyId])
+  @@map("combos")
+}
+
+model ComboItem {
+  id        String  @id @default(uuid()) @map("id")
+  comboId   String  @map("combo_id")
+  productId String  @map("product_id")
+  quantity  Decimal @default(1) @map("quantity") @db.Decimal(12, 3)
+
+  combo   Combo   @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([comboId, productId])
+  @@map("combo_items")
+}
+
+model MenuProduct {
+  id        String   @id @default(uuid()) @map("id")
+  companyId String   @map("company_id")
+  name      String   @map("name")
+  recipeId  String?  @unique @map("recipe_id")
+  price     Decimal  @map("price") @db.Decimal(12, 2)
+  active    Boolean  @default(true) @map("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recipe  Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([recipeId])
+  @@map("menu_products")
+}
+
+model Coupon {
+  id                 String             @id @default(uuid()) @map("id")
+  companyId          String             @map("company_id")
+  code               String             @unique @map("code")
+  discountType       CouponDiscountType @map("discount_type")
+  discountValue      Decimal            @map("discount_value") @db.Decimal(12, 2)
+  minimumOrderAmount Decimal?           @map("minimum_order_amount") @db.Decimal(12, 2)
+  maxUses            Int?               @map("max_uses")
+  perCustomerLimit   Int?               @map("per_customer_limit")
+  startsAt           DateTime?          @map("starts_at")
+  endsAt             DateTime?          @map("ends_at")
+  firstOrderOnly     Boolean            @default(false) @map("first_order_only")
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("coupons")
+}
+

@@ -1,0 +1,98 @@
+// fiscal
+
+
+
+model FiscalConfiguration {
+  id                     String                      @id @default(uuid()) @map("id")
+  companyId              String                      @map("company_id")
+  branchId               String                      @map("branch_id")
+  documentModel          FiscalDocumentModel         @default(NFCE) @map("document_model")
+  environment            FiscalEnvironment           @default(HOMOLOGATION) @map("environment")
+  cnpj                   String                      @map("cnpj")
+  ie                     String?                     @map("ie")
+  im                     String?                     @map("im")
+  crt                    String                      @map("crt")
+  series                 Int                         @default(1) @map("series")
+  nextNumber             Int                         @default(1) @map("next_number")
+  state                  String                      @map("state")
+  cityCode               String                      @map("city_code")
+  enabled                Boolean                     @default(false) @map("enabled")
+  certificateStorageType FiscalCertificateStorageType @map("certificate_storage_type")
+  certificateRef         String                      @map("certificate_ref")
+  certificatePasswordRef String                      @map("certificate_password_ref")
+  cscId                  String?                     @map("csc_id")
+  cscRef                 String?                     @map("csc_ref")
+  issuerAddress          Json                        @map("issuer_address")
+  defaultItemProfile     Json?                       @map("default_item_profile")
+  createdAt              DateTime                    @default(now()) @map("created_at")
+  updatedAt              DateTime                    @updatedAt @map("updated_at")
+
+  company  Company          @relation("CompanyFiscalConfigurations", fields: [companyId], references: [id], onDelete: Cascade)
+  branch   Branch           @relation("BranchFiscalConfigurations", fields: [branchId], references: [id], onDelete: Cascade)
+  documents FiscalDocument[]
+
+  @@unique([companyId, branchId, documentModel, environment])
+  @@index([companyId, branchId, enabled])
+  @@map("fiscal_configurations")
+}
+
+model FiscalDocument {
+  id                    String               @id @default(uuid()) @map("id")
+  fiscalConfigurationId String               @map("fiscal_configuration_id")
+  orderId               String               @map("order_id")
+  companyId             String               @map("company_id")
+  branchId              String               @map("branch_id")
+  documentModel         FiscalDocumentModel   @default(NFCE) @map("document_model")
+  status                FiscalDocumentStatus  @default(PENDING) @map("status")
+  number                Int?                 @map("number")
+  series                Int                  @map("series")
+  cNF                   String               @map("c_nf")
+  accessKey             String?              @unique @map("access_key")
+  protocol              String?              @map("protocol")
+  environment           FiscalEnvironment    @default(HOMOLOGATION) @map("environment")
+  xml                   String?              @map("xml")
+  xmlSigned             String?              @map("xml_signed")
+  xmlAuthorized         String?              @map("xml_authorized")
+  receiptNumber         String?              @map("receipt_number")
+  sefazStatusCode       String?              @map("sefaz_status_code")
+  sefazStatusMessage    String?              @map("sefaz_status_message")
+  errorCode             String?              @map("error_code")
+  errorMessage          String?              @map("error_message")
+  issuedAt              DateTime?            @map("issued_at")
+  authorizedAt          DateTime?            @map("authorized_at")
+  cancelledAt           DateTime?            @map("cancelled_at")
+  lastAttemptAt         DateTime?            @map("last_attempt_at")
+  retryCount            Int                  @default(0) @map("retry_count")
+  sourceEventId         String?              @map("source_event_id")
+  sourcePaymentId       String?              @map("source_payment_id")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  configuration FiscalConfiguration @relation(fields: [fiscalConfigurationId], references: [id], onDelete: Cascade)
+  order         Order               @relation("OrderFiscalDocuments", fields: [orderId], references: [id], onDelete: Cascade)
+  company       Company             @relation("CompanyFiscalDocuments", fields: [companyId], references: [id], onDelete: Cascade)
+  branch        Branch              @relation("BranchFiscalDocuments", fields: [branchId], references: [id], onDelete: Cascade)
+  audits        FiscalAuditTrail[]
+
+  @@unique([orderId, documentModel])
+  @@index([companyId, branchId, status, createdAt])
+  @@index([companyId, branchId, orderId])
+  @@map("fiscal_documents")
+}
+
+model FiscalAuditTrail {
+  id                String   @id @default(uuid()) @map("id")
+  fiscalDocumentId  String   @map("fiscal_document_id")
+  type              String   @map("type")
+  payload           Json     @map("payload")
+  response          Json?    @map("response")
+  status            String   @map("status")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  document FiscalDocument @relation(fields: [fiscalDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([fiscalDocumentId, createdAt])
+  @@index([type, createdAt])
+  @@map("fiscal_audit_trails")
+}
+
