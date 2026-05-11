@@ -108,7 +108,9 @@ describe('RBAC route permissions metadata', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, BillingWebhookController.prototype.handleWebhook)).toBe(true);
   });
 
-  it('admin-menu exige catalog.read/manage para leitura e catalog.manage para escrita', () => {
+  it('admin-menu usa modulo menu e exige catalog.read/manage para leitura e catalog.manage para escrita', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, AdminMenuController)).toBe('menu');
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, AdminMenuUtilityController)).toBe('menu');
     expect(methodPermissions(AdminMenuController.prototype, 'list')).toEqual([
       TENANT_PERMISSIONS.CATALOG_READ,
       TENANT_PERMISSIONS.CATALOG_MANAGE,
