@@ -56,6 +56,7 @@ import {
   primaryPrice,
   type AddonFilter,
   type AvailabilityFilter,
+  type CategorySummary,
   type ChannelFilter,
   type MenuTab,
   type ModalMode,
@@ -98,6 +99,7 @@ export default function AdminMenuPage() {
   const [categoryRecords, setCategoryRecords] = useState<AdminMenuCategory[]>([]);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [categoryDraftName, setCategoryDraftName] = useState('');
+  const [categoryDraftSortOrder, setCategoryDraftSortOrder] = useState('0');
   const [editingCategory, setEditingCategory] = useState<AdminMenuCategory | null>(null);
 
   const load = async () => {
@@ -137,9 +139,9 @@ export default function AdminMenuPage() {
   }, [query]);
 
   const categories = useMemo(() => {
-    const map = new Map<string, { id?: string; name: string; count: number; active?: boolean }>();
+    const map = new Map<string, CategorySummary>();
     categoryRecords.forEach((item) => {
-      map.set(item.name, { id: item.id, name: item.name, count: 0, active: item.active !== false });
+      map.set(item.name, { id: item.id, name: item.name, count: 0, active: item.active !== false, sortOrder: item.sortOrder ?? 0 });
     });
     products.forEach((product) => {
       const key = product.categoryName ?? 'Sem categoria';
@@ -149,9 +151,13 @@ export default function AdminMenuPage() {
         name: key,
         count: (current?.count ?? 0) + 1,
         active: current?.active ?? true,
+        sortOrder: current?.sortOrder ?? 0,
       });
     });
-    return [{ name: 'all', count: products.length }, ...Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))];
+    return [
+      { name: 'all', count: products.length },
+      ...Array.from(map.values()).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)),
+    ];
   }, [categoryRecords, products]);
 
   const filteredProducts = useMemo(() => {
@@ -203,6 +209,7 @@ export default function AdminMenuPage() {
   const openCategoryModal = (categoryToEdit?: AdminMenuCategory) => {
     setEditingCategory(categoryToEdit ?? null);
     setCategoryDraftName(categoryToEdit?.name ?? '');
+    setCategoryDraftSortOrder(String(categoryToEdit?.sortOrder ?? '0'));
     setCategoryModalOpen(true);
   };
 
@@ -210,6 +217,7 @@ export default function AdminMenuPage() {
     setCategoryModalOpen(false);
     setEditingCategory(null);
     setCategoryDraftName('');
+    setCategoryDraftSortOrder('0');
   };
 
   const saveCategory = async () => {
@@ -218,12 +226,17 @@ export default function AdminMenuPage() {
       setError('Informe o nome da categoria.');
       return;
     }
+    const sortOrder = Number(categoryDraftSortOrder || '0');
+    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+      setError('Informe uma ordem de categoria valida.');
+      return;
+    }
     setSavingAction('save-category');
     setError(null);
     try {
       const saved = editingCategory?.id
-        ? await updateAdminMenuCategory({ companyId, branchId, categoryId: editingCategory.id, payload: { name } })
-        : await createAdminMenuCategory({ companyId, branchId, name });
+        ? await updateAdminMenuCategory({ companyId, branchId, categoryId: editingCategory.id, payload: { name, sortOrder } })
+        : await createAdminMenuCategory({ companyId, branchId, name, sortOrder });
       setCategoryRecords((prev) => {
         const exists = prev.some((item) => item.id === saved.id);
         return exists ? prev.map((item) => (item.id === saved.id ? saved : item)) : [...prev, saved];
@@ -570,7 +583,7 @@ export default function AdminMenuPage() {
                 <strong>{item.name}</strong>
                 <Badge tone={item.active === false ? 'warning' : 'success'}>{item.active === false ? 'Inativa' : 'Ativa'}</Badge>
               </div>
-              <span>{item.count} produtos</span>
+              <span>{item.count} produtos | ordem {item.sortOrder ?? 0}</span>
               {item.id ? (
                 <div className={styles.managementActions}>
                   <Button onClick={() => openCategoryModal(item as AdminMenuCategory)}>Editar</Button>
@@ -654,6 +667,10 @@ export default function AdminMenuPage() {
               <label className={styles.wide}>
                 Nome da categoria
                 <Input value={categoryDraftName} onChange={(event) => setCategoryDraftName(event.target.value)} placeholder="Ex: Combos" />
+              </label>
+              <label>
+                Ordem de exibicao
+                <Input value={categoryDraftSortOrder} onChange={(event) => setCategoryDraftSortOrder(event.target.value)} placeholder="0" inputMode="numeric" />
               </label>
             </div>
             <div className={styles.modalActions}>

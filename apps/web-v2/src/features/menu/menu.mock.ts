@@ -16,6 +16,7 @@ export interface MenuProduct {
   prepTimeMinutes?: number;
   categoryId?: string;
   featured?: boolean;
+  sortOrder?: number;
   featuredSortOrder?: number;
   recommendations?: MenuRecommendationConfig;
   channels?: {
