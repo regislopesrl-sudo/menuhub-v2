@@ -29,6 +29,7 @@ export type StockItem = {
 export type StockMovement = {
   id: string;
   stockItemId: string;
+  batchId?: string | null;
   movementType: 'ENTRY' | 'EXIT' | 'ADJUSTMENT' | 'LOSS' | 'TRANSFER' | 'PRODUCTION_CONSUMPTION' | 'PRODUCTION_OUTPUT' | 'SALE_CONSUMPTION' | 'RETURN';
   movementTypeDetailed: string | null;
   quantity: number;
@@ -142,7 +143,7 @@ export function stockManualEntry(input: {
   reasonCode?: string;
   notes?: string;
 }) {
-  return apiFetch<{ item: StockItem; movement: StockMovement }>('/v2/admin/stock/movements/entry', {
+  return apiFetch<{ item: StockItem; movement: StockMovement; movements?: StockMovement[] }>('/v2/admin/stock/movements/entry', {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -155,7 +156,7 @@ export function stockManualExit(input: {
   reasonCode?: string;
   notes?: string;
 }) {
-  return apiFetch<{ item: StockItem; movement: StockMovement }>('/v2/admin/stock/movements/exit', {
+  return apiFetch<{ item: StockItem; movement: StockMovement; movements?: StockMovement[] }>('/v2/admin/stock/movements/exit', {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -168,7 +169,7 @@ export function stockRegisterLoss(input: {
   reasonCode?: string;
   notes?: string;
 }) {
-  return apiFetch<{ item: StockItem; movement: StockMovement }>('/v2/admin/stock/movements/loss', {
+  return apiFetch<{ item: StockItem; movement: StockMovement; movements?: StockMovement[] }>('/v2/admin/stock/movements/loss', {
     method: 'POST',
     body: JSON.stringify(input),
   });

@@ -195,11 +195,12 @@ export default function AdminStockPage() {
         reasonCode: 'breakage_manual',
       });
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
-      setMovements((prev) => [result.movement, ...prev]);
+      setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setLossQty('');
       setNotice('Perda/quebra registrada.');
       const refreshedAlerts = await listStockBreakageAlerts();
       setAlerts(refreshedAlerts);
+      await loadBatches(selectedItemId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar perda.');
     } finally {
@@ -315,9 +316,10 @@ export default function AdminStockPage() {
       };
       const result = type === 'entry' ? await stockManualEntry(payload) : await stockManualExit(payload);
       setItems((prev) => prev.map((it) => (it.id === result.item.id ? { ...it, ...result.item } : it)));
-      setMovements((prev) => [result.movement, ...prev]);
+      setMovements((prev) => [...(result.movements ?? [result.movement]), ...prev]);
       setMoveQty('');
       setNotice(type === 'entry' ? 'Entrada manual registrada.' : 'Saida manual registrada.');
+      if (type === 'exit') await loadBatches(selectedItemId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao registrar movimentacao.');
     } finally {
@@ -472,6 +474,7 @@ export default function AdminStockPage() {
                 <div className={styles.meta}>
                   <span>Item: {mv.stockItemId}</span>
                   <span>Qtd: {Number(mv.quantity).toFixed(3)}</span>
+                  {mv.batchId ? <span>Lote: {mv.batchId}</span> : null}
                   <span>Anterior: {mv.previousStock ?? '-'}</span>
                   <span>Novo: {mv.newStock ?? '-'}</span>
                 </div>

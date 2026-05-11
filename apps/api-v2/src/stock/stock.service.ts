@@ -28,6 +28,7 @@ export type StockMovementInput = {
   stockItemId: string;
   quantity: number;
   unitCost?: number;
+  batchId?: string;
   reasonCode?: string;
   notes?: string;
 };
@@ -203,6 +204,7 @@ export class StockService {
         totalCost: true,
         previousStock: true,
         newStock: true,
+        batchId: true,
         reasonCode: true,
         notes: true,
         createdAt: true,
@@ -614,6 +616,13 @@ export class StockService {
             where: { id: stock.id },
             data: { currentQuantity: this.decimal(next) },
           });
+          const allocations = await this.allocateFefoBatches(tx, {
+            ctx,
+            item: stock,
+            quantity: consumeQty,
+            explicitBatchId: null,
+            insufficientMessage: `Lotes insuficientes para baixa automatica do item ${stock.id}.`,
+          });
 
           if (ctx.branchId) {
             await tx.stockLocationBalance.upsert({
@@ -628,26 +637,40 @@ export class StockService {
             });
           }
 
-          await tx.stockMovement.create({
-            data: {
-              stockItemId: stock.id,
-              branchId: ctx.branchId,
-              orderItemId: item.id,
-              movementType: 'SALE_CONSUMPTION',
-              movementTypeDetailed: 'sale_consumption_recipe',
-              sourceModule: 'orders',
-              sourceId: order.id,
-              actorId: ctx.userId,
-              requestId: ctx.requestId,
-              quantity: this.decimal(consumeQty),
-              unitCost: this.decimal(Number(updated.averageCost ?? 0)),
-              totalCost: this.decimal(consumeQty * Number(updated.averageCost ?? 0)),
-              previousStock: this.decimal(previous),
-              newStock: this.decimal(next),
-              reasonCode: 'order_sale_consumption',
-            },
-          });
-          movementsCreated += 1;
+          const movementBase: any = {
+            stockItemId: stock.id,
+            branchId: ctx.branchId,
+            orderItemId: item.id,
+            movementType: 'SALE_CONSUMPTION',
+            movementTypeDetailed: 'sale_consumption_recipe',
+            sourceModule: 'orders',
+            sourceId: order.id,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity: this.decimal(consumeQty),
+            unitCost: this.decimal(Number(updated.averageCost ?? 0)),
+            totalCost: this.decimal(consumeQty * Number(updated.averageCost ?? 0)),
+            previousStock: this.decimal(previous),
+            newStock: this.decimal(next),
+            reasonCode: 'order_sale_consumption',
+          };
+          if (allocations.length > 0) {
+            for (const allocation of allocations) {
+              await tx.stockMovement.create({
+                data: {
+                  ...movementBase,
+                  batchId: allocation.batchId,
+                  quantity: this.decimal(allocation.quantity),
+                  unitCost: this.decimal(allocation.unitCost),
+                  totalCost: this.decimal(allocation.quantity * allocation.unitCost),
+                },
+              });
+              movementsCreated += 1;
+            }
+          } else {
+            await tx.stockMovement.create({ data: movementBase });
+            movementsCreated += 1;
+          }
         }
       }
 
@@ -695,6 +718,17 @@ export class StockService {
           ...(unitCost > 0 ? { averageCost: this.decimal(unitCost), lastCost: this.decimal(unitCost) } : {}),
         },
       });
+      const allocations = movementType === 'EXIT'
+        ? await this.allocateFefoBatches(tx, {
+            ctx,
+            item,
+            quantity,
+            explicitBatchId: this.clean(input.batchId),
+            insufficientMessage: options?.movementType === 'LOSS'
+              ? 'Lotes insuficientes para registrar perda/quebra.'
+              : 'Lotes insuficientes para saida FEFO.',
+          })
+        : [];
 
       if (ctx.branchId) {
         await tx.stockLocationBalance.upsert({
@@ -709,28 +743,110 @@ export class StockService {
         });
       }
 
-      const movement = await tx.stockMovement.create({
+      const movementBase: any = {
+        stockItemId,
+        branchId: ctx.branchId,
+        movementType: options?.movementType ?? movementType,
+        movementTypeDetailed: options?.movementTypeDetailed ?? (movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit'),
+        sourceModule: options?.sourceModule ?? 'admin_stock',
+        sourceId: ctx.requestId,
+        actorId: ctx.userId,
+        requestId: ctx.requestId,
+        quantity: this.decimal(quantity),
+        unitCost: this.decimal(unitCost),
+        totalCost: this.decimal(quantity * unitCost),
+        previousStock: this.decimal(previous),
+        newStock: this.decimal(next),
+        reasonCode: this.clean(input.reasonCode),
+        notes: this.clean(input.notes),
+      };
+
+      const movements = [];
+      if (allocations.length > 0) {
+        for (const allocation of allocations) {
+          movements.push(await tx.stockMovement.create({
+            data: {
+              ...movementBase,
+              batchId: allocation.batchId,
+              quantity: this.decimal(allocation.quantity),
+              unitCost: this.decimal(unitCost > 0 ? unitCost : allocation.unitCost),
+              totalCost: this.decimal(allocation.quantity * (unitCost > 0 ? unitCost : allocation.unitCost)),
+            },
+          }));
+        }
+      } else {
+        movements.push(await tx.stockMovement.create({ data: movementBase }));
+      }
+
+      return { item: updated, movement: movements[0], movements };
+    });
+  }
+
+  private async allocateFefoBatches(
+    tx: any,
+    input: {
+      ctx: RequestContext;
+      item: any;
+      quantity: number;
+      explicitBatchId?: string | null;
+      insufficientMessage: string;
+    },
+  ): Promise<Array<{ batchId: string; quantity: number; unitCost: number }>> {
+    if (!input.item.controlsBatch && !input.item.requiresFefo) return [];
+
+    const batches = await tx.stockBatch.findMany({
+      where: {
+        stockItemId: input.item.id,
+        quantityRemaining: { gt: 0 },
+        status: { in: ['AVAILABLE', 'OPENED'] },
+        ...(input.explicitBatchId ? { id: input.explicitBatchId } : {}),
+        ...(input.ctx.branchId ? { OR: [{ branchId: input.ctx.branchId }, { branchId: null }] } : {}),
+      },
+      select: {
+        id: true,
+        branchId: true,
+        expirationDate: true,
+        receivedDate: true,
+        quantityRemaining: true,
+        unitCost: true,
+        createdAt: true,
+      },
+    });
+
+    const orderedBatches = [...batches].sort((left, right) => {
+      const leftExpiration = left.expirationDate ? new Date(left.expirationDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightExpiration = right.expirationDate ? new Date(right.expirationDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftExpiration !== rightExpiration) return leftExpiration - rightExpiration;
+      const leftReceived = left.receivedDate ? new Date(left.receivedDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightReceived = right.receivedDate ? new Date(right.receivedDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftReceived !== rightReceived) return leftReceived - rightReceived;
+      return new Date(left.createdAt ?? 0).getTime() - new Date(right.createdAt ?? 0).getTime();
+    });
+
+    let remaining = input.quantity;
+    const allocations: Array<{ batchId: string; quantity: number; unitCost: number }> = [];
+    for (const batch of orderedBatches) {
+      if (remaining <= 0) break;
+      const available = Number(batch.quantityRemaining ?? 0);
+      if (!Number.isFinite(available) || available <= 0) continue;
+      const consumed = Math.min(available, remaining);
+      const nextQuantity = available - consumed;
+      await tx.stockBatch.update({
+        where: { id: batch.id },
         data: {
-          stockItemId,
-          branchId: ctx.branchId,
-          movementType: options?.movementType ?? movementType,
-          movementTypeDetailed: options?.movementTypeDetailed ?? (movementType === 'ENTRY' ? 'manual_entry' : 'manual_exit'),
-          sourceModule: options?.sourceModule ?? 'admin_stock',
-          sourceId: ctx.requestId,
-          actorId: ctx.userId,
-          requestId: ctx.requestId,
-          quantity: this.decimal(quantity),
-          unitCost: this.decimal(unitCost),
-          totalCost: this.decimal(quantity * unitCost),
-          previousStock: this.decimal(previous),
-          newStock: this.decimal(next),
-          reasonCode: this.clean(input.reasonCode),
-          notes: this.clean(input.notes),
+          quantityRemaining: this.decimal(nextQuantity),
+          status: nextQuantity <= 0.0001 ? 'EXHAUSTED' : 'OPENED',
         },
       });
+      allocations.push({ batchId: batch.id, quantity: consumed, unitCost: Number(batch.unitCost ?? 0) });
+      remaining = Number((remaining - consumed).toFixed(6));
+    }
 
-      return { item: updated, movement };
-    });
+    if (remaining > 0.0001 && !input.item.allowNegativeStock) {
+      throw new BadRequestException(input.insufficientMessage);
+    }
+
+    return allocations;
   }
 
   private clean(value: unknown): string | null {
