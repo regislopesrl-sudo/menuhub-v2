@@ -47,6 +47,10 @@ export class CreateProductDto {
   categoryName?: string | null;
 
   @IsOptional()
+  @IsString()
+  sku?: string | null;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   price?: number;
@@ -60,6 +64,16 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   deliveryPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  localPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
 
   @IsOptional()
   @IsNumber()
@@ -83,6 +97,11 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   sortOrder?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  prepTimeMinutes?: number;
 }
 
 export class UpdateProductDto extends CreateProductDto {}

@@ -18,6 +18,7 @@ describe('AdminMenuService', () => {
       categoryId: 'cat_1',
       name: 'X Burger',
       description: 'Burger',
+      sku: 'BURGER-001',
       salePrice: 25,
       promotionalPrice: null,
       costPrice: 0,
@@ -122,8 +123,12 @@ describe('AdminMenuService', () => {
 
     const result = await service.createProduct(ctx, {
       name: 'Batata',
+      sku: 'BATATA-001',
       salePrice: 12,
+      localPrice: 11,
+      costPrice: 5,
       deliveryPrice: 14,
+      prepTimeMinutes: 8,
       categoryName: 'Acompanhamentos',
       channels: { delivery: true, pdv: true, waiter: false },
     });
@@ -132,8 +137,12 @@ describe('AdminMenuService', () => {
       data: expect.objectContaining({
         companyId: 'company_a',
         name: 'Batata',
+        sku: 'BATATA-001',
         salePrice: 12,
+        localPrice: 11,
+        costPrice: 5,
         deliveryPickupPrice: 14,
+        prepTimeMinutes: 8,
         availableDelivery: true,
         availableCounter: true,
         availableTable: false,
@@ -440,6 +449,18 @@ describe('AdminMenuService', () => {
     );
   });
 
+  it('bloqueia campos comerciais premium invalidos', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, costPrice: -1 })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, prepTimeMinutes: 1441 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(service.createProduct(ctx, { name: 'Produto', salePrice: 10, sku: 'A'.repeat(65) })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
   it('aceita imageUrl valida com https', async () => {
     const prisma = prismaMock();
     const service = new AdminMenuService(prisma);
@@ -490,6 +511,10 @@ describe('AdminMenuService', () => {
     const result = await service.listProducts(ctx);
 
     expect(result[0]).toEqual(expect.objectContaining({
+      sku: 'BURGER-001',
+      costPrice: 0,
+      localPrice: 25,
+      prepTimeMinutes: 10,
       availableDelivery: false,
       availablePdv: true,
       availableKiosk: false,

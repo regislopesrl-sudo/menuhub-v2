@@ -5,11 +5,15 @@ type MenuApiItem = {
   id: string;
   name: string;
   description?: string;
+  sku?: string;
   imageUrl?: string;
   price: number;
   salePrice?: number;
+  localPrice?: number;
+  costPrice?: number;
   deliveryPrice?: number;
   promotionalPrice?: number;
+  prepTimeMinutes?: number;
   categoryId?: string;
   categoryName?: string;
   available?: boolean;
@@ -97,11 +101,15 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     id: item.id,
     name: item.name,
     description: item.description ?? '',
+    sku: item.sku,
     imageUrl: item.imageUrl,
     price: Number(item.price ?? 0),
     salePrice: item.salePrice !== undefined ? Number(item.salePrice) : undefined,
+    localPrice: item.localPrice !== undefined ? Number(item.localPrice) : undefined,
+    costPrice: item.costPrice !== undefined ? Number(item.costPrice) : undefined,
     deliveryPrice: item.deliveryPrice !== undefined ? Number(item.deliveryPrice) : undefined,
     promotionalPrice: item.promotionalPrice !== undefined ? Number(item.promotionalPrice) : undefined,
+    prepTimeMinutes: item.prepTimeMinutes !== undefined ? Number(item.prepTimeMinutes) : undefined,
     categoryId: item.categoryId,
     categoryName: item.categoryName ?? 'Sem categoria',
     available,
@@ -128,10 +136,14 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
 export type AdminMenuProductPayload = {
   name: string;
   description?: string;
+  sku?: string;
   categoryName?: string;
   salePrice: number;
+  localPrice?: number;
+  costPrice?: number;
   deliveryPrice?: number;
   promotionalPrice?: number | null;
+  prepTimeMinutes?: number;
   imageUrl?: string;
   available?: boolean;
   channels?: {

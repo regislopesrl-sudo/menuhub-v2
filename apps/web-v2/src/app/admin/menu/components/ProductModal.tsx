@@ -47,10 +47,14 @@ export function ProductModal({
   const title = mode === 'create' ? 'Novo produto' : mode === 'addons' ? 'Adicionais e opcionais' : mode === 'recommendations' ? 'Peca tambem' : 'Editar produto';
   const [name, setName] = useState(product?.name ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
+  const [sku, setSku] = useState(product?.sku ?? '');
   const [categoryName, setCategoryName] = useState(product?.categoryName ?? '');
   const [salePrice, setSalePrice] = useState(String(product?.salePrice ?? product?.price ?? ''));
+  const [localPrice, setLocalPrice] = useState(String(product?.localPrice ?? product?.salePrice ?? product?.price ?? ''));
+  const [costPrice, setCostPrice] = useState(String(product?.costPrice ?? ''));
   const [deliveryPrice, setDeliveryPrice] = useState(String(product?.deliveryPrice ?? product?.price ?? ''));
   const [promotionalPrice, setPromotionalPrice] = useState(String(product?.promotionalPrice ?? ''));
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState(String(product?.prepTimeMinutes ?? ''));
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [available, setAvailable] = useState(product?.available !== false);
   const [channels, setChannels] = useState<ProductChannelsState>({
@@ -78,10 +82,14 @@ export function ProductModal({
     onSave({
       name: name.trim(),
       description: description.trim() || undefined,
+      sku: sku.trim() || undefined,
       categoryName: categoryName.trim() || undefined,
       salePrice: Number(salePrice || '0'),
+      localPrice: localPrice.trim() ? Number(localPrice) : undefined,
+      costPrice: costPrice.trim() ? Number(costPrice) : undefined,
       deliveryPrice: deliveryPrice.trim() ? Number(deliveryPrice) : undefined,
       promotionalPrice: promotionalPrice.trim() ? Number(promotionalPrice) : null,
+      prepTimeMinutes: prepTimeMinutes.trim() ? Number(prepTimeMinutes) : undefined,
       imageUrl: imageUrl.trim() || undefined,
       available,
       channels,
@@ -127,19 +135,27 @@ export function ProductModal({
           <ProductForm
             name={name}
             description={description}
+            sku={sku}
             categoryName={categoryName}
             salePrice={salePrice}
+            localPrice={localPrice}
+            costPrice={costPrice}
             deliveryPrice={deliveryPrice}
             promotionalPrice={promotionalPrice}
+            prepTimeMinutes={prepTimeMinutes}
             imageUrl={imageUrl}
             available={available}
             channels={channels}
             onNameChange={setName}
             onDescriptionChange={setDescription}
+            onSkuChange={setSku}
             onCategoryNameChange={setCategoryName}
             onSalePriceChange={setSalePrice}
+            onLocalPriceChange={setLocalPrice}
+            onCostPriceChange={setCostPrice}
             onDeliveryPriceChange={setDeliveryPrice}
             onPromotionalPriceChange={setPromotionalPrice}
+            onPrepTimeMinutesChange={setPrepTimeMinutes}
             onImageUrlChange={setImageUrl}
             onAvailableChange={setAvailable}
             onChannelsChange={setChannels}
@@ -180,38 +196,54 @@ export function ProductModal({
 function ProductForm({
   name,
   description,
+  sku,
   categoryName,
   salePrice,
+  localPrice,
+  costPrice,
   deliveryPrice,
   promotionalPrice,
+  prepTimeMinutes,
   imageUrl,
   available,
   channels,
   onNameChange,
   onDescriptionChange,
+  onSkuChange,
   onCategoryNameChange,
   onSalePriceChange,
+  onLocalPriceChange,
+  onCostPriceChange,
   onDeliveryPriceChange,
   onPromotionalPriceChange,
+  onPrepTimeMinutesChange,
   onImageUrlChange,
   onAvailableChange,
   onChannelsChange,
 }: {
   name: string;
   description: string;
+  sku: string;
   categoryName: string;
   salePrice: string;
+  localPrice: string;
+  costPrice: string;
   deliveryPrice: string;
   promotionalPrice: string;
+  prepTimeMinutes: string;
   imageUrl: string;
   available: boolean;
   channels: ProductChannelsState;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
+  onSkuChange: (value: string) => void;
   onCategoryNameChange: (value: string) => void;
   onSalePriceChange: (value: string) => void;
+  onLocalPriceChange: (value: string) => void;
+  onCostPriceChange: (value: string) => void;
   onDeliveryPriceChange: (value: string) => void;
   onPromotionalPriceChange: (value: string) => void;
+  onPrepTimeMinutesChange: (value: string) => void;
   onImageUrlChange: (value: string) => void;
   onAvailableChange: (value: boolean) => void;
   onChannelsChange: (value: ProductChannelsState) => void;
@@ -226,6 +258,10 @@ function ProductForm({
         Categoria
         <Input value={categoryName} onChange={(event) => onCategoryNameChange(event.target.value)} placeholder="Ex: Lanches" />
       </label>
+      <label>
+        SKU / codigo interno
+        <Input value={sku} onChange={(event) => onSkuChange(event.target.value)} placeholder="Ex: BURGER-001" />
+      </label>
       <label className={styles.wide}>
         Descricao
         <Input value={description} onChange={(event) => onDescriptionChange(event.target.value)} placeholder="Descricao curta do produto" />
@@ -235,12 +271,24 @@ function ProductForm({
         <Input value={salePrice} onChange={(event) => onSalePriceChange(event.target.value)} placeholder="0,00" inputMode="decimal" />
       </label>
       <label>
+        Preco local / PDV
+        <Input value={localPrice} onChange={(event) => onLocalPriceChange(event.target.value)} placeholder="0,00" inputMode="decimal" />
+      </label>
+      <label>
         Preco delivery
         <Input value={deliveryPrice} onChange={(event) => onDeliveryPriceChange(event.target.value)} placeholder="0,00" inputMode="decimal" />
       </label>
       <label>
         Preco promocional
         <Input value={promotionalPrice} onChange={(event) => onPromotionalPriceChange(event.target.value)} placeholder="0,00" inputMode="decimal" />
+      </label>
+      <label>
+        Custo estimado
+        <Input value={costPrice} onChange={(event) => onCostPriceChange(event.target.value)} placeholder="0,00" inputMode="decimal" />
+      </label>
+      <label>
+        Tempo preparo (min)
+        <Input value={prepTimeMinutes} onChange={(event) => onPrepTimeMinutesChange(event.target.value)} placeholder="Ex: 15" inputMode="numeric" />
       </label>
       <label>
         Imagem

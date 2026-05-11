@@ -3,12 +3,16 @@ export interface MenuProduct {
   name: string;
   description: string;
   price: number;
+  sku?: string;
   imageUrl?: string;
   categoryName?: string;
   available?: boolean;
   salePrice?: number;
+  localPrice?: number;
+  costPrice?: number;
   deliveryPrice?: number;
   promotionalPrice?: number;
+  prepTimeMinutes?: number;
   categoryId?: string;
   featured?: boolean;
   featuredSortOrder?: number;

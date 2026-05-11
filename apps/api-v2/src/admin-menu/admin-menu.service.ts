@@ -366,6 +366,16 @@ export class AdminMenuService {
       this.assertNonNegative(deliveryPrice, 'Preco delivery deve ser maior ou igual a zero.');
     }
 
+    const localPrice = input.localPrice !== undefined ? Number(input.localPrice) : undefined;
+    if (localPrice !== undefined) {
+      this.assertNonNegative(localPrice, 'Preco local deve ser maior ou igual a zero.');
+    }
+
+    const costPrice = input.costPrice !== undefined ? Number(input.costPrice) : undefined;
+    if (costPrice !== undefined) {
+      this.assertNonNegative(costPrice, 'Custo do produto deve ser maior ou igual a zero.');
+    }
+
     const promotionalPrice =
       input.promotionalPrice === null || input.promotionalPrice === undefined
         ? input.promotionalPrice
@@ -378,21 +388,27 @@ export class AdminMenuService {
       input.description === undefined ? undefined : this.normalizeOptionalDescription(input.description);
     const normalizedImageUrl =
       input.imageUrl === undefined ? undefined : this.normalizeOptionalImageUrl(input.imageUrl);
+    const normalizedSku = input.sku === undefined ? undefined : this.normalizeOptionalSku(input.sku);
 
     const categoryId = await this.resolveCategoryId(ctx, input.categoryId, input.categoryName);
     const sortOrder = this.parseProductSortOrder(input.sortOrder);
+    const prepTimeMinutes = this.parsePrepTimeMinutes(input.prepTimeMinutes);
     const data = {
       ...(creating ? { companyId: ctx.companyId } : {}),
       ...(name ? { name } : {}),
       ...(normalizedDescription !== undefined ? { description: normalizedDescription } : {}),
+      ...(normalizedSku !== undefined ? { sku: normalizedSku } : {}),
       ...(categoryId !== undefined ? { categoryId } : {}),
-      ...(price !== undefined ? { salePrice: price, localPrice: price } : {}),
+      ...(price !== undefined ? { salePrice: price, localPrice: localPrice ?? price } : {}),
+      ...(localPrice !== undefined && price === undefined ? { localPrice } : {}),
+      ...(costPrice !== undefined ? { costPrice } : {}),
       ...(deliveryPrice !== undefined ? { deliveryPickupPrice: deliveryPrice } : price !== undefined ? { deliveryPickupPrice: price } : {}),
       ...(input.promotionalPrice !== undefined ? { promotionalPrice } : {}),
       ...(normalizedImageUrl !== undefined ? { imageUrl: normalizedImageUrl } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : {}),
       ...this.mapChannelData(input.channels),
       ...(sortOrder !== undefined ? { sortOrder } : {}),
+      ...(prepTimeMinutes !== undefined ? { prepTimeMinutes } : {}),
     };
     if (!creating && Object.keys(data).length === 0) {
       throw new BadRequestException('Informe pelo menos um campo do produto para atualizar.');
@@ -561,11 +577,15 @@ export class AdminMenuService {
       id: product.id,
       name: product.name,
       description: product.description ?? undefined,
+      sku: product.sku ?? undefined,
       imageUrl: product.imageUrl ?? undefined,
       price: promotionalPrice ?? resolvedDeliveryPrice,
       salePrice,
+      localPrice: Number(product.localPrice ?? salePrice),
+      costPrice: Number(product.costPrice ?? 0),
       deliveryPrice: resolvedDeliveryPrice,
       promotionalPrice,
+      prepTimeMinutes: Number(product.prepTimeMinutes ?? 0),
       categoryId: product.categoryId ?? undefined,
       categoryName: product.category?.name ?? undefined,
       available: Boolean(product.isActive && !product.deletedAt),
@@ -641,6 +661,15 @@ export class AdminMenuService {
     return parsed;
   }
 
+  private parsePrepTimeMinutes(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1440) {
+      throw new BadRequestException('Tempo de preparo deve ser um inteiro entre 0 e 1440 minutos.');
+    }
+    return parsed;
+  }
+
   private assertNonNegative(value: number, message: string) {
     if (!Number.isFinite(value) || value < 0) {
       throw new BadRequestException(message);
@@ -654,6 +683,17 @@ export class AdminMenuService {
     }
     if (trimmed.length > 300) {
       throw new BadRequestException('Descricao comercial deve ter no maximo 300 caracteres.');
+    }
+    return trimmed;
+  }
+
+  private normalizeOptionalSku(value: string | null | undefined): string | null {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.length > 64) {
+      throw new BadRequestException('SKU deve ter no maximo 64 caracteres.');
     }
     return trimmed;
   }
