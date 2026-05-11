@@ -65,6 +65,22 @@
   color: var(--muted);
 }
 
+.select {
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+}
+
+.select:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.22);
+  border-color: #3b82f6;
+}
+
 .list {
   display: grid;
   gap: 10px;

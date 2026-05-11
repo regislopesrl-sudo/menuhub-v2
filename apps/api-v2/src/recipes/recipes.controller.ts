@@ -4,27 +4,30 @@ import { RequireAdminGuard } from '../common/require-admin.guard';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
 import type { RequestContext } from '../common/request-context';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import { RecipesService } from './recipes.service';
 
 @Controller('v2/admin/recipes')
-@UseGuards(RequireAdminGuard)
+@UseGuards(RequireAdminGuard, ModuleGuard)
+@ModuleAccess('stock')
 export class RecipesController {
   constructor(private readonly recipesService: RecipesService) {}
 
   @Get()
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   listRecipes(@CurrentContext() ctx: RequestContext) {
     return this.recipesService.listCompanyRecipes(ctx);
   }
 
   @Get(':recipeId')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   getRecipe(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
     return this.recipesService.getRecipeById(ctx, recipeId);
   }
 
   @Post()
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   createRecipe(
     @CurrentContext() ctx: RequestContext,
     @Body()
@@ -48,7 +51,7 @@ export class RecipesController {
   }
 
   @Patch(':recipeId')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   patchRecipe(
     @CurrentContext() ctx: RequestContext,
     @Param('recipeId') recipeId: string,
@@ -66,7 +69,7 @@ export class RecipesController {
   }
 
   @Put(':recipeId/items')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   replaceItems(
     @CurrentContext() ctx: RequestContext,
     @Param('recipeId') recipeId: string,
@@ -86,19 +89,19 @@ export class RecipesController {
   }
 
   @Get('compositions/products')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   listProductCompositions(@CurrentContext() ctx: RequestContext) {
     return this.recipesService.listProductCompositions(ctx);
   }
 
   @Get('compositions/products/:productId')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   getProductComposition(@CurrentContext() ctx: RequestContext, @Param('productId') productId: string) {
     return this.recipesService.getProductComposition(ctx, productId);
   }
 
   @Patch('compositions/products/:productId')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   patchProductComposition(
     @CurrentContext() ctx: RequestContext,
     @Param('productId') productId: string,
@@ -108,7 +111,7 @@ export class RecipesController {
   }
 
   @Get('compositions/products/:productId/cost')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   getProductSoldCost(
     @CurrentContext() ctx: RequestContext,
     @Param('productId') productId: string,
@@ -120,7 +123,7 @@ export class RecipesController {
   }
 
   @Get('compositions/products/margins')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   listProductMargins(
     @CurrentContext() ctx: RequestContext,
     @Query('minMarginPercent') minMarginPercent?: string,
@@ -131,7 +134,7 @@ export class RecipesController {
   }
 
   @Post(':recipeId/portioning/estimate')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   estimatePortioning(
     @CurrentContext() ctx: RequestContext,
     @Param('recipeId') recipeId: string,
@@ -146,19 +149,19 @@ export class RecipesController {
   }
 
   @Get(':recipeId/cost-breakdown')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   getRecipeCostBreakdown(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
     return this.recipesService.getRecipeCostBreakdown(ctx, recipeId);
   }
 
   @Get('production-orders')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_READ, TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   listProductionOrders(@CurrentContext() ctx: RequestContext) {
     return this.recipesService.listProductionOrders(ctx);
   }
 
   @Post('production-orders')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   createProductionOrder(
     @CurrentContext() ctx: RequestContext,
     @Body()
@@ -172,13 +175,13 @@ export class RecipesController {
   }
 
   @Patch('production-orders/:orderId/start')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   startProductionOrder(@CurrentContext() ctx: RequestContext, @Param('orderId') orderId: string) {
     return this.recipesService.startProductionOrder(ctx, orderId);
   }
 
   @Patch('production-orders/:orderId/finish')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   finishProductionOrder(
     @CurrentContext() ctx: RequestContext,
     @Param('orderId') orderId: string,
@@ -188,7 +191,7 @@ export class RecipesController {
   }
 
   @Patch('production-orders/:orderId/cancel')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   cancelProductionOrder(
     @CurrentContext() ctx: RequestContext,
     @Param('orderId') orderId: string,
@@ -198,13 +201,13 @@ export class RecipesController {
   }
 
   @Get('production-losses')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_READ, TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   listProductionLosses(@CurrentContext() ctx: RequestContext) {
     return this.recipesService.listProductionLosses(ctx);
   }
 
   @Post('production-orders/:orderId/loss')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   registerProductionLoss(
     @CurrentContext() ctx: RequestContext,
     @Param('orderId') orderId: string,
@@ -218,7 +221,7 @@ export class RecipesController {
   }
 
   @Post(':recipeId/substitutions/preview')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   previewRecipeSubstitution(
     @CurrentContext() ctx: RequestContext,
     @Param('recipeId') recipeId: string,
@@ -239,7 +242,7 @@ export class RecipesController {
   }
 
   @Post(':recipeId/substitutions/apply')
-  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   applyRecipeSubstitution(
     @CurrentContext() ctx: RequestContext,
     @Param('recipeId') recipeId: string,

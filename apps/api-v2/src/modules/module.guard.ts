@@ -17,7 +17,10 @@ export class ModuleGuard implements CanActivate {
   constructor(private readonly modulesService: ModulesService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredModule = Reflect.getMetadata(MODULE_ACCESS_KEY, context.getHandler()) as ModuleKey | undefined;
+    const requiredModule = (
+      Reflect.getMetadata(MODULE_ACCESS_KEY, context.getHandler()) ??
+      Reflect.getMetadata(MODULE_ACCESS_KEY, context.getClass())
+    ) as ModuleKey | undefined;
     if (!requiredModule) {
       return true;
     }

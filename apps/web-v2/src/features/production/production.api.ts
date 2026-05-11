@@ -64,21 +64,38 @@ export interface ProductMarginResponse {
   items: ProductMarginItem[];
 }
 
-function adminHeaders() {
-  const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
-  const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
-  return {
-    'Content-Type': 'application/json',
-    'x-channel': 'admin_panel',
-    'x-company-id': companyId,
-    ...(branchId ? { 'x-branch-id': branchId } : {}),
-  };
+export interface RecipeOption {
+  id: string;
+  name: string;
+  yieldQuantity: number;
+  yieldUnit: string;
+  cost?: { totalCost?: number; costPerYieldUnit?: number };
+}
+
+export interface StockItemOption {
+  id: string;
+  name: string;
+  code: string | null;
+  stockUnit?: string | null;
+  currentQuantity?: number;
+  averageCost?: number;
 }
 
 export function listProductionOrders() {
   return apiFetch<ProductionOrder[]>('/v2/admin/recipes/production-orders', {
     method: 'GET',
-    headers: adminHeaders(),
+  });
+}
+
+export function listProductionRecipes() {
+  return apiFetch<RecipeOption[]>('/v2/admin/recipes', {
+    method: 'GET',
+  });
+}
+
+export function listProductionStockItems() {
+  return apiFetch<StockItemOption[]>('/v2/admin/stock/items', {
+    method: 'GET',
   });
 }
 
@@ -89,7 +106,6 @@ export function createProductionOrder(input: {
 }) {
   return apiFetch<ProductionOrder>('/v2/admin/recipes/production-orders', {
     method: 'POST',
-    headers: adminHeaders(),
     body: JSON.stringify(input),
   });
 }
@@ -97,14 +113,12 @@ export function createProductionOrder(input: {
 export function startProductionOrder(orderId: string) {
   return apiFetch<ProductionOrder>(`/v2/admin/recipes/production-orders/${orderId}/start`, {
     method: 'PATCH',
-    headers: adminHeaders(),
   });
 }
 
 export function finishProductionOrder(orderId: string, actualQuantity?: number) {
   return apiFetch<ProductionOrder>(`/v2/admin/recipes/production-orders/${orderId}/finish`, {
     method: 'PATCH',
-    headers: adminHeaders(),
     body: JSON.stringify(actualQuantity ? { actualQuantity } : {}),
   });
 }
@@ -112,7 +126,6 @@ export function finishProductionOrder(orderId: string, actualQuantity?: number) 
 export function cancelProductionOrder(orderId: string, reason: string) {
   return apiFetch<ProductionOrder>(`/v2/admin/recipes/production-orders/${orderId}/cancel`, {
     method: 'PATCH',
-    headers: adminHeaders(),
     body: JSON.stringify({ reason }),
   });
 }
@@ -120,14 +133,12 @@ export function cancelProductionOrder(orderId: string, reason: string) {
 export function listProductionLosses() {
   return apiFetch<ProductionLossEvent[]>('/v2/admin/recipes/production-losses', {
     method: 'GET',
-    headers: adminHeaders(),
   });
 }
 
 export function registerProductionLoss(orderId: string, input: { quantity: number; reason?: string }) {
   return apiFetch<ProductionLossEvent>(`/v2/admin/recipes/production-orders/${orderId}/loss`, {
     method: 'POST',
-    headers: adminHeaders(),
     body: JSON.stringify(input),
   });
 }
@@ -138,7 +149,6 @@ export function previewRecipeSubstitution(
 ) {
   return apiFetch<RecipeSubstitutionPreview>(`/v2/admin/recipes/${recipeId}/substitutions/preview`, {
     method: 'POST',
-    headers: adminHeaders(),
     body: JSON.stringify(input),
   });
 }
@@ -151,7 +161,6 @@ export function applyRecipeSubstitution(
     `/v2/admin/recipes/${recipeId}/substitutions/apply`,
     {
       method: 'POST',
-      headers: adminHeaders(),
       body: JSON.stringify(input),
     },
   );
@@ -161,6 +170,5 @@ export function listProductMargins(minMarginPercent?: number) {
   const query = minMarginPercent === undefined ? '' : `?minMarginPercent=${encodeURIComponent(String(minMarginPercent))}`;
   return apiFetch<ProductMarginResponse>(`/v2/admin/recipes/compositions/products/margins${query}`, {
     method: 'GET',
-    headers: adminHeaders(),
   });
 }
