@@ -1,4 +1,5 @@
 import { buildDeveloperAccessHeaders } from '@/lib/developer-session';
+import { apiFetch } from '@/lib/api-fetch';
 
 export interface ModuleDefinition {
   key: string;
@@ -54,7 +55,6 @@ export interface CompanyModulesCommercialView {
   }>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 export type AppUserRole = 'admin' | 'master' | 'user' | 'developer';
 
 function buildHeaders(input: { companyId: string; branchId?: string; userRole?: AppUserRole }) {
@@ -68,15 +68,10 @@ function buildHeaders(input: { companyId: string; branchId?: string; userRole?: 
 }
 
 export async function listModules(headers: { companyId: string; branchId?: string; userRole?: AppUserRole }) {
-  const res = await fetch(`${API_BASE}/v2/modules`, {
+  return apiFetch<ModuleDefinition[]>('/v2/modules', {
     method: 'GET',
     headers: buildHeaders(headers),
-    cache: 'no-store',
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao listar modulos.');
-  }
-  return (await res.json()) as ModuleDefinition[];
 }
 
 export async function listCurrentCompanyModules(headers: {
@@ -84,15 +79,10 @@ export async function listCurrentCompanyModules(headers: {
   branchId?: string;
   userRole?: AppUserRole;
 }) {
-  const res = await fetch(`${API_BASE}/v2/companies/current/modules`, {
+  return apiFetch<CompanyModuleAccess[]>('/v2/companies/current/modules', {
     method: 'GET',
     headers: buildHeaders(headers),
-    cache: 'no-store',
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao carregar modulos da empresa.');
-  }
-  return (await res.json()) as CompanyModuleAccess[];
 }
 
 export async function patchCurrentCompanyModule(input: {
@@ -101,39 +91,19 @@ export async function patchCurrentCompanyModule(input: {
   enabled: boolean | null;
   reason?: string;
 }) {
-  const res = await fetch(`${API_BASE}/v2/companies/current/modules/${input.moduleKey}`, {
+  return apiFetch<CompanyModuleAccess>(`/v2/companies/current/modules/${input.moduleKey}`, {
     method: 'PATCH',
     headers: buildHeaders(input.headers),
     body: JSON.stringify({ enabled: input.enabled, reason: input.reason }),
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao atualizar modulo.');
-  }
-  return (await res.json()) as CompanyModuleAccess;
 }
 
 export async function getCompanyModulesCommercialView(input: {
   headers: { companyId: string; branchId?: string; userRole?: AppUserRole };
   targetCompanyId: string;
 }) {
-  const res = await fetch(`${API_BASE}/v2/developer/companies/${input.targetCompanyId}/modules`, {
+  return apiFetch<CompanyModulesCommercialView>(`/v2/developer/companies/${input.targetCompanyId}/modules`, {
     method: 'GET',
     headers: buildHeaders(input.headers),
-    cache: 'no-store',
   });
-  if (!res.ok) {
-    throw new Error((await safeReadError(res)) ?? 'Falha ao carregar visao comercial de modulos.');
-  }
-  return (await res.json()) as CompanyModulesCommercialView;
-}
-
-async function safeReadError(res: Response): Promise<string | null> {
-  try {
-    const body = (await res.json()) as { message?: string | string[] };
-    if (Array.isArray(body.message)) return body.message.join(', ');
-    if (typeof body.message === 'string') return body.message;
-    return null;
-  } catch {
-    return null;
-  }
 }

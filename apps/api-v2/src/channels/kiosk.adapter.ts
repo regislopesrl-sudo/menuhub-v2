@@ -46,6 +46,7 @@ export function mapKioskRequestToCheckoutInput(
     companyId,
     storeId,
     channel: 'kiosk' as DeliveryCheckoutInput['channel'],
+    fulfillmentType: 'TAKEOUT',
     customerId: body.customerId,
     customer: body.customer,
     deliveryAddress: {

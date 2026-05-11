@@ -197,4 +197,39 @@ describe('CheckoutService', () => {
       }),
     );
   });
+
+  it('Delivery TAKEOUT finaliza sem exigir endereco/quote e persiste pickup', async () => {
+    const menuPort: MenuPort = {
+      validateItems: jest.fn().mockResolvedValue({ storeId: 'store_1', items: [{ productId: 'p1', name: 'Pizza', quantity: 1, unitPrice: 40, selectedOptions: [] }] }),
+    };
+    const repo = {
+      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-3', status: 'CONFIRMED' }),
+      attachPaymentIntent: jest.fn().mockResolvedValue({ id: 'order_db' }),
+    };
+    const quoteService = { quoteByAddress: jest.fn() };
+    const service = build(menuPort, quoteService, repo);
+
+    const result = await service.runDeliveryCheckout(
+      {
+        companyId: 'company_a',
+        storeId: 'store_1',
+        channel: 'delivery',
+        fulfillmentType: 'TAKEOUT',
+        customer: { name: 'Maria', phone: '1199' },
+        deliveryAddress: { cep: '', street: '', number: '', neighborhood: '' },
+        items: [{ productId: 'p1', quantity: 1 }],
+        paymentMethod: 'CASH',
+      },
+      ctx,
+    );
+
+    expect(result.order.id).toBe('order_db');
+    expect(quoteService.quoteByAddress).not.toHaveBeenCalled();
+    expect(repo.createOrder).toHaveBeenCalledWith(
+      expect.anything(),
+      ctx,
+      undefined,
+      expect.objectContaining({ orderTypeOverride: 'PICKUP' }),
+    );
+  });
 });

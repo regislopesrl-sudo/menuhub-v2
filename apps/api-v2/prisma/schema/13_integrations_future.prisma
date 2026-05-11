@@ -1,0 +1,135 @@
+// integrations future
+
+
+
+model WhatsappConversation {
+  id           String             @id @default(uuid()) @map("id")
+  customerId   String?            @map("customer_id")
+  assignedToId String?            @map("assigned_to_id")
+  phone        String?            @map("phone")
+  status       ConversationStatus @default(BOT_ACTIVE) @map("status")
+  sessionSnapshot Json?           @map("session_snapshot")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignedTo User?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  messages WhatsappMessage[]
+
+  @@index([customerId])
+  @@index([assignedToId])
+  @@map("whatsapp_conversations")
+}
+
+model WhatsappMessage {
+  id             String   @id @default(uuid()) @map("id")
+  conversationId String   @map("conversation_id")
+  direction      String   @map("direction")
+  messageType    String   @default("text") @map("message_type")
+  content        String   @map("content")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("whatsapp_messages")
+}
+
+model LoyaltyTransaction {
+  id              String   @id @default(uuid()) @map("id")
+  companyId       String?  @map("company_id")
+  customerId      String   @map("customer_id")
+  orderId         String?  @map("order_id")
+  transactionType String   @map("transaction_type")
+  points          Int      @map("points")
+  monetaryValue   Decimal? @map("monetary_value") @db.Decimal(12, 2)
+  balanceBefore   Int?     @map("balance_before")
+  balanceAfter    Int?     @map("balance_after")
+  availablePoints Int?     @map("available_points")
+  expiresAt       DateTime? @map("expires_at")
+  sourceTransactionId String? @map("source_transaction_id")
+  description     String?  @map("description")
+  reason          String?  @map("reason")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company  Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order    Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@index([orderId])
+  @@index([sourceTransactionId])
+  @@index([transactionType, expiresAt])
+  @@map("loyalty_transactions")
+}
+
+model LoyaltyAccount {
+  id         String   @id @default(uuid()) @map("id")
+  companyId  String   @map("company_id")
+  customerId String   @unique @map("customer_id")
+  balance    Int      @default(0) @map("balance")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([customerId])
+  @@map("loyalty_accounts")
+}
+
+model GiftCard {
+  id             String    @id @default(uuid()) @map("id")
+  companyId      String    @map("company_id")
+  code           String    @unique @map("code")
+  initialBalance Decimal   @map("initial_balance") @db.Decimal(12, 2)
+  currentBalance Decimal   @map("current_balance") @db.Decimal(12, 2)
+  expiresAt      DateTime? @map("expires_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("gift_cards")
+}
+
+model Review {
+  id                String    @id @default(uuid()) @map("id")
+  companyId         String    @map("company_id")
+  customerId        String?   @map("customer_id")
+  orderId           String?   @map("order_id")
+  handledById       String?   @map("handled_by_id")
+  channel           String    @default("manual") @map("channel")
+  rating            Int       @map("rating")
+  title             String?   @map("title")
+  comment           String?   @map("comment")
+  authorName        String?   @map("author_name")
+  authorContact     String?   @map("author_contact")
+  status            ReviewStatus @default(NEW) @map("status")
+  sentiment         String?   @map("sentiment")
+  internalNotes     String?   @map("internal_notes")
+  responseText      String?   @map("response_text")
+  responseAt        DateTime? @map("response_at")
+  reviewAt          DateTime  @default(now()) @map("review_at")
+  handledAt         DateTime? @map("handled_at")
+  externalReference String?   @map("external_reference")
+  metadata          Json?     @map("metadata")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order     Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  handledBy User?     @relation(fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([customerId])
+  @@index([orderId])
+  @@map("reviews")
+}
+

@@ -18,6 +18,8 @@ import { BranchesModule } from './branches/branches.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { StockModule } from './stock/stock.module';
 import { ProcurementModule } from './procurement/procurement.module';
+import { TablesModule } from './tables/tables.module';
+import { FinanceModule } from './finance/finance.module';
 import { HealthController } from './health.controller';
 import { AuthModuleV2 } from './auth/auth.module';
 import { AuthGuardV2 } from './common/auth.guard';
@@ -46,6 +48,8 @@ import { RequireDeveloperGuard } from './common/require-developer.guard';
     RecipesModule,
     StockModule,
     ProcurementModule,
+    TablesModule,
+    FinanceModule,
   ],
   controllers: [HealthController],
   providers: [

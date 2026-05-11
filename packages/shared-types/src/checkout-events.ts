@@ -1,4 +1,4 @@
-import type { OrderStatus } from '@prisma/client';
+import type { OrderStatus } from './order-status';
 import type { RealtimeEventEnvelope } from './realtime-events';
 
 export const CHECKOUT_CREATED_EVENT = 'checkout.created' as const;

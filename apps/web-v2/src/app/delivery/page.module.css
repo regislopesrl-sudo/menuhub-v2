@@ -332,3 +332,27 @@
   }
 }
 
+
+.sectionTitleCompact {
+  margin-bottom: 0;
+}
+
+.quantityActions,
+.modalActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quantityActions {
+  gap: 6px;
+}
+
+.breakText {
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+.modalTitle {
+  margin: 0;
+}

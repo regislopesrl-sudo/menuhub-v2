@@ -22,7 +22,13 @@ export class OrderPrismaRepository {
     result: CheckoutResult,
     ctx: RequestContext,
     deliveryQuote?: DeliveryQuoteResponse,
-    options?: { pdvSessionId?: string; pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND'; commandReference?: string },
+    options?: {
+      pdvSessionId?: string;
+      pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND';
+      commandReference?: string;
+      orderTypeOverride?: 'DELIVERY' | 'PICKUP';
+      checkoutMetadata?: Record<string, unknown>;
+    },
   ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
@@ -45,7 +51,7 @@ export class OrderPrismaRepository {
             branchId,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
-            orderType: this.mapOrderType(result.order.channel, options?.pdvOrderType),
+            orderType: this.mapOrderType(result.order.channel, options?.pdvOrderType, options?.orderTypeOverride),
             channel: this.mapChannel(result.order.channel),
             status: this.mapOrderStatus(result.order.status),
             paymentStatus: result.payment.status === 'APPROVED' ? 'PAID' : 'UNPAID',
@@ -72,6 +78,7 @@ export class OrderPrismaRepository {
                 : undefined,
               checkoutSnapshot: customerSnapshot,
               deliveryQuote,
+              checkoutMetadata: options?.checkoutMetadata,
             }),
             items: {
               create: result.order.items.map((item) => ({
@@ -628,7 +635,11 @@ export class OrderPrismaRepository {
     }
   }
 
-  private mapOrderType(channel: string, pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND'):
+  private mapOrderType(
+    channel: string,
+    pdvOrderType?: 'COUNTER' | 'TABLE' | 'COMMAND',
+    orderTypeOverride?: 'DELIVERY' | 'PICKUP',
+  ):
     | 'DELIVERY'
     | 'COUNTER'
     | 'PICKUP'
@@ -646,7 +657,7 @@ export class OrderPrismaRepository {
     if (channel === 'kiosk') {
       return 'KIOSK';
     }
-    return 'DELIVERY';
+    return orderTypeOverride ?? 'DELIVERY';
   }
 
   private mapChannel(channel: string):

@@ -3,6 +3,8 @@ import type { RequestContext } from '../common/request-context';
 
 export interface DeliveryCheckoutRequestBody {
   storeId: string;
+  fulfillmentType?: 'DELIVERY' | 'TAKEOUT';
+  scheduledAt?: string;
   customerId?: string;
   customer: {
     name: string;
@@ -38,6 +40,8 @@ export function mapDeliveryRequestToCheckoutInput(
     companyId: ctx.companyId,
     channel: 'delivery',
     storeId: body.storeId,
+    fulfillmentType: body.fulfillmentType,
+    scheduledAt: body.scheduledAt,
     customerId: body.customerId,
     customer: body.customer,
     deliveryAddress: body.deliveryAddress,

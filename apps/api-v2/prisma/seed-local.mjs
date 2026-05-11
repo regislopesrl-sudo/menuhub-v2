@@ -34,7 +34,10 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/menuhub_local?schema=public';
 }
 const { PrismaClient } = await import('@prisma/client');
-const prisma = new PrismaClient();
+const { PrismaPg } = await import('@prisma/adapter-pg');
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(process.env.DATABASE_URL ?? ''),
+});
 
 const COMPANY_ID = 'company-demo';
 const COMPANY_NAME = 'MenuHub Demo';

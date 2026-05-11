@@ -1,8 +1,14 @@
 .page {
-  width: min(1000px, 100% - 32px);
-  margin: 24px auto 48px;
+  min-height: 100vh;
   display: grid;
   gap: 16px;
+  padding: 24px 0 48px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .card {
@@ -10,11 +16,12 @@
   border-radius: 16px;
   background: #fff;
   padding: 20px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
 }
 
 .title {
   margin: 0 0 8px;
-  font-size: 30px;
+  font-size: 1.35rem;
   font-weight: 900;
 }
 
@@ -39,4 +46,11 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #0f172a;
   word-break: break-all;
+}
+
+@media (max-width: 900px) {
+  .summaryGrid,
+  .row {
+    grid-template-columns: 1fr;
+  }
 }
