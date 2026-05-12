@@ -1,11 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import { PdvService, type PdvMovementType } from './pdv.service';
 
 @Controller('v2/pdv/sessions')
+@UseGuards(ModuleGuard)
+@ModuleAccess('pdv')
 @RequirePermissions(TENANT_PERMISSIONS.PDV_OPERATE)
 export class PdvController {
   constructor(private readonly pdvService: PdvService) {}

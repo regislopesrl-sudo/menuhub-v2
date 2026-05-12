@@ -1,11 +1,15 @@
-﻿import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import { TablesService } from './tables.service';
 
 @Controller('v2/tables')
+@UseGuards(ModuleGuard)
+@ModuleAccess('waiter_app')
 @RequirePermissions(TENANT_PERMISSIONS.ORDERS_MANAGE)
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
@@ -50,6 +54,8 @@ export class TablesController {
 }
 
 @Controller('v2/commands')
+@UseGuards(ModuleGuard)
+@ModuleAccess('waiter_app')
 @RequirePermissions(TENANT_PERMISSIONS.ORDERS_MANAGE)
 export class CommandsController {
   constructor(private readonly tablesService: TablesService) {}
@@ -73,4 +79,3 @@ export class CommandsController {
     return this.tablesService.mergeCommands(ctx, Array.isArray(body.commandIds) ? body.commandIds : []);
   }
 }
-
