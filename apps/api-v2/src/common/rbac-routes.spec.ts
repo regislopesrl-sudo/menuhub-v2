@@ -129,10 +129,15 @@ describe('RBAC route permissions metadata', () => {
     ]);
   });
 
-  it('payments status e webhook sao publicos', () => {
+  it('payments status e webhook sao publicos, conciliacao mock e privada financeira', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController.prototype.paymentStatus)).toBe(true);
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController.prototype.webhook)).toBe(true);
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, BillingWebhookController.prototype.handleWebhook)).toBe(true);
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, PaymentsController.prototype.mockReconciliation)).toBe('payments');
+    expect(methodPermissions(PaymentsController.prototype, 'mockReconciliation')).toEqual([
+      TENANT_PERMISSIONS.FINANCE_READ,
+      TENANT_PERMISSIONS.FINANCE_MANAGE,
+    ]);
   });
 
   it('tracking publico de pedidos nao exige JWT e tracking tenant exige orders.read/manage', () => {

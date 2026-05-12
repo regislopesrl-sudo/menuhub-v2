@@ -7,6 +7,27 @@ import type { PaymentProvider } from './providers/payment-provider.interface';
 import { PrismaService } from '../database/prisma.service';
 import { sanitizeAuditMetadata } from '../common/audit-log';
 
+type PaymentSnapshotStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'REFUNDED';
+type PaymentReconciliationDivergence =
+  | 'reconciled'
+  | 'pending'
+  | 'missing_payment_snapshot'
+  | 'status_mismatch';
+
+interface PaymentSnapshot {
+  provider?: string | null;
+  providerPaymentId?: string | null;
+  status?: string | null;
+  method?: string | null;
+  updatedAt?: string | null;
+}
+
+interface PaymentReconciliationQuery {
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -43,6 +64,113 @@ export class PaymentsService {
       orderStatus: order.status,
       orderId: order.id,
       orderNumber: order.orderNumber,
+    };
+  }
+
+  async getMockReconciliation(ctx: RequestContext, query: PaymentReconciliationQuery = {}) {
+    const limit = this.resolveReconciliationLimit(query.limit);
+    const createdFrom = this.parseOptionalDate(query.dateFrom, 'dateFrom');
+    const createdTo = this.parseOptionalDate(query.dateTo, 'dateTo');
+
+    const rows = await this.prisma.order.findMany({
+      where: {
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+        ...(createdFrom || createdTo
+          ? {
+              createdAt: {
+                ...(createdFrom ? { gte: createdFrom } : {}),
+                ...(createdTo ? { lte: createdTo } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        paidAmount: true,
+        refundedAmount: true,
+        internalNotes: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    const items = rows.map((order) => {
+      const payment = this.readPaymentSnapshot(order.internalNotes);
+      const providerStatus = this.normalizeSnapshotStatus(payment?.status);
+      const expectedSummaryStatus = providerStatus
+        ? this.expectedSummaryStatus(providerStatus)
+        : null;
+      const divergence = this.resolveReconciliationDivergence(
+        String(order.paymentStatus),
+        providerStatus,
+        Boolean(payment),
+      );
+
+      return {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        orderStatus: String(order.status),
+        paymentStatus: String(order.paymentStatus),
+        expectedPaymentStatus: expectedSummaryStatus,
+        provider: payment?.provider ?? null,
+        providerPaymentId: payment?.providerPaymentId ?? null,
+        providerStatus,
+        method: payment?.method ?? null,
+        totalAmount: Number(order.totalAmount ?? 0),
+        paidAmount: Number(order.paidAmount ?? 0),
+        refundedAmount: Number(order.refundedAmount ?? 0),
+        divergence,
+        recommendedAction: this.recommendedReconciliationAction(divergence),
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt?.toISOString?.() ?? null,
+      };
+    });
+
+    const summary = items.reduce(
+      (acc, item) => {
+        acc.totalOrders += 1;
+        acc.totalAmount = Number((acc.totalAmount + item.totalAmount).toFixed(2));
+        acc.paidAmount = Number((acc.paidAmount + item.paidAmount).toFixed(2));
+        acc.refundedAmount = Number((acc.refundedAmount + item.refundedAmount).toFixed(2));
+        if (item.divergence === 'reconciled') acc.reconciled += 1;
+        if (item.divergence === 'pending') acc.pending += 1;
+        if (item.divergence === 'missing_payment_snapshot') acc.missingPaymentSnapshot += 1;
+        if (item.divergence === 'status_mismatch') acc.statusMismatch += 1;
+        return acc;
+      },
+      {
+        totalOrders: 0,
+        reconciled: 0,
+        pending: 0,
+        missingPaymentSnapshot: 0,
+        statusMismatch: 0,
+        totalAmount: 0,
+        paidAmount: 0,
+        refundedAmount: 0,
+      },
+    );
+
+    return {
+      mode: 'mock',
+      provider: this.provider.providerName,
+      scope: {
+        companyId: ctx.companyId,
+        branchId: ctx.branchId ?? null,
+      },
+      filters: {
+        dateFrom: createdFrom?.toISOString() ?? null,
+        dateTo: createdTo?.toISOString() ?? null,
+        limit,
+      },
+      summary,
+      items,
     };
   }
 
@@ -184,6 +312,70 @@ export class PaymentsService {
       where: { provider, eventId, processedAt: null },
       data: { processedAt: new Date() },
     });
+  }
+
+  private resolveReconciliationLimit(limitRaw?: number): number {
+    const limit = Number(limitRaw ?? 50);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      throw new BadRequestException('limit deve ser maior que zero.');
+    }
+    return Math.min(200, Math.trunc(limit));
+  }
+
+  private parseOptionalDate(value: string | undefined, fieldName: 'dateFrom' | 'dateTo'): Date | undefined {
+    if (!value) return undefined;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`${fieldName} invalido.`);
+    }
+    return date;
+  }
+
+  private readPaymentSnapshot(internalNotes: unknown): PaymentSnapshot | null {
+    if (typeof internalNotes !== 'string' || !internalNotes.trim()) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(internalNotes) as { payment?: PaymentSnapshot };
+      return parsed.payment && typeof parsed.payment === 'object' ? parsed.payment : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeSnapshotStatus(status: unknown): PaymentSnapshotStatus | null {
+    const upper = String(status ?? '').toUpperCase();
+    if (upper === 'APPROVED' || upper === 'PAID' || upper === 'AUTHORIZED') return 'APPROVED';
+    if (upper === 'DECLINED' || upper === 'FAILED' || upper === 'CANCELED') return 'DECLINED';
+    if (upper === 'EXPIRED') return 'EXPIRED';
+    if (upper === 'REFUNDED' || upper === 'PARTIALLY_REFUNDED') return 'REFUNDED';
+    if (upper === 'PENDING' || upper === 'INITIATED') return 'PENDING';
+    return null;
+  }
+
+  private expectedSummaryStatus(status: PaymentSnapshotStatus): 'PAID' | 'UNPAID' | 'PENDING' | 'REFUNDED' {
+    if (status === 'APPROVED') return 'PAID';
+    if (status === 'REFUNDED') return 'REFUNDED';
+    if (status === 'PENDING') return 'PENDING';
+    return 'UNPAID';
+  }
+
+  private resolveReconciliationDivergence(
+    summaryStatus: string,
+    providerStatus: PaymentSnapshotStatus | null,
+    hasPaymentSnapshot: boolean,
+  ): PaymentReconciliationDivergence {
+    if (!hasPaymentSnapshot) return 'missing_payment_snapshot';
+    if (!providerStatus || providerStatus === 'PENDING' || summaryStatus === 'PENDING') return 'pending';
+    const expected = this.expectedSummaryStatus(providerStatus);
+    return summaryStatus === expected ? 'reconciled' : 'status_mismatch';
+  }
+
+  private recommendedReconciliationAction(divergence: PaymentReconciliationDivergence): string {
+    if (divergence === 'reconciled') return 'none';
+    if (divergence === 'pending') return 'await_webhook_or_retry';
+    if (divergence === 'missing_payment_snapshot') return 'review_checkout_payment_snapshot';
+    return 'review_payment_status_and_reprocess_webhook';
   }
 
   private normalizeStatus(status: string): 'APPROVED' | 'DECLINED' | 'EXPIRED' | 'PENDING' {

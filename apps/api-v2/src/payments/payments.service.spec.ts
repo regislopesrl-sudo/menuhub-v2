@@ -24,6 +24,9 @@ describe('PaymentsService webhook', () => {
       emitOrderStatusUpdated: jest.fn(),
     };
     const prisma = overrides?.prisma ?? {
+      order: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       billingWebhookEvent: {
         create: jest.fn().mockResolvedValue({ id: 'evt_db_1' }),
         findUnique: jest.fn(),
@@ -411,5 +414,136 @@ describe('PaymentsService webhook', () => {
         status: 'APPROVED',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+  it('gera conciliacao mock com escopo de company e branch sem payload sensivel', async () => {
+    const prisma = {
+      order: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'ord_paid',
+            orderNumber: 'V2-1',
+            status: 'CONFIRMED',
+            paymentStatus: 'PAID',
+            totalAmount: 50,
+            paidAmount: 50,
+            refundedAmount: 0,
+            internalNotes: JSON.stringify({
+              payment: {
+                provider: 'mock',
+                providerPaymentId: 'pix_1',
+                status: 'APPROVED',
+                method: 'PIX',
+                rawPayload: { cardNumber: '4111111111111111' },
+              },
+            }),
+            createdAt: new Date('2026-05-01T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-01T10:05:00.000Z'),
+          },
+          {
+            id: 'ord_mismatch',
+            orderNumber: 'V2-2',
+            status: 'PENDING_CONFIRMATION',
+            paymentStatus: 'UNPAID',
+            totalAmount: 30,
+            paidAmount: 0,
+            refundedAmount: 0,
+            internalNotes: JSON.stringify({
+              payment: { provider: 'mock', providerPaymentId: 'pix_2', status: 'APPROVED', method: 'PIX' },
+            }),
+            createdAt: new Date('2026-05-01T11:00:00.000Z'),
+            updatedAt: new Date('2026-05-01T11:05:00.000Z'),
+          },
+          {
+            id: 'ord_missing',
+            orderNumber: 'V2-3',
+            status: 'CONFIRMED',
+            paymentStatus: 'UNPAID',
+            totalAmount: 20,
+            paidAmount: 0,
+            refundedAmount: 0,
+            internalNotes: '{}',
+            createdAt: new Date('2026-05-01T12:00:00.000Z'),
+            updatedAt: new Date('2026-05-01T12:05:00.000Z'),
+          },
+        ]),
+      },
+      billingWebhookEvent: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        updateMany: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+    };
+    const { service } = build({ prisma });
+
+    const result = await service.getMockReconciliation(
+      { companyId: 'company_a', branchId: 'branch_a', userRole: 'owner', requestId: 'req_1' },
+      { dateFrom: '2026-05-01T00:00:00.000Z', dateTo: '2026-05-02T00:00:00.000Z', limit: 25 },
+    );
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          companyId: 'company_a',
+          branchId: 'branch_a',
+          createdAt: {
+            gte: new Date('2026-05-01T00:00:00.000Z'),
+            lte: new Date('2026-05-02T00:00:00.000Z'),
+          },
+        },
+        take: 25,
+      }),
+    );
+    expect(result.summary).toEqual({
+      totalOrders: 3,
+      reconciled: 1,
+      pending: 0,
+      missingPaymentSnapshot: 1,
+      statusMismatch: 1,
+      totalAmount: 100,
+      paidAmount: 50,
+      refundedAmount: 0,
+    });
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        providerPaymentId: 'pix_1',
+        providerStatus: 'APPROVED',
+        divergence: 'reconciled',
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain('4111111111111111');
+  });
+
+  it('conciliacao mock limita take e valida filtros', async () => {
+    const { service, prisma } = build({
+      prisma: {
+        order: { findMany: jest.fn().mockResolvedValue([]) },
+        billingWebhookEvent: {
+          create: jest.fn(),
+          findUnique: jest.fn(),
+          updateMany: jest.fn(),
+          deleteMany: jest.fn(),
+        },
+      },
+    });
+
+    await service.getMockReconciliation(
+      { companyId: 'company_a', userRole: 'owner', requestId: 'req_1' },
+      { limit: 999 },
+    );
+    expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 200 }));
+
+    await expect(
+      service.getMockReconciliation(
+        { companyId: 'company_a', userRole: 'owner', requestId: 'req_1' },
+        { limit: 0 },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.getMockReconciliation(
+        { companyId: 'company_a', userRole: 'owner', requestId: 'req_1' },
+        { dateFrom: 'data-invalida' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
