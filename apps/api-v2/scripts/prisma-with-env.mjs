@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -38,6 +38,22 @@ if (args.length === 0) {
 const workspacePrismaCli = resolve(apiRoot, 'node_modules/prisma/build/index.js');
 const rootPrismaCli = resolve(repoRoot, 'node_modules/prisma/build/index.js');
 const prismaCli = existsSync(workspacePrismaCli) ? workspacePrismaCli : rootPrismaCli;
+
+function ensureWorkspaceClientLink() {
+  const workspaceClientDir = resolve(apiRoot, 'node_modules/@prisma/client');
+  const rootClientDir = resolve(repoRoot, 'node_modules/@prisma/client');
+
+  if (existsSync(workspaceClientDir) || !existsSync(rootClientDir)) {
+    return;
+  }
+
+  // Prisma generate resolves the client from the API workspace in compose builds.
+  mkdirSync(resolve(apiRoot, 'node_modules/@prisma'), { recursive: true });
+  symlinkSync(rootClientDir, workspaceClientDir, 'dir');
+}
+
+ensureWorkspaceClientLink();
+
 const result = spawnSync(process.execPath, [prismaCli, ...args], {
   cwd: apiRoot,
   env: process.env,
