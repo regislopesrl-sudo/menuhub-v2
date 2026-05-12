@@ -346,6 +346,43 @@ export default function DeliveryPage() {
     };
   }, [success?.trackingToken]);
 
+  const checkoutIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (!items.length) issues.push('Adicione pelo menos um item ao carrinho.');
+    if (!customerName.trim()) issues.push('Informe seu nome.');
+    if (!customerPhone.trim()) issues.push('Informe seu telefone.');
+    if (fulfillmentType === 'DELIVERY') {
+      if (!hasAddress) issues.push('Informe CEP valido e numero.');
+      if (!street.trim()) issues.push('Informe a rua.');
+      if (!neighborhood.trim()) issues.push('Informe o bairro.');
+      if (!quote && hasAddress) issues.push('Aguarde ou refaca a cotacao de entrega.');
+      if (quote && !quote.deliveryQuote.available) issues.push(quote.deliveryQuote.message ?? 'Endereco fora da area de entrega.');
+    }
+    if (scheduledAt.trim() && Number.isNaN(new Date(scheduledAt).getTime())) {
+      issues.push('Data/hora de agendamento invalida.');
+    }
+    if (paymentMethod === 'CREDIT_CARD' && cardMode === 'mock' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardPayerEmail.trim())) {
+      issues.push('Informe um email valido para cartao.');
+    }
+    return issues;
+  }, [
+    cardMode,
+    cardPayerEmail,
+    customerName,
+    customerPhone,
+    fulfillmentType,
+    hasAddress,
+    items.length,
+    neighborhood,
+    paymentMethod,
+    quote,
+    scheduledAt,
+    street,
+  ]);
+
+  const checkoutStep = success ? 4 : items.length === 0 ? 1 : checkoutIssues.length > 0 ? 2 : 3;
+  const checkoutBlocked = checkoutIssues.length > 0 || quoteLoading;
+  const checkoutSteps = ['1. Itens', '2. Dados', '3. Pagamento', '4. Confirmacao'];
 
   const validateCheckoutForm = (cardPaymentOverride?: OnlineCardPaymentInput): string | null => {
     if (!customerName.trim()) return 'Informe seu nome para continuar.';
@@ -686,6 +723,21 @@ export default function DeliveryPage() {
               ) : (
                 <div className={styles.muted}>Retirada selecionada: não é necessário informar endereço para concluir o pedido.</div>
               )}
+              <div className={styles.checkoutReadiness}>
+                <div>
+                  <strong>{checkoutIssues.length === 0 ? 'Tudo pronto para finalizar' : 'Faltam alguns dados'}</strong>
+                  <span>
+                    {fulfillmentType === 'TAKEOUT'
+                      ? 'Retirada no balcao, sem frete.'
+                      : quote
+                        ? `Entrega ${quote.deliveryQuote.available ? 'disponivel' : 'indisponivel'}${quote.deliveryQuote.areaName ? ` em ${quote.deliveryQuote.areaName}` : ''}.`
+                        : 'A cotacao aparece automaticamente depois do CEP e numero.'}
+                  </span>
+                </div>
+                <Badge tone={checkoutIssues.length === 0 ? 'success' : 'warning'}>
+                  {checkoutIssues.length === 0 ? 'Pronto' : `${checkoutIssues.length} pendencia(s)`}
+                </Badge>
+              </div>
             </Card>
           </section>
 
@@ -701,6 +753,13 @@ export default function DeliveryPage() {
                   <p className={styles.muted}>{totalItems} item(ns) selecionado(s)</p>
                 </div>
                 <Button onClick={() => setCartOpen(false)}>Fechar</Button>
+              </div>
+              <div className={styles.checkoutSteps} aria-label="Etapas do checkout">
+                {checkoutSteps.map((step, index) => (
+                  <span key={step} className={index + 1 <= checkoutStep ? styles.checkoutStepActive : styles.checkoutStep}>
+                    {step}
+                  </span>
+                ))}
               </div>
             <Card className={styles.cartPanel}>
               <div className={styles.row}>
@@ -821,6 +880,14 @@ export default function DeliveryPage() {
               <div className={styles.row}><span>Total estimado</span><strong>{brl(estimatedTotal)}</strong></div>
 
               {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
+              {checkoutIssues.length > 0 ? (
+                <div className={styles.checkoutIssues}>
+                  <strong>Antes de finalizar</strong>
+                  {checkoutIssues.map((issue) => (
+                    <span key={issue}>{issue}</span>
+                  ))}
+                </div>
+              ) : null}
               {error ? <div className={styles.feedbackError}>{error}</div> : null}
               {success ? (
                 <div className={styles.feedbackSuccess}>
@@ -861,7 +928,7 @@ export default function DeliveryPage() {
 
               <Button
                 variant="primary"
-                disabled={loading || quoteLoading || (fulfillmentType === 'DELIVERY' && !quote?.deliveryQuote.available) || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
+                disabled={loading || checkoutBlocked || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
                 onClick={() => void handleCheckout()}
               >
                 {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
