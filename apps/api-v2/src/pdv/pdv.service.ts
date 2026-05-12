@@ -2,6 +2,18 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { RequestContext } from '../common/request-context';
 import { PrismaService } from '../database/prisma.service';
 import { OrderPrismaRepository } from '../orders/order.prisma';
+import { AUDIT_ACTIONS, type AuditAction } from '../common/audit-log';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
+import {
+  assertClosureNotesWhenDivergent,
+  assertValidCashMovement,
+  assertValidDeclaredCashAmount,
+  assertValidOpeningBalance,
+  calculateCashDifference,
+  resolveCashDivergenceLevel,
+  resolveCashDivergenceSeverity,
+  type PdvCashDivergenceSeverity,
+} from './pdv-cash.policy';
 
 export type PdvMovementType = 'SUPPLY' | 'WITHDRAWAL' | 'SALE' | 'ADJUSTMENT';
 
@@ -21,6 +33,7 @@ export interface PdvSessionSummary {
   status: 'OPEN' | 'CLOSED';
   openedAt: string;
   closedAt?: string;
+  openingBalance: number;
   totalSales: number;
   totalOrders: number;
   avgTicket: number;
@@ -36,6 +49,9 @@ export interface PdvSessionSummary {
     adjustment: number;
   };
   expectedCashAmount: number;
+  declaredCashAmount?: number;
+  cashDifference?: number;
+  divergenceSeverity?: PdvCashDivergenceSeverity;
   movementsCount: number;
 }
 
@@ -67,6 +83,7 @@ export interface PdvSessionDivergence {
   cashDifference: number | null;
   absoluteDifference: number | null;
   divergenceLevel: 'none' | 'shortage' | 'overage';
+  divergenceSeverity: PdvCashDivergenceSeverity;
   closureNotes?: string;
 }
 
@@ -94,9 +111,11 @@ export class PdvService {
     }
 
     const openingBalance = Number(body?.openingBalance ?? 0);
+    assertValidOpeningBalance(openingBalance);
     const opened = await this.prisma.cashRegister.create({
       data: {
         branchId,
+        openedById: ctx.userId ?? null,
         openingBalance,
         status: 'OPEN',
       },
@@ -107,6 +126,14 @@ export class PdvService {
         openedAt: true,
         openingBalance: true,
       },
+    });
+
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.CASH_SESSION_OPEN,
+      outcome: 'success',
+      ctx: { ...ctx, branchId },
+      target: { type: 'cash_session', id: opened.id, label: opened.branchId },
+      metadata: { openingBalance },
     });
 
     return {
@@ -130,21 +157,55 @@ export class PdvService {
 
     const summary = await this.getSessionSummary(id, ctx);
     const declared = Number(body?.declaredCashAmount ?? body?.declaredClosingBalance ?? summary.expectedCashAmount);
+    assertValidDeclaredCashAmount(declared);
     const expected = Number(summary.expectedCashAmount.toFixed(2));
-    const diff = Number((declared - expected).toFixed(2));
+    const diff = calculateCashDifference(declared, expected);
+    const closureNotes = body?.closureNotes?.trim() || undefined;
+    try {
+      assertClosureNotesWhenDivergent({ differenceAmount: diff, closureNotes });
+    } catch (error) {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.CASH_SESSION_CLOSE_BLOCKED,
+        outcome: 'blocked',
+        ctx: { ...ctx, branchId: session.branchId },
+        target: { type: 'cash_session', id: session.id, label: session.branchId },
+        metadata: { expected, declared, differenceAmount: diff, hasClosureNotes: Boolean(closureNotes) },
+      });
+      throw error;
+    }
+    const divergenceLevel = resolveCashDivergenceLevel(diff);
+    const divergenceSeverity = resolveCashDivergenceSeverity(Math.abs(diff));
 
     await this.prisma.cashRegister.update({
       where: { id: session.id },
       data: {
         status: 'CLOSED',
         closedAt: new Date(),
+        closedById: ctx.userId ?? null,
         expectedClosingBalance: expected,
         declaredClosingBalance: declared,
         closingBalance: declared,
         differenceAmount: diff,
-        closureNotes: body?.closureNotes?.trim() || undefined,
+        closureNotes,
       },
     });
+
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.CASH_SESSION_CLOSE,
+      outcome: 'success',
+      ctx: { ...ctx, branchId: session.branchId },
+      target: { type: 'cash_session', id: session.id, label: session.branchId },
+      metadata: { expected, declared, differenceAmount: diff, divergenceLevel, divergenceSeverity, hasClosureNotes: Boolean(closureNotes) },
+    });
+    if (divergenceSeverity !== 'none') {
+      recordAuditFromContext({
+        action: AUDIT_ACTIONS.CASH_DISCREPANCY_CREATED,
+        outcome: 'success',
+        ctx: { ...ctx, branchId: session.branchId },
+        target: { type: 'cash_session', id: session.id, label: session.branchId },
+        metadata: { differenceAmount: diff, divergenceLevel, divergenceSeverity },
+      });
+    }
 
     return {
       sessionId: summary.sessionId,
@@ -156,6 +217,8 @@ export class PdvService {
       expectedCashAmount: expected,
       declaredCashAmount: declared,
       cashDifference: diff,
+      divergenceLevel,
+      divergenceSeverity,
     };
   }
 
@@ -220,6 +283,7 @@ export class PdvService {
       status: session.status === 'OPEN' ? 'OPEN' : 'CLOSED',
       openedAt: session.openedAt.toISOString(),
       closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
+      openingBalance: Number(session.openingBalance),
       totalSales: Number(totalSales.toFixed(2)),
       totalOrders,
       avgTicket,
@@ -235,6 +299,15 @@ export class PdvService {
         adjustment: Number(movementTotals.adjustment.toFixed(2)),
       },
       expectedCashAmount,
+      declaredCashAmount: session.declaredClosingBalance !== null && session.declaredClosingBalance !== undefined
+        ? Number(session.declaredClosingBalance)
+        : undefined,
+      cashDifference: session.differenceAmount !== null && session.differenceAmount !== undefined
+        ? Number(session.differenceAmount)
+        : undefined,
+      divergenceSeverity: session.differenceAmount !== null && session.differenceAmount !== undefined
+        ? resolveCashDivergenceSeverity(Math.abs(Number(session.differenceAmount)))
+        : 'none',
       movementsCount: movements.length,
     };
   }
@@ -249,10 +322,15 @@ export class PdvService {
       throw new BadRequestException('Nao e permitido lancar movimentacao em caixa fechado.');
     }
     const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Valor da movimentacao deve ser maior que zero.');
-    }
+    const currentSummary = body.type === 'WITHDRAWAL' ? await this.getSessionSummary(id, ctx) : undefined;
+    assertValidCashMovement({
+      type: body.type,
+      amount,
+      reason: body.reason,
+      expectedCashAmount: currentSummary?.expectedCashAmount,
+    });
     const movementType = this.mapMovementType(body.type);
+    const reason = body.reason?.trim() || undefined;
 
     const movement = await this.prisma.cashMovement.create({
       data: {
@@ -261,7 +339,7 @@ export class PdvService {
         createdById: ctx.userId ?? null,
         movementType,
         amount,
-        notes: body.reason?.trim() || undefined,
+        notes: reason,
       },
       select: {
         id: true,
@@ -272,6 +350,14 @@ export class PdvService {
         notes: true,
         createdAt: true,
       },
+    });
+
+    recordAuditFromContext({
+      action: this.auditActionForMovement(body.type),
+      outcome: 'success',
+      ctx: { ...ctx, branchId: session.branchId },
+      target: { type: 'cash_movement', id: movement.id, label: session.id },
+      metadata: { type: body.type, amount, hasReason: Boolean(reason), reasonLength: reason?.length ?? 0 },
     });
 
     return this.mapMovement(movement);
@@ -302,7 +388,7 @@ export class PdvService {
 
   async getOpenSession(ctx: RequestContext) {
     const branchId = await this.resolveBranchId(ctx);
-    return this.prisma.cashRegister.findFirst({
+    const open = await this.prisma.cashRegister.findFirst({
       where: {
         branchId,
         status: 'OPEN',
@@ -315,6 +401,14 @@ export class PdvService {
         openingBalance: true,
       },
     });
+    if (!open) return null;
+    return {
+      id: open.id,
+      branchId: open.branchId,
+      status: open.status,
+      openedAt: open.openedAt.toISOString(),
+      openingBalance: Number(open.openingBalance),
+    };
   }
 
   async getCurrentSessionSummary(ctx: RequestContext): Promise<PdvSessionSummary | null> {
@@ -411,8 +505,8 @@ export class PdvService {
         ? Number(session.differenceAmount)
         : null;
 
-    const divergenceLevel: 'none' | 'shortage' | 'overage' =
-      diff === null || diff === 0 ? 'none' : diff < 0 ? 'shortage' : 'overage';
+    const divergenceLevel = diff === null ? 'none' : resolveCashDivergenceLevel(diff);
+    const divergenceSeverity = diff === null ? 'none' : resolveCashDivergenceSeverity(Math.abs(diff));
 
     return {
       sessionId: session.id,
@@ -423,6 +517,7 @@ export class PdvService {
       cashDifference: diff,
       absoluteDifference: diff === null ? null : Number(Math.abs(diff).toFixed(2)),
       divergenceLevel,
+      divergenceSeverity,
       closureNotes: session.closureNotes ?? undefined,
     };
   }
@@ -503,6 +598,12 @@ export class PdvService {
     if (type === 'WITHDRAWAL') return 'WITHDRAWAL';
     if (type === 'SALE') return 'SALE';
     return 'ADJUSTMENT';
+  }
+
+  private auditActionForMovement(type: PdvMovementType): AuditAction {
+    if (type === 'WITHDRAWAL') return AUDIT_ACTIONS.CASH_MOVEMENT_WITHDRAWAL;
+    if (type === 'SUPPLY') return AUDIT_ACTIONS.CASH_MOVEMENT_SUPPLY;
+    return AUDIT_ACTIONS.CASH_MOVEMENT_ADJUSTMENT;
   }
 
   private mapMovement(input: {

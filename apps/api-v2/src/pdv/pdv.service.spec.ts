@@ -98,12 +98,39 @@ describe('PdvService', () => {
     ]);
     prismaMock.cashRegister.update.mockResolvedValue({});
 
-    const closed = await service.closeSession('session_1', ctx, { declaredCashAmount: 60 });
+    const closed = await service.closeSession('session_1', ctx, {
+      declaredCashAmount: 60,
+      closureNotes: 'Divergencia conferida',
+    });
 
     expect(closed.status).toBe('CLOSED');
     expect(closed.totalSales).toBe(50);
     expect(closed.expectedCashAmount).toBe(10);
     expect(closed.cashDifference).toBe(50);
+    expect(closed.divergenceSeverity).toBe('medium');
+  });
+
+  it('blocks negative opening balance', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValueOnce(null);
+    await expect(service.openSession(ctx, { openingBalance: -1 })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prismaMock.cashRegister.create).not.toHaveBeenCalled();
+  });
+
+  it('requires closure notes when cash divergence is above tolerance', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_1',
+      branchId: 'branch_1',
+      status: 'OPEN',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: null,
+      openingBalance: 10,
+    });
+    orderRepoMock.findPdvOrdersForSession.mockResolvedValue([]);
+
+    await expect(service.closeSession('session_1', ctx, { declaredCashAmount: 30 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prismaMock.cashRegister.update).not.toHaveBeenCalled();
   });
 
   it('supply increases expected cash and withdrawal reduces it', async () => {
@@ -147,6 +174,39 @@ describe('PdvService', () => {
     expect(summary.expectedCashAmount).toBe(105);
     expect(summary.movementTotals.supply).toBe(20);
     expect(summary.movementTotals.withdrawal).toBe(15);
+  });
+
+  it('requires reason for manual movement', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_1',
+      branchId: 'branch_1',
+      status: 'OPEN',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: null,
+      openingBalance: 100,
+    });
+
+    await expect(service.createMovement('session_1', ctx, { type: 'SUPPLY', amount: 20 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prismaMock.cashMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks withdrawal greater than expected cash', async () => {
+    prismaMock.cashRegister.findFirst.mockResolvedValue({
+      id: 'session_1',
+      branchId: 'branch_1',
+      status: 'OPEN',
+      openedAt: new Date('2026-04-30T10:00:00.000Z'),
+      closedAt: null,
+      openingBalance: 10,
+    });
+    orderRepoMock.findPdvOrdersForSession.mockResolvedValue([]);
+
+    await expect(
+      service.createMovement('session_1', ctx, { type: 'WITHDRAWAL', amount: 20, reason: 'Sangria' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prismaMock.cashMovement.create).not.toHaveBeenCalled();
   });
 
   it('lists movements for session', async () => {
@@ -232,6 +292,7 @@ describe('PdvService', () => {
     expect(divergence.status).toBe('CLOSED');
     expect(divergence.cashDifference).toBe(-10);
     expect(divergence.divergenceLevel).toBe('shortage');
+    expect(divergence.divergenceSeverity).toBe('low');
     expect(divergence.absoluteDifference).toBe(10);
   });
 });
