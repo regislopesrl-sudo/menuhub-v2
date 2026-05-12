@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
+  approvePurchaseOrder,
+  cancelPurchaseOrder,
   createPurchaseOrder,
   createSupplier,
   confirmPurchaseFiscalDocumentStockEntry,
@@ -23,6 +25,7 @@ import {
   type PurchaseDocument,
   type PurchaseOrder,
   type Supplier,
+  updateSupplier,
 } from '@/features/procurement/procurement.api';
 import { listStockItems, type StockItem } from '@/features/stock/stock.api';
 import styles from './page.module.css';
@@ -134,8 +137,51 @@ export default function AdminProcurementPage() {
     }
   }
 
+  async function onToggleSupplier(supplier: Supplier) {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateSupplier(supplier.id, { active: !supplier.active });
+      setSuppliers((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      setNotice(updated.active ? 'Fornecedor reativado.' : 'Fornecedor inativado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao alterar fornecedor.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onApproveOrder(order: PurchaseOrder) {
+    setSaving(true);
+    setError(null);
+    try {
+      await approvePurchaseOrder(order.id);
+      await load();
+      setNotice('Pedido de compra aprovado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao aprovar pedido.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onCancelOrder(order: PurchaseOrder) {
+    setSaving(true);
+    setError(null);
+    try {
+      await cancelPurchaseOrder(order.id);
+      await load();
+      setNotice('Pedido de compra cancelado.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao cancelar pedido.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onReceiveOrder() {
     if (!selectedOrder || !selectedOrder.items?.length) return setError('Selecione um pedido com itens.');
+    if (['CANCELED', 'RECEIVED', 'PARTIALLY_RECEIVED'].includes(selectedOrder.status)) return setError('Pedido nao esta disponivel para recebimento.');
     setSaving(true);
     setError(null);
     try {
@@ -341,6 +387,11 @@ export default function AdminProcurementPage() {
                   <span>Documento: {row.document ?? '-'}</span>
                   <span>Status: {row.active ? 'ATIVO' : 'INATIVO'}</span>
                 </div>
+                <div className={styles.actions}>
+                  <Button disabled={saving} variant={row.active ? 'danger' : 'default'} onClick={() => void onToggleSupplier(row)}>
+                    {row.active ? 'Inativar' : 'Reativar'}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -362,14 +413,20 @@ export default function AdminProcurementPage() {
           <div className={styles.list}>
             {orders.length === 0 ? <EmptyState title="Sem pedidos" /> : null}
             {orders.map((row) => (
-              <button key={row.id} type="button" className={styles.row} onClick={() => setReceiveOrderId(row.id)}>
-                <strong>Pedido {row.id.slice(0, 8)}</strong>
+              <div key={row.id} className={`${styles.row} ${receiveOrderId === row.id ? styles.selectedRow : ''}`.trim()}>
+                <button type="button" className={styles.rowButton} onClick={() => setReceiveOrderId(row.id)}>
+                  <strong>Pedido {row.id.slice(0, 8)}</strong>
+                </button>
                 <div className={styles.meta}>
                   <span>Fornecedor: {row.supplier?.name ?? row.supplierId}</span>
                   <span>Status: {row.status}</span>
                   <span>Total: R$ {Number(row.totalAmount).toFixed(2)}</span>
                 </div>
-              </button>
+                <div className={styles.actions}>
+                  <Button disabled={saving || row.status !== 'DRAFT'} onClick={() => void onApproveOrder(row)}>Aprovar</Button>
+                  <Button disabled={saving || ['CANCELED', 'RECEIVED', 'PARTIALLY_RECEIVED'].includes(row.status)} variant="danger" onClick={() => void onCancelOrder(row)}>Cancelar</Button>
+                </div>
+              </div>
             ))}
           </div>
         </Card>
@@ -379,7 +436,7 @@ export default function AdminProcurementPage() {
           <div className={styles.formRow}>
             <Input placeholder="Pedido selecionado" value={selectedOrder?.id ?? ''} readOnly />
             <Input placeholder="Numero da NF" value={receiveInvoice} onChange={(e) => setReceiveInvoice(e.target.value)} />
-            <Button disabled={saving || !selectedOrder} onClick={() => void onReceiveOrder()}>Receber mercadoria</Button>
+            <Button disabled={saving || !selectedOrder || ['CANCELED', 'RECEIVED', 'PARTIALLY_RECEIVED'].includes(selectedOrder.status)} onClick={() => void onReceiveOrder()}>Receber mercadoria</Button>
           </div>
           {selectedOrder?.items?.length ? (
             <div className={styles.list}>

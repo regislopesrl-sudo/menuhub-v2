@@ -59,6 +59,10 @@ export function createSupplier(input: { name: string; document?: string; email?:
   return apiFetch<Supplier>('/v2/admin/procurement/suppliers', { method: 'POST', body: JSON.stringify(input) });
 }
 
+export function updateSupplier(supplierId: string, input: Partial<Pick<Supplier, 'name' | 'document' | 'email' | 'phone' | 'notes' | 'active'>>) {
+  return apiFetch<Supplier>(`/v2/admin/procurement/suppliers/${supplierId}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
 export function listPurchaseOrders() {
   return apiFetch<PurchaseOrder[]>('/v2/admin/procurement/purchase-orders', { method: 'GET' });
 }
@@ -70,6 +74,14 @@ export function createPurchaseOrder(input: {
   items: Array<{ stockItemId: string; quantity: number; unitCost: number; unit?: string }>;
 }) {
   return apiFetch<PurchaseOrder>('/v2/admin/procurement/purchase-orders', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function approvePurchaseOrder(purchaseOrderId: string) {
+  return apiFetch<PurchaseOrder>(`/v2/admin/procurement/purchase-orders/${purchaseOrderId}/approve`, { method: 'POST' });
+}
+
+export function cancelPurchaseOrder(purchaseOrderId: string) {
+  return apiFetch<PurchaseOrder>(`/v2/admin/procurement/purchase-orders/${purchaseOrderId}/cancel`, { method: 'POST' });
 }
 
 export function receivePurchaseOrder(

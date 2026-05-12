@@ -8,6 +8,7 @@ describe('ProcurementController', () => {
     listPurchaseOrders: jest.fn(),
     createPurchaseOrder: jest.fn(),
     approvePurchaseOrder: jest.fn(),
+    cancelPurchaseOrder: jest.fn(),
     receivePurchaseOrder: jest.fn(),
     listReceipts: jest.fn(),
     conferenceReceipt: jest.fn(),
@@ -47,6 +48,13 @@ describe('ProcurementController', () => {
     const result = await controller.importFiscalDocumentByAccessKey(ctx, payload);
     expect(result).toEqual({ id: 'pd1', status: 'PENDING_REVIEW' });
     expect(service.importFiscalDocumentByAccessKey).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('cancela pedido de compra', async () => {
+    service.cancelPurchaseOrder.mockResolvedValue({ id: 'po1', status: 'CANCELED' });
+    const result = await controller.cancelPurchaseOrder(ctx, 'po1');
+    expect(result).toEqual({ id: 'po1', status: 'CANCELED' });
+    expect(service.cancelPurchaseOrder).toHaveBeenCalledWith(ctx, 'po1');
   });
 
   it('mapeia e confirma documento fiscal de compra', async () => {

@@ -6,7 +6,7 @@ describe('ProcurementService', () => {
   const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
   const prisma = {
     supplier: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
-    purchaseOrder: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    purchaseOrder: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     goodsReceipt: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn() },
     goodsReceiptItem: { create: jest.fn(), findMany: jest.fn() },
     purchaseOrderItem: { findMany: jest.fn() },
@@ -73,11 +73,51 @@ describe('ProcurementService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('recebe pedido e vincula lote operacional ao estoque', async () => {
-    prisma.purchaseOrder.findUnique.mockResolvedValue({
+  it('bloqueia pedido com fornecedor inativo', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'sup1', companyId: 'company-demo', active: false });
+    await expect(
+      service.createPurchaseOrder(ctx, { supplierId: 'sup1', items: [{ stockItemId: 'st1', quantity: 1, unitCost: 1 }] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cancela pedido ainda nao recebido', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
       id: 'po1',
       branchId: 'branch-demo',
       supplierId: 'sup1',
+      status: 'APPROVED',
+      supplier: { id: 'sup1', companyId: 'company-demo' },
+      items: [],
+    });
+    prisma.purchaseOrder.update.mockResolvedValue({ id: 'po1', status: 'CANCELED' });
+
+    const result = await service.cancelPurchaseOrder(ctx, 'po1');
+
+    expect(result).toEqual({ id: 'po1', status: 'CANCELED' });
+    expect(prisma.purchaseOrder.update).toHaveBeenCalledWith({
+      where: { id: 'po1' },
+      data: { status: 'CANCELED', updatedById: 'u1' },
+    });
+  });
+
+  it('bloqueia cancelamento de pedido recebido', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: 'po1',
+      branchId: 'branch-demo',
+      supplierId: 'sup1',
+      status: 'RECEIVED',
+      supplier: { id: 'sup1', companyId: 'company-demo' },
+      items: [],
+    });
+    await expect(service.cancelPurchaseOrder(ctx, 'po1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('recebe pedido e vincula lote operacional ao estoque', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: 'po1',
+      branchId: 'branch-demo',
+      supplierId: 'sup1',
+      status: 'APPROVED',
       supplier: { id: 'sup1', companyId: 'company-demo' },
       items: [{ stockItemId: 'st1', quantity: 3 }],
     });
@@ -123,6 +163,21 @@ describe('ProcurementService', () => {
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ batchId: 'batch-1', movementType: 'ENTRY', movementTypeDetailed: 'purchase_receipt_entry' }),
     });
+  });
+
+  it('bloqueia recebimento duplicado do mesmo pedido', async () => {
+    prisma.purchaseOrder.findFirst.mockResolvedValue({
+      id: 'po1',
+      branchId: 'branch-demo',
+      supplierId: 'sup1',
+      status: 'RECEIVED',
+      supplier: { id: 'sup1', companyId: 'company-demo' },
+      items: [{ stockItemId: 'st1', quantity: 3 }],
+    });
+
+    await expect(service.receivePurchaseOrder(ctx, 'po1', {
+      items: [{ stockItemId: 'st1', receivedQuantity: 3, unitCost: 7, orderedQuantity: 3 }],
+    })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('importa cupom fiscal por chave e cria pre-importacao sem movimentar estoque', async () => {

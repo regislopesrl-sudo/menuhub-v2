@@ -67,6 +67,16 @@
   gap: 6px;
 }
 
+.rowButton {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .selectedRow {
   border-color: rgba(245, 158, 11, 0.58);
   background: rgba(245, 158, 11, 0.08);
