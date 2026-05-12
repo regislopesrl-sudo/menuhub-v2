@@ -89,6 +89,10 @@ export class CreateProductDto {
   available?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  featured?: boolean;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => ProductChannelsDto)
   channels?: ProductChannelsDto;
@@ -203,6 +207,12 @@ export class CreateAddonGroupDto {
 }
 
 export class UpdateAddonGroupDto extends CreateAddonGroupDto {}
+
+export class UpdateAddonGroupProductsDto {
+  @IsArray()
+  @IsString({ each: true })
+  productIds!: string[];
+}
 
 export class CreateAddonOptionDto {
   @IsOptional()

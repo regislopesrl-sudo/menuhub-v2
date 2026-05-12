@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input, Select } from '@/components/ui/Input';
@@ -14,6 +15,9 @@ type ProductChannelsState = {
   kiosk: boolean;
   waiter: boolean;
 };
+
+const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const PRODUCT_IMAGE_MAX_BYTES = 1.5 * 1024 * 1024;
 
 export function ProductModal({
   mode,
@@ -74,6 +78,7 @@ export function ProductModal({
   const [sortOrder, setSortOrder] = useState(String(product?.sortOrder ?? product?.featuredSortOrder ?? '0'));
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [available, setAvailable] = useState(product?.available !== false);
+  const [featured, setFeatured] = useState(product?.featured === true);
   const [channels, setChannels] = useState<ProductChannelsState>({
     delivery: product?.channels?.delivery ?? true,
     pdv: product?.channels?.pdv ?? true,
@@ -110,6 +115,7 @@ export function ProductModal({
       sortOrder: sortOrder.trim() ? Number(sortOrder) : 0,
       imageUrl: imageUrl.trim() || undefined,
       available,
+      featured,
       channels,
     });
   };
@@ -143,6 +149,7 @@ export function ProductModal({
         ) : mode === 'addons' ? (
           <AddonGroupsPanel
             product={product}
+            products={products}
             companyId={companyId}
             branchId={branchId}
             onProductChanged={onProductChanged}
@@ -174,6 +181,7 @@ export function ProductModal({
             sortOrder={sortOrder}
             imageUrl={imageUrl}
             available={available}
+            featured={featured}
             channels={channels}
             onNameChange={setName}
             onDescriptionChange={setDescription}
@@ -188,9 +196,27 @@ export function ProductModal({
             onSortOrderChange={setSortOrder}
             onImageUrlChange={setImageUrl}
             onAvailableChange={setAvailable}
+            onFeaturedChange={setFeatured}
             onChannelsChange={setChannels}
           />
         )}
+
+        {mode === 'edit' && product ? (
+          <AddonGroupsPanel
+            product={product}
+            products={products}
+            companyId={companyId}
+            branchId={branchId}
+            onProductChanged={onProductChanged}
+            onError={onError}
+            onNotice={onNotice}
+          />
+        ) : mode === 'create' ? (
+          <Card className={styles.inlinePanel}>
+            <strong>Adicionais do produto</strong>
+            <span>Salve o produto primeiro para configurar adicionais, variacoes e opcionais.</span>
+          </Card>
+        ) : null}
 
         <div className={styles.modalActions}>
           <Button onClick={onClose}>Cancelar</Button>
@@ -241,6 +267,7 @@ function ProductForm({
   sortOrder,
   imageUrl,
   available,
+  featured,
   channels,
   onNameChange,
   onDescriptionChange,
@@ -255,6 +282,7 @@ function ProductForm({
   onSortOrderChange,
   onImageUrlChange,
   onAvailableChange,
+  onFeaturedChange,
   onChannelsChange,
 }: {
   name: string;
@@ -270,6 +298,7 @@ function ProductForm({
   sortOrder: string;
   imageUrl: string;
   available: boolean;
+  featured: boolean;
   channels: ProductChannelsState;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
@@ -284,8 +313,41 @@ function ProductForm({
   onSortOrderChange: (value: string) => void;
   onImageUrlChange: (value: string) => void;
   onAvailableChange: (value: boolean) => void;
+  onFeaturedChange: (value: boolean) => void;
   onChannelsChange: (value: ProductChannelsState) => void;
 }) {
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  const handleImageFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!PRODUCT_IMAGE_TYPES.has(file.type)) {
+      setImageUploadError('Use uma imagem JPG, PNG ou WebP.');
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+      setImageUploadError('A imagem deve ter no maximo 1.5 MB.');
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        setImageUploadError('Nao foi possivel carregar a imagem selecionada.');
+        return;
+      }
+      onImageUrlChange(reader.result);
+      setImageUploadError(null);
+    };
+    reader.onerror = () => setImageUploadError('Nao foi possivel carregar a imagem selecionada.');
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
   return (
     <div className={styles.formGrid}>
       <label>
@@ -334,14 +396,38 @@ function ProductForm({
       </label>
       <label>
         Imagem
-        <Input value={imageUrl} onChange={(event) => onImageUrlChange(event.target.value)} placeholder="URL da imagem" />
+        <Input value={imageUrl} onChange={(event) => onImageUrlChange(event.target.value)} placeholder="URL da imagem ou selecione uma foto" />
       </label>
+      <div className={`${styles.imageUploadPanel} ${styles.wide}`}>
+        {imageUrl ? (
+          <div className={styles.imagePreview}>
+            <img src={imageUrl} alt="Previa da imagem do produto" />
+          </div>
+        ) : (
+          <div className={styles.imagePreviewEmpty}>Sem imagem</div>
+        )}
+        <div className={styles.imageUploadActions}>
+          <label className={styles.filePicker}>
+            Importar foto
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleImageFileChange} />
+          </label>
+          <Button type="button" onClick={() => onImageUrlChange('')} disabled={!imageUrl}>
+            Remover imagem
+          </Button>
+          <small>JPG, PNG ou WebP ate 1.5 MB. A imagem importada fica salva no produto.</small>
+          {imageUploadError ? <strong>{imageUploadError}</strong> : null}
+        </div>
+      </div>
       <label>
         Status
         <Select value={available ? 'active' : 'inactive'} onChange={(event) => onAvailableChange(event.target.value === 'active')}>
           <option value="active">Ativo</option>
           <option value="inactive">Inativo</option>
         </Select>
+      </label>
+      <label className={styles.toggle}>
+        <input type="checkbox" checked={featured} onChange={(event) => onFeaturedChange(event.target.checked)} />
+        Destaque no cardapio
       </label>
 
       <div className={styles.wide}>
@@ -555,6 +641,33 @@ function RecommendationsForm({
   onActiveChange: (value: boolean) => void;
   onIdsChange: (value: string[]) => void;
 }) {
+  const eligibleProducts = useMemo(() => products.filter((item) => item.id !== product?.id), [product?.id, products]);
+  const categories = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number }>();
+    eligibleProducts.forEach((item) => {
+      const key = item.categoryName || 'Sem categoria';
+      const current = map.get(key);
+      map.set(key, { key, label: key, count: (current?.count ?? 0) + 1 });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [eligibleProducts]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const activeCategory = selectedCategory || categories[0]?.key || '';
+  const visibleProducts = useMemo(
+    () => eligibleProducts.filter((item) => (item.categoryName || 'Sem categoria') === activeCategory),
+    [activeCategory, eligibleProducts],
+  );
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      if (selectedCategory) setSelectedCategory('');
+      return;
+    }
+    if (!categories.some((item) => item.key === selectedCategory)) {
+      setSelectedCategory(categories[0].key);
+    }
+  }, [categories, selectedCategory]);
+
   return (
     <div className={styles.formGrid}>
       <label>
@@ -579,17 +692,33 @@ function RecommendationsForm({
       </label>
       <div className={styles.wide}>
         <span className={styles.formLabel}>Produtos recomendados</span>
-        <div className={styles.recommendationPicker}>
-          {products.filter((item) => item.id !== product?.id).map((item) => (
-            <label key={item.id}>
-              <input
-                type="checkbox"
-                checked={ids.includes(item.id)}
-                onChange={(event) => onIdsChange(event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
-              />
-              {item.name}
-            </label>
-          ))}
+        <div className={styles.recommendationModalGrid}>
+          <div className={styles.addonCategoryList}>
+            {categories.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={item.key === activeCategory ? styles.addonCategoryActive : ''}
+                onClick={() => setSelectedCategory(item.key)}
+              >
+                <span>{item.label}</span>
+                <small>{item.count} produto(s)</small>
+              </button>
+            ))}
+          </div>
+          <div className={styles.addonProductRows}>
+            {visibleProducts.map((item) => (
+              <label key={item.id} className={styles.addonProductRow}>
+                <input
+                  type="checkbox"
+                  checked={ids.includes(item.id)}
+                  onChange={(event) => onIdsChange(event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))}
+                />
+                <span>{item.name}</span>
+                <small>{item.categoryName ?? 'Sem categoria'}</small>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
     </div>

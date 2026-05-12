@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
@@ -10,7 +10,7 @@ import {
 import { postCheckoutQuote, type CheckoutQuoteResponse } from '@/features/checkout/checkout-quote.api';
 import { fetchPublicOrderTracking, type OrderTrackingResponse } from '@/features/checkout/order-tracking.api';
 import { fetchPixPaymentStatus } from '@/features/checkout/payment-status.api';
-import { fetchDeliveryMenu, getMenuFallback } from '@/features/menu/menu.api';
+import { fetchDeliveryMenu, fetchDeliveryStorefront, getMenuFallback, type DeliveryStorefrontSettings } from '@/features/menu/menu.api';
 import type { MenuProduct } from '@/features/menu/menu.mock';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -18,9 +18,6 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { useModuleAccess } from '@/features/modules/use-module-access';
-import { ModuleDisabled } from '@/components/module-disabled';
 import { MercadoPagoCardBrick } from '@/features/checkout/components/mercado-pago-card-brick';
 
 function brl(value: number) {
@@ -70,6 +67,7 @@ export default function DeliveryPage() {
   const [products, setProducts] = useState<MenuProduct[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
+  const [storefront, setStorefront] = useState<DeliveryStorefrontSettings | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('PIX');
   const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'TAKEOUT'>('DELIVERY');
@@ -107,8 +105,10 @@ export default function DeliveryPage() {
 
   const [customizingProduct, setCustomizingProduct] = useState<MenuProduct | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [customizingQuantity, setCustomizingQuantity] = useState(1);
+  const [cartOpen, setCartOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('');
   const [cardPayerEmail, setCardPayerEmail] = useState('');
   const [cardInstallments, setCardInstallments] = useState('1');
   const [cardPaymentMethodId, setCardPaymentMethodId] = useState('visa');
@@ -121,42 +121,49 @@ export default function DeliveryPage() {
     }),
     [],
   );
-  const access = useModuleAccess(
-    { companyId: headers.companyId, branchId: headers.branchId, userRole: 'user' },
-    'delivery',
-  );
   const cardMode = (process.env.NEXT_PUBLIC_PAYMENT_CARD_MODE ?? 'mock').trim().toLowerCase() === 'mercadopago'
     ? 'mercadopago'
     : 'mock';
   const mercadoPagoPublicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY ?? '';
+  const storefrontName = storefront?.publicTitle || process.env.NEXT_PUBLIC_STOREFRONT_NAME || 'MenuHub Demo';
+  const storefrontLogoUrl = storefront?.logoUrl || process.env.NEXT_PUBLIC_STOREFRONT_LOGO_URL || '';
+  const storefrontBannerUrl = storefront?.bannerUrl || process.env.NEXT_PUBLIC_STOREFRONT_BANNER_URL || '';
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const deliveryFee = quote?.deliveryFee ?? 0;
   const estimatedTotal = quote?.total ?? Math.max(0, subtotal + deliveryFee);
-  const etaMinutes = quote?.deliveryQuote.durationSeconds ? Math.ceil(quote.deliveryQuote.durationSeconds / 60) : null;
-
   const hasAddress = fulfillmentType === 'TAKEOUT' || (cep.replace(/\D/g, '').length === 8 && !!number.trim());
   const hasCustomer = !!customerName.trim() && !!customerPhone.trim();
-  const checkoutStep = !items.length ? 1 : !hasAddress ? 2 : paymentMethod ? 3 : 3;
   const featuredProducts = useMemo(
     () => products.filter((product) => product.featured).sort((a, b) => (a.featuredSortOrder ?? 0) - (b.featuredSortOrder ?? 0)),
     [products],
   );
   const categories = useMemo(
-    () => ['all', ...Array.from(new Set(products.map((product) => product.categoryName).filter(Boolean)))],
+    () => Array.from(new Set(products.map((product) => product.categoryName).filter((category): category is string => Boolean(category)))).sort((a, b) => String(a).localeCompare(String(b))),
     [products],
   );
+  const currentCategory = activeCategory || categories[0] || '';
   const visibleProducts = useMemo(() => {
     const q = menuSearch.trim().toLowerCase();
     return products.filter((product) => {
-      const matchesCategory = activeCategory === 'all' || product.categoryName === activeCategory;
+      const matchesCategory = !currentCategory || product.categoryName === currentCategory;
       const matchesSearch =
         !q ||
         product.name.toLowerCase().includes(q) ||
         product.description.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, menuSearch, products]);
+  }, [currentCategory, menuSearch, products]);
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      if (activeCategory) setActiveCategory('');
+      return;
+    }
+    if (!categories.includes(activeCategory)) {
+      setActiveCategory(categories[0] ?? '');
+    }
+  }, [activeCategory, categories]);
   const recommendedProducts = useMemo(() => {
     const productMap = new Map(products.map((product) => [product.id, product]));
     const cartIds = new Set(items.map((item) => item.productId));
@@ -180,17 +187,17 @@ export default function DeliveryPage() {
   useEffect(() => {
     let active = true;
     const loadMenu = async () => {
-      if (access.loading || !access.allowed) {
-        setMenuLoading(false);
-        return;
-      }
 
       setMenuLoading(true);
       setMenuError(null);
       try {
-        const realMenu = await fetchDeliveryMenu(headers);
+        const [realMenu, storefrontSettings] = await Promise.all([
+          fetchDeliveryMenu(headers),
+          fetchDeliveryStorefront(headers).catch(() => null),
+        ]);
         if (!active) return;
         setProducts(realMenu);
+        setStorefront(storefrontSettings);
       } catch {
         if (!active) return;
         setProducts(getMenuFallback());
@@ -204,12 +211,12 @@ export default function DeliveryPage() {
     return () => {
       active = false;
     };
-  }, [access.allowed, access.loading, headers]);
+  }, [headers]);
 
   useEffect(() => {
     let active = true;
     const loadQuote = async () => {
-      if (access.loading || !access.allowed || !hasAddress || fulfillmentType === 'TAKEOUT') {
+      if (!hasAddress || fulfillmentType === 'TAKEOUT') {
         setQuote(null);
         setQuoteError(null);
         setQuoteLoading(false);
@@ -242,10 +249,10 @@ export default function DeliveryPage() {
     return () => {
       active = false;
     };
-  }, [access.allowed, access.loading, hasAddress, fulfillmentType, headers, cep, number, items, couponCode]);
+  }, [hasAddress, fulfillmentType, headers, cep, number, items, couponCode]);
 
   useEffect(() => {
-    if (access.loading || !access.allowed || !success?.providerPaymentId || success.paymentStatus !== 'PENDING') return;
+    if (!success?.providerPaymentId || success.paymentStatus !== 'PENDING') return;
 
     let stopped = false;
     const interval = setInterval(async () => {
@@ -286,10 +293,10 @@ export default function DeliveryPage() {
       stopped = true;
       clearInterval(interval);
     };
-  }, [access.allowed, access.loading, headers, success?.providerPaymentId, success?.paymentStatus]);
+  }, [headers, success?.providerPaymentId, success?.paymentStatus]);
 
   useEffect(() => {
-    if (access.loading || !access.allowed || !success?.trackingToken) return;
+    if (!success?.trackingToken) return;
 
     const trackingToken = success.trackingToken;
     let stopped = false;
@@ -323,14 +330,8 @@ export default function DeliveryPage() {
       stopped = true;
       clearInterval(interval);
     };
-  }, [access.allowed, access.loading, success?.trackingToken]);
+  }, [success?.trackingToken]);
 
-  if (access.loading) {
-    return <main className={styles.page}><LoadingState label="Validando acesso ao módulo..." /></main>;
-  }
-  if (!access.allowed) {
-    return <ModuleDisabled moduleName="Delivery" reason={access.error ?? 'Módulo delivery desativado.'} />;
-  }
 
   const validateCheckoutForm = (cardPaymentOverride?: OnlineCardPaymentInput): string | null => {
     if (!customerName.trim()) return 'Informe seu nome para continuar.';
@@ -444,11 +445,16 @@ export default function DeliveryPage() {
   const openCustomize = (product: MenuProduct) => {
     setCustomizingProduct(product);
     setSelectedAddons([]);
+    setCustomizingQuantity(1);
   };
 
-  const toggleAddon = (groupId: string, optionId: string) => {
-    const key = `${groupId}:${optionId}`;
-    setSelectedAddons((prev) => (prev.includes(key) ? prev.filter((id) => id !== key) : [...prev, key]));
+  const toggleAddon = (group: NonNullable<MenuProduct['addonGroups']>[number], optionId: string) => {
+    const key = `${group.id}:${optionId}`;
+    setSelectedAddons((prev) => {
+      if (prev.includes(key)) return prev.filter((id) => id !== key);
+      const withoutGroup = group.allowMultiple ? prev : prev.filter((id) => !id.startsWith(`${group.id}:`));
+      return [...withoutGroup, key];
+    });
   };
 
   const confirmCustomize = () => {
@@ -462,39 +468,38 @@ export default function DeliveryPage() {
         .map((option) => ({ groupId: group.id, optionId: option.id, name: option.name, price: option.price })),
     );
 
-    addItem(customizingProduct, selectedAddonData);
+    addItem(customizingProduct, selectedAddonData, customizingQuantity);
+    setCartOpen(true);
     setCustomizingProduct(null);
     setSelectedAddons([]);
+    setCustomizingQuantity(1);
   };
 
   return (
       <main className={styles.page}>
-        <PageHeader
-          title="MenuHub Delivery"
-          subtitle="Cardapio premium, quote em tempo real, PIX e tracking do pedido"
-          right={
-            <div className={styles.steps}>
-              <Badge tone={checkoutStep >= 1 ? 'success' : 'default'}>1. Itens</Badge>
-              <Badge tone={checkoutStep >= 2 ? 'success' : 'default'}>2. Endereco</Badge>
-              <Badge tone={checkoutStep >= 3 ? 'success' : 'default'}>3. Pagamento</Badge>
-              <Badge tone={success ? 'success' : 'default'}>4. Confirmacao</Badge>
-            </div>
+        <button type="button" className={styles.cartFloatingButton} onClick={() => setCartOpen(true)}>
+          <span>Meu Carrinho</span>
+          <strong>{totalItems}</strong>
+        </button>
+
+        <section
+          className={styles.storefrontHero}
+          style={
+            storefrontBannerUrl
+              ? { backgroundImage: 'linear-gradient(115deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.04)), url(' + storefrontBannerUrl + ')' }
+              : undefined
           }
-        />
-        <Card className={styles.hero}>
-          <div>
-            <Badge tone="success">Loja aberta</Badge>
-            <h1>Peça seu fast-food favorito sem fila</h1>
-            <p>
-              Destaques, adicionais, recomendacoes e entrega calculada pelo backend para manter preco e frete confiaveis.
-            </p>
+        >
+          <div className={styles.storeIdentity}>
+            <div className={styles.storeLogo}>
+              {storefrontLogoUrl ? <img src={storefrontLogoUrl} alt={'Logo ' + storefrontName} /> : <span>{storefrontName.slice(0, 2).toUpperCase()}</span>}
+            </div>
+            <div className={styles.storeNameBox}>
+              <small>Cardapio online</small>
+              <strong>{storefrontName}</strong>
+            </div>
           </div>
-          <div className={styles.heroMetrics}>
-            <span>{products.length} produtos</span>
-            <span>{featuredProducts.length} destaques</span>
-            <span>{etaMinutes ? `${etaMinutes} min` : 'ETA sob cotacao'}</span>
-          </div>
-        </Card>
+        </section>
         <div className={styles.layout}>
           <section className={styles.leftCol}>
             {featuredProducts.length > 0 ? (
@@ -505,14 +510,23 @@ export default function DeliveryPage() {
                 </div>
                 <div className={styles.productsGrid}>
                   {featuredProducts.map((product) => (
-                    <article key={product.id} className={styles.productCard}>
+                    <article
+                      key={product.id}
+                      className={styles.productCard}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openCustomize(product)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
+                      }}
+                    >
                       <div className={styles.productMedia} aria-hidden />
                       <div className={styles.row}>
                         <strong>{product.name}</strong>
                         <strong>{brl(product.price)}</strong>
                       </div>
                       <div className={styles.muted}>{product.description}</div>
-                      <Button variant="primary" onClick={() => openCustomize(product)}>Adicionar destaque</Button>
+                      <Button variant="primary" onClick={(event) => { event.stopPropagation(); openCustomize(product); }}>Ver produto</Button>
                     </article>
                   ))}
                 </div>
@@ -530,13 +544,18 @@ export default function DeliveryPage() {
                   onChange={(event) => setMenuSearch(event.target.value)}
                   placeholder="Buscar burger, combo, bebida..."
                 />
-                <Select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
+                <div className={styles.categoryScroller} aria-label="Categorias do cardapio">
                   {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category === 'all' ? 'Todas categorias' : category}
-                    </option>
+                    <button
+                      key={category}
+                      type="button"
+                      className={category === currentCategory ? styles.categoryPillActive : styles.categoryPill}
+                      onClick={() => setActiveCategory(category)}
+                    >
+                      {category}
+                    </button>
                   ))}
-                </Select>
+                </div>
               </div>
               {menuLoading ? <LoadingState label="Carregando cardápio..." /> : null}
               {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
@@ -545,7 +564,16 @@ export default function DeliveryPage() {
               ) : null}
               <div className={styles.productsGrid}>
                 {visibleProducts.map((product) => (
-                  <article key={product.id} className={styles.productCard}>
+                  <article
+                    key={product.id}
+                    className={styles.productCard}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openCustomize(product)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
+                    }}
+                  >
                     <div className={styles.productMedia} aria-hidden />
                     <div className={styles.badgeRow}>
                       {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
@@ -557,8 +585,15 @@ export default function DeliveryPage() {
                       <strong>{brl(product.price)}</strong>
                     </div>
                     <div className={styles.muted}>{product.description}</div>
-                    <Button variant="primary" disabled={product.available === false} onClick={() => openCustomize(product)}>
-                      {product.addonGroups && product.addonGroups.length > 0 ? 'Personalizar' : 'Adicionar ao carrinho'}
+                    <Button
+                      variant="primary"
+                      disabled={product.available === false}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openCustomize(product);
+                      }}
+                    >
+                      Ver produto
                     </Button>
                   </article>
                 ))}
@@ -636,8 +671,20 @@ export default function DeliveryPage() {
             </Card>
           </section>
 
-          <aside className={styles.rightCol}>
-            <Card className={styles.section}>
+
+        </div>
+
+        {cartOpen ? (
+          <div className={styles.modalBackdrop} onClick={() => setCartOpen(false)}>
+            <Card className={styles.cartModal} onClick={(e: any) => e.stopPropagation()}>
+              <div className={styles.cartModalHeader}>
+                <div>
+                  <h2 className={styles.sectionTitle}>Meu Carrinho</h2>
+                  <p className={styles.muted}>{totalItems} item(ns) selecionado(s)</p>
+                </div>
+                <Button onClick={() => setCartOpen(false)}>Fechar</Button>
+              </div>
+            <Card className={styles.cartPanel}>
               <div className={styles.row}>
                 <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Seu carrinho</h2>
                 <Badge tone="default">{totalItems} itens</Badge>
@@ -802,8 +849,9 @@ export default function DeliveryPage() {
                 {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
               </Button>
             </Card>
-          </aside>
-        </div>
+            </Card>
+          </div>
+        ) : null}
 
         {customizingProduct ? (
           <div className={styles.modalBackdrop} onClick={() => setCustomizingProduct(null)}>
@@ -814,6 +862,19 @@ export default function DeliveryPage() {
                   <>
                     <h3 className={styles.modalTitle}>{customizingProduct.name}</h3>
                     <p className={styles.muted}>{customizingProduct.description}</p>
+                    <div className={styles.productDetailPrice}>
+                      <strong>{brl(customizingProduct.price)}</strong>
+                      {customizingProduct.promotionalPrice ? <Badge tone="success">Promo {brl(customizingProduct.promotionalPrice)}</Badge> : null}
+                    </div>
+
+                    <div className={styles.quantitySelector}>
+                      <span>Quantidade</span>
+                      <div className={styles.quantityActions}>
+                        <Button onClick={() => setCustomizingQuantity((value) => Math.max(1, value - 1))}>-</Button>
+                        <Badge>{customizingQuantity}</Badge>
+                        <Button onClick={() => setCustomizingQuantity((value) => value + 1)}>+</Button>
+                      </div>
+                    </div>
 
                     {(customizingProduct.addonGroups ?? []).length === 0 ? (
                       <p className={styles.muted}>Sem opcionais para este produto.</p>
@@ -832,7 +893,7 @@ export default function DeliveryPage() {
                                   <input
                                     type="checkbox"
                                     checked={checked}
-                                    onChange={() => toggleAddon(group.id, option.id)}
+                                    onChange={() => toggleAddon(group, option.id)}
                                   />{' '}
                                   {option.name}
                                 </span>
@@ -853,7 +914,7 @@ export default function DeliveryPage() {
                     ) : null}
 
                     <div className={styles.row}>
-                      <strong>Total unitário: {brl(customizingProduct.price + addonTotal(customizingProduct, selectedAddons))}</strong>
+                      <strong>Total: {brl(customizingQuantity * (customizingProduct.price + addonTotal(customizingProduct, selectedAddons)))}</strong>
                       <div className={styles.modalActions}>
                         <Button onClick={() => setCustomizingProduct(null)}>Cancelar</Button>
                         <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0}>
@@ -870,6 +931,7 @@ export default function DeliveryPage() {
       </main>
   );
 }
+
 
 
 

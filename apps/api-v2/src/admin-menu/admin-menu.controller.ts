@@ -19,6 +19,7 @@ import {
   ProductRecommendationDto,
   UpdateCategoryDto,
   UpdateAddonGroupDto,
+  UpdateAddonGroupProductsDto,
   UpdateAddonOptionDto,
   UpdateAvailabilityDto,
   UpdateComboDto,
@@ -223,6 +224,22 @@ export class AdminMenuUtilityController {
     @Body() body: UpdateAddonGroupDto,
   ) {
     return this.adminMenuService.updateAddonGroup(groupId, ctx, body);
+  }
+
+  @Get('addon-groups')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async listAddonGroups(@CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.listAddonGroups(ctx);
+  }
+
+  @Patch('addon-groups/:groupId/products')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async updateAddonGroupProducts(
+    @Param('groupId') groupId: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: UpdateAddonGroupProductsDto,
+  ) {
+    return this.adminMenuService.updateAddonGroupProducts(groupId, ctx, body);
   }
 
   @Delete('addon-groups/:groupId')

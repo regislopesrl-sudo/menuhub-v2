@@ -4,6 +4,17 @@ import type { RequestContext } from '../common/request-context';
 import { ModulesService } from '../modules/modules.service';
 import { isProductVisibleOnChannel, resolvePublicMenuPrice } from './menu-visibility.policy';
 
+export interface PublicStorefrontDto {
+  companyId: string;
+  branchId?: string | null;
+  publicTitle: string;
+  publicDescription: string;
+  logoUrl: string;
+  bannerUrl: string;
+  brandColor: string;
+  closedMessage: string;
+}
+
 export interface MenuItemDto {
   id: string;
   type?: 'product' | 'combo';
@@ -60,6 +71,47 @@ export class MenuService {
   }
 
   async listPublicByCompanySlug(companySlug: string, branchId?: string): Promise<MenuItemDto[]> {
+    const company = await this.findPublicCompanyBySlug(companySlug);
+    await this.assertMenuModuleEnabled(company.id);
+    if (branchId?.trim()) {
+      await this.assertPublicBranchBelongsToCompany(company.id, branchId);
+    }
+
+    return this.listByCompanyId(company.id);
+  }
+
+  async getPublicStorefrontByCompanySlug(companySlug: string, branchId?: string): Promise<PublicStorefrontDto> {
+    const company = await this.findPublicCompanyBySlug(companySlug);
+    await this.assertMenuModuleEnabled(company.id);
+    if (branchId?.trim()) {
+      await this.assertPublicBranchBelongsToCompany(company.id, branchId);
+    }
+
+    const config = await this.prisma.companyConfiguration.findUnique({
+      where: { companyId: company.id },
+      select: {
+        brandColor: true,
+        publicTitle: true,
+        publicDescription: true,
+        bannerUrl: true,
+        closedMessage: true,
+      },
+    });
+
+    return {
+      companyId: company.id,
+      branchId: branchId?.trim() || null,
+      publicTitle: config?.publicTitle || company.tradeName,
+      publicDescription:
+        config?.publicDescription || 'Gestao operacional para restaurante, PDV, cozinha e delivery',
+      logoUrl: company.logoUrl ?? '',
+      bannerUrl: config?.bannerUrl ?? '',
+      brandColor: config?.brandColor ?? '#2557f6',
+      closedMessage: config?.closedMessage ?? 'Loja fechada no momento. Voltamos em breve.',
+    };
+  }
+
+  private async findPublicCompanyBySlug(companySlug: string) {
     const slug = String(companySlug ?? '').trim().toLowerCase();
     if (!slug) {
       throw new BadRequestException('Slug da empresa e obrigatorio para carregar o cardapio publico.');
@@ -67,19 +119,14 @@ export class MenuService {
 
     const company = await this.prisma.company.findFirst({
       where: { slug, status: 'ACTIVE' },
-      select: { id: true },
+      select: { id: true, tradeName: true, logoUrl: true },
     });
 
     if (!company) {
       throw new NotFoundException('Cardapio publico nao encontrado para esta empresa.');
     }
 
-    await this.assertMenuModuleEnabled(company.id);
-    if (branchId?.trim()) {
-      await this.assertPublicBranchBelongsToCompany(company.id, branchId);
-    }
-
-    return this.listByCompanyId(company.id);
+    return company;
   }
 
   private async assertMenuModuleEnabled(companyId: string): Promise<void> {

@@ -22,8 +22,10 @@ export function useCart() {
   const addItem = (
     product: MenuProduct,
     selectedAddons: Array<{ groupId: string; optionId: string; name: string; price: number }> = [],
+    quantity = 1,
   ) => {
     const addonsKey = selectedAddons.map((addon) => addon.optionId).sort().join('|');
+    const safeQuantity = Math.max(1, Number(quantity || 1));
     setItems((prev) => {
       const found = prev.find(
         (item) =>
@@ -32,7 +34,7 @@ export function useCart() {
       );
       if (found) {
         return prev.map((item) =>
-          item === found ? { ...item, quantity: item.quantity + 1 } : item,
+          item === found ? { ...item, quantity: item.quantity + safeQuantity } : item,
         );
       }
       return [
@@ -42,7 +44,7 @@ export function useCart() {
           name: product.name,
           unitPrice: product.price,
           addons: selectedAddons,
-          quantity: 1,
+          quantity: safeQuantity,
         },
       ];
     });

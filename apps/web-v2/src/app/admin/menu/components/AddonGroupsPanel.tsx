@@ -21,8 +21,26 @@ import type { MenuProduct } from '@/features/menu/menu.mock';
 import { brl } from '../menu-view-model';
 import styles from '../page.module.css';
 
+function parseMoneyInput(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+
+  const normalized = raw
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.');
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 export function AddonGroupsPanel({
   product,
+  products = [],
   companyId,
   branchId,
   onProductChanged,
@@ -30,6 +48,7 @@ export function AddonGroupsPanel({
   onNotice,
 }: {
   product?: MenuProduct;
+  products?: MenuProduct[];
   companyId: string;
   branchId?: string;
   onProductChanged: (product: MenuProduct) => void;
@@ -39,6 +58,8 @@ export function AddonGroupsPanel({
   const [groups, setGroups] = useState<MenuAddonGroup[]>(product?.addonGroups ?? []);
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<string | null>(null);
+  const [replicateQuery, setReplicateQuery] = useState('');
+  const [replicateTargets, setReplicateTargets] = useState<string[]>([]);
   const [newGroup, setNewGroup] = useState<Required<AdminMenuAddonGroupPayload>>({
     name: '',
     minSelect: 0,
@@ -56,6 +77,8 @@ export function AddonGroupsPanel({
 
   useEffect(() => {
     setGroups(product?.addonGroups ?? []);
+    setReplicateTargets([]);
+    setReplicateQuery('');
   }, [product]);
 
   useEffect(() => {
@@ -179,6 +202,71 @@ export function AddonGroupsPanel({
     }
   };
 
+  const targetProducts = products
+    .filter((item) => item.id !== product.id)
+    .filter((item) => {
+      const query = replicateQuery.trim().toLowerCase();
+      if (!query) return true;
+      return [item.name, item.categoryName, item.sku].some((value) => value?.toLowerCase().includes(query));
+    });
+
+  const toggleReplicateTarget = (productId: string) => {
+    setReplicateTargets((current) =>
+      current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId],
+    );
+  };
+
+  const replicateGroups = async () => {
+    if (groups.length === 0 || replicateTargets.length === 0) return;
+    setAction('replicate-addons');
+    try {
+      const selectedTargets = products.filter((item) => replicateTargets.includes(item.id));
+      for (const target of selectedTargets) {
+        const createdGroups: MenuAddonGroup[] = [];
+        for (const group of groups) {
+          const createdGroup = await createAdminMenuAddonGroup({
+            companyId,
+            branchId,
+            productId: target.id,
+            payload: {
+              name: group.name,
+              minSelect: group.minSelect,
+              maxSelect: group.maxSelect,
+              required: group.required,
+              allowMultiple: group.allowMultiple,
+            },
+          });
+          const createdOptions: MenuAddonOption[] = [];
+          for (const option of group.options ?? []) {
+            const createdOption = await createAdminMenuAddonOption({
+              companyId,
+              branchId,
+              groupId: createdGroup.id,
+              payload: {
+                name: option.name,
+                price: option.price,
+                available: option.available !== false,
+              },
+            });
+            createdOptions.push(createdOption);
+          }
+          createdGroups.push({ ...createdGroup, options: createdOptions });
+        }
+        onProductChanged({
+          ...target,
+          addonGroups: [...(target.addonGroups ?? []), ...createdGroups],
+        });
+      }
+      setReplicateTargets([]);
+      setReplicateQuery('');
+      onNotice(`Adicionais replicados para ${selectedTargets.length} produto(s).`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Falha ao replicar adicionais.');
+    } finally {
+      setAction(null);
+    }
+  };
+
   return (
     <div className={styles.addonEditor}>
       {loading ? <LoadingState label="Carregando adicionais..." /> : null}
@@ -206,6 +294,42 @@ export function AddonGroupsPanel({
         </div>
       </section>
 
+      {groups.length > 0 && products.length > 1 ? (
+        <section className={styles.addonReplicator}>
+          <div className={styles.addonReplicatorHeader}>
+            <div>
+              <strong>Replicar adicionais para outros produtos</strong>
+              <span>Copie os grupos e opcoes deste produto para itens semelhantes do cardapio.</span>
+            </div>
+            <Badge>{replicateTargets.length} selecionado(s)</Badge>
+          </div>
+          <div className={styles.addonReplicatorTools}>
+            <Input
+              value={replicateQuery}
+              onChange={(event) => setReplicateQuery(event.target.value)}
+              placeholder="Buscar produto por nome, categoria ou SKU"
+            />
+            <Button variant="primary" onClick={() => void replicateGroups()} disabled={action === 'replicate-addons' || replicateTargets.length === 0}>
+              {action === 'replicate-addons' ? 'Replicando...' : 'Replicar selecionados'}
+            </Button>
+          </div>
+          <div className={styles.addonReplicateList}>
+            {targetProducts.slice(0, 24).map((target) => (
+              <label key={target.id} className={styles.addonReplicateTarget}>
+                <input
+                  type="checkbox"
+                  checked={replicateTargets.includes(target.id)}
+                  onChange={() => toggleReplicateTarget(target.id)}
+                />
+                <span>{target.name}</span>
+                <small>{target.categoryName ?? 'Sem categoria'} | {(target.addonGroups ?? []).length} grupo(s)</small>
+              </label>
+            ))}
+          </div>
+          {targetProducts.length > 24 ? <small className={styles.addonReplicatorHint}>Refine a busca para ver mais produtos.</small> : null}
+        </section>
+      ) : null}
+
       {groups.length === 0 && !loading ? (
         <EmptyState title="Sem adicionais" description="Crie o primeiro grupo de opcionais para este produto." />
       ) : null}
@@ -218,8 +342,8 @@ export function AddonGroupsPanel({
             action={action}
             onSaveGroup={(payload) => void updateGroup(group.id, payload)}
             onDeleteGroup={() => void deleteGroup(group.id)}
-            onCreateOption={(payload) => void createOption(group.id, payload)}
-            onSaveOption={(optionId, payload) => void updateOption(group.id, optionId, payload)}
+            onCreateOption={(payload) => createOption(group.id, payload)}
+            onSaveOption={(optionId, payload) => updateOption(group.id, optionId, payload)}
             onDeleteOption={(optionId) => void deleteOption(group.id, optionId)}
           />
         ))}
@@ -241,8 +365,8 @@ function AddonGroupEditor({
   action: string | null;
   onSaveGroup: (payload: AdminMenuAddonGroupPayload) => void;
   onDeleteGroup: () => void;
-  onCreateOption: (payload: AdminMenuAddonOptionPayload) => void;
-  onSaveOption: (optionId: string, payload: AdminMenuAddonOptionPayload) => void;
+  onCreateOption: (payload: AdminMenuAddonOptionPayload) => Promise<void>;
+  onSaveOption: (optionId: string, payload: AdminMenuAddonOptionPayload) => Promise<void>;
   onDeleteOption: (optionId: string) => void;
 }) {
   const [name, setName] = useState(group.name);
@@ -251,6 +375,7 @@ function AddonGroupEditor({
   const [required, setRequired] = useState(group.required);
   const [allowMultiple, setAllowMultiple] = useState(group.allowMultiple);
   const [newOption, setNewOption] = useState({ name: '', price: '0' });
+  const newOptionPrice = parseMoneyInput(newOption.price);
 
   useEffect(() => {
     setName(group.name);
@@ -260,8 +385,10 @@ function AddonGroupEditor({
     setAllowMultiple(group.allowMultiple);
   }, [group]);
 
-  const createOption = () => {
-    onCreateOption({ name: newOption.name, price: Number(newOption.price || '0'), available: true });
+  const createOption = async () => {
+    const price = parseMoneyInput(newOption.price);
+    if (price === null) return;
+    await onCreateOption({ name: newOption.name, price, available: true });
     setNewOption({ name: '', price: '0' });
   };
 
@@ -298,7 +425,7 @@ function AddonGroupEditor({
       <div className={styles.optionCreateRow}>
         <Input value={newOption.name} onChange={(event) => setNewOption((prev) => ({ ...prev, name: event.target.value }))} placeholder="Nova opcao" />
         <Input value={newOption.price} onChange={(event) => setNewOption((prev) => ({ ...prev, price: event.target.value }))} inputMode="decimal" placeholder="Preco" />
-        <Button onClick={createOption} disabled={action === `create-option-${group.id}`}>
+        <Button onClick={() => void createOption()} disabled={action === `create-option-${group.id}` || newOptionPrice === null}>
           {action === `create-option-${group.id}` ? 'Criando...' : 'Adicionar opcao'}
         </Button>
       </div>
@@ -320,7 +447,7 @@ function AddonOptionEditor({
 }: {
   option: MenuAddonOption;
   action: string | null;
-  onSave: (payload: AdminMenuAddonOptionPayload) => void;
+  onSave: (payload: AdminMenuAddonOptionPayload) => Promise<void>;
   onDelete: () => void;
 }) {
   const [name, setName] = useState(option.name);
@@ -333,6 +460,8 @@ function AddonOptionEditor({
     setAvailable(option.available !== false);
   }, [option]);
 
+  const parsedPrice = parseMoneyInput(price);
+
   return (
     <div className={styles.optionRow}>
       <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Opcao" />
@@ -341,9 +470,17 @@ function AddonOptionEditor({
         <input type="checkbox" checked={available} onChange={(event) => setAvailable(event.target.checked)} />
         Ativo
       </label>
-      <strong>{brl(Number(price || '0'))}</strong>
+      <strong>{parsedPrice === null ? 'Preco invalido' : brl(parsedPrice)}</strong>
       <Badge tone={available ? 'success' : 'danger'}>{available ? 'Ativo' : 'Inativo'}</Badge>
-      <Button variant="primary" onClick={() => onSave({ name, price: Number(price || '0'), available })} disabled={action === `option-${option.id}`}>
+      <Button
+        variant="primary"
+        onClick={() => {
+          const nextPrice = parseMoneyInput(price);
+          if (nextPrice === null) return;
+          void onSave({ name, price: nextPrice, available });
+        }}
+        disabled={action === `option-${option.id}` || parsedPrice === null}
+      >
         {action === `option-${option.id}` ? 'Salvando...' : 'Salvar'}
       </Button>
       <Button onClick={onDelete} disabled={action === `delete-option-${option.id}`}>Remover</Button>

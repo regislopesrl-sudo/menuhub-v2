@@ -155,10 +155,15 @@ describe('AdminMenuService', () => {
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       addonGroup: {
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(addonGroup()),
         create: jest.fn().mockImplementation((args) => Promise.resolve(addonGroup({ ...args.data, id: 'group_new', productLinks: [{ productId: 'prod_1' }] }))),
         update: jest.fn().mockImplementation((args) => Promise.resolve(addonGroup({ ...args.data }))),
         delete: jest.fn().mockResolvedValue(addonGroup()),
+      },
+      productAddonGroup: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       addonItem: {
         findFirst: jest.fn().mockResolvedValue(addonItem()),
@@ -170,6 +175,12 @@ describe('AdminMenuService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'setting_1' }),
       },
+      $transaction: jest.fn((callback) => callback({
+        productAddonGroup: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      })),
     } as any;
   }
 
@@ -534,6 +545,38 @@ describe('AdminMenuService', () => {
         }),
       }),
     );
+  });
+
+  it('aceita imagem comercial importada em data url segura', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+    const imageUrl = `data:image/png;base64,${Buffer.from('imagem-local').toString('base64')}`;
+
+    await service.createProduct(ctx, {
+      name: 'Produto',
+      salePrice: 10,
+      imageUrl,
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl,
+        }),
+      }),
+    );
+  });
+
+  it('bloqueia data url de imagem comercial com mime type inseguro', async () => {
+    const service = new AdminMenuService(prismaMock());
+
+    await expect(
+      service.createProduct(ctx, {
+        name: 'Produto',
+        salePrice: 10,
+        imageUrl: 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('patch availability bloqueia produto de outra empresa', async () => {
@@ -1018,6 +1061,64 @@ describe('AdminMenuService', () => {
         options: [expect.objectContaining({ name: 'Prato', price: 3, available: true })],
       }),
     ]);
+  });
+
+  it('lista grupos de adicionais da empresa para central de configuracao', async () => {
+    const prisma = prismaMock();
+    prisma.addonGroup.findMany.mockResolvedValue([
+      addonGroup({
+        name: 'Molhos',
+        items: [addonItem({ name: 'Alho', price: 2 })],
+        productLinks: [{ productId: 'prod_1' }, { productId: 'prod_2' }],
+      }),
+    ]);
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.listAddonGroups(ctx);
+
+    expect(prisma.addonGroup.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { companyId: 'company_a' },
+    }));
+    expect(result).toEqual([
+      expect.objectContaining({
+        name: 'Molhos',
+        productCount: 2,
+        linkedProductIds: ['prod_1', 'prod_2'],
+        options: [expect.objectContaining({ name: 'Alho', price: 2 })],
+      }),
+    ]);
+  });
+
+  it('atualiza produtos vinculados ao grupo de adicional', async () => {
+    const prisma = prismaMock();
+    prisma.product.findMany.mockResolvedValue([{ id: 'prod_1' }, { id: 'prod_2' }]);
+    prisma.addonGroup.findFirst
+      .mockResolvedValueOnce(addonGroup())
+      .mockResolvedValueOnce(addonGroup({ productLinks: [{ productId: 'prod_1' }, { productId: 'prod_2' }] }));
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.updateAddonGroupProducts('group_1', ctx, { productIds: ['prod_1', 'prod_2', 'prod_1'] });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ['prod_1', 'prod_2'] },
+        companyId: 'company_a',
+        deletedAt: null,
+      }),
+    }));
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(result.linkedProductIds).toEqual(['prod_1', 'prod_2']);
+  });
+
+  it('bloqueia vinculo de adicional com produto de outra empresa', async () => {
+    const prisma = prismaMock();
+    prisma.product.findMany.mockResolvedValue([{ id: 'prod_1' }]);
+    const service = new AdminMenuService(prisma);
+
+    await expect(
+      service.updateAddonGroupProducts('group_1', ctx, { productIds: ['prod_1', 'prod_other'] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('migration inicializa availableKiosk com availableCounter', () => {

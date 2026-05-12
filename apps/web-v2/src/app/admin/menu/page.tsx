@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import styles from './page.module.css';
@@ -80,7 +80,8 @@ export default function AdminMenuPage() {
   const [products, setProducts] = useState<MenuProduct[]>([]);
   const [combos, setCombos] = useState<MenuCombo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [category, setCategory] = useState('all');
@@ -109,7 +110,7 @@ export default function AdminMenuPage() {
     }
 
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const [data, categoriesData, combosData] = await Promise.all([
         fetchAdminMenu({ companyId, branchId }),
@@ -123,7 +124,7 @@ export default function AdminMenuPage() {
       setProducts(getMenuFallback().map(normalizeProduct));
       setCategoryRecords([]);
       setCombos([]);
-      setError(err instanceof Error ? err.message : 'Falha ao carregar cardapio.');
+      setLoadError(err instanceof Error ? err.message : 'Falha ao carregar cardapio.');
     } finally {
       setLoading(false);
     }
@@ -223,16 +224,16 @@ export default function AdminMenuPage() {
   const saveCategory = async () => {
     const name = categoryDraftName.trim();
     if (!name) {
-      setError('Informe o nome da categoria.');
+      setActionError('Informe o nome da categoria.');
       return;
     }
     const sortOrder = Number(categoryDraftSortOrder || '0');
     if (!Number.isInteger(sortOrder) || sortOrder < 0) {
-      setError('Informe uma ordem de categoria valida.');
+      setActionError('Informe uma ordem de categoria valida.');
       return;
     }
     setSavingAction('save-category');
-    setError(null);
+    setActionError(null);
     try {
       const saved = editingCategory?.id
         ? await updateAdminMenuCategory({ companyId, branchId, categoryId: editingCategory.id, payload: { name, sortOrder } })
@@ -254,7 +255,7 @@ export default function AdminMenuPage() {
       closeCategoryModal();
       setNotice(editingCategory ? 'Categoria atualizada com sucesso.' : 'Categoria criada com sucesso.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar categoria.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao salvar categoria.');
     } finally {
       setSavingAction(null);
     }
@@ -269,7 +270,7 @@ export default function AdminMenuPage() {
         : `Remover a categoria "${categoryToDelete.name}"?`;
     if (!window.confirm(message)) return;
     setSavingAction(`delete-category-${categoryToDelete.id}`);
-    setError(null);
+    setActionError(null);
     try {
       const result = await deleteAdminMenuCategory({ companyId, branchId, categoryId: categoryToDelete.id });
       setCategoryRecords((prev) => prev.filter((item) => item.id !== categoryToDelete.id));
@@ -283,7 +284,7 @@ export default function AdminMenuPage() {
       if (category === categoryToDelete.name) setCategory('all');
       setNotice(`Categoria removida. ${result.affectedProducts ?? 0} produtos foram desvinculados.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover categoria.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao remover categoria.');
     } finally {
       setSavingAction(null);
     }
@@ -300,7 +301,7 @@ export default function AdminMenuPage() {
 
   const saveProduct = async (payload: AdminMenuProductPayload, product?: MenuProduct) => {
     setSavingAction('save');
-    setError(null);
+    setActionError(null);
     try {
       const saved = product?.id
         ? await updateAdminMenuProduct({ companyId, branchId, productId: product.id, payload })
@@ -309,7 +310,7 @@ export default function AdminMenuPage() {
       setModal(null);
       setNotice(product?.id ? 'Produto atualizado com sucesso.' : 'Produto criado com sucesso.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar produto.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao salvar produto.');
     } finally {
       setSavingAction(null);
     }
@@ -317,7 +318,7 @@ export default function AdminMenuPage() {
 
   const toggleAvailability = async (product: MenuProduct) => {
     setSavingAction(`toggle-${product.id}`);
-    setError(null);
+    setActionError(null);
     try {
       const updated = await updateAdminMenuProductAvailability({
         companyId,
@@ -329,7 +330,7 @@ export default function AdminMenuPage() {
       upsertProduct(updated);
       setNotice(updated.available === false ? 'Produto desativado.' : 'Produto ativado.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao atualizar disponibilidade.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao atualizar disponibilidade.');
     } finally {
       setSavingAction(null);
     }
@@ -338,13 +339,13 @@ export default function AdminMenuPage() {
   const duplicateProduct = async (product: MenuProduct) => {
     if (!window.confirm(`Duplicar o produto "${product.name}"? A copia nasce inativa para revisao.`)) return;
     setSavingAction(`duplicate-${product.id}`);
-    setError(null);
+    setActionError(null);
     try {
       const duplicated = await duplicateAdminMenuProduct({ companyId, branchId, productId: product.id });
       upsertProduct(duplicated);
       setNotice('Produto duplicado como inativo para revisao.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao duplicar produto.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao duplicar produto.');
     } finally {
       setSavingAction(null);
     }
@@ -352,13 +353,13 @@ export default function AdminMenuPage() {
 
   const toggleFeatured = async (product: MenuProduct) => {
     setSavingAction(`featured-${product.id}`);
-    setError(null);
+    setActionError(null);
     try {
       const updated = await updateAdminMenuProductFeatured({ companyId, branchId, productId: product.id, featured: !product.featured });
       upsertProduct(updated);
       setNotice(updated.featured ? 'Produto marcado como destaque.' : 'Produto removido dos destaques.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao atualizar destaque.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao atualizar destaque.');
     } finally {
       setSavingAction(null);
     }
@@ -377,7 +378,7 @@ export default function AdminMenuPage() {
       result.products.forEach(upsertProduct);
       setNotice('Ordem dos destaques salva.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao ordenar destaques.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao ordenar destaques.');
     } finally {
       setSavingAction(null);
     }
@@ -385,11 +386,11 @@ export default function AdminMenuPage() {
 
   const previewImport = async () => {
     setSavingAction('import-preview');
-    setError(null);
+    setActionError(null);
     try {
       setImportPreview(await previewAdminMenuImport({ companyId, branchId, csv: importCsv }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao validar importacao.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao validar importacao.');
     } finally {
       setSavingAction(null);
     }
@@ -397,14 +398,14 @@ export default function AdminMenuPage() {
 
   const commitImport = async () => {
     setSavingAction('import-commit');
-    setError(null);
+    setActionError(null);
     try {
       const result = await commitAdminMenuImport({ companyId, branchId, csv: importCsv });
       result.products.forEach(upsertProduct);
       setNotice(`${result.importedCount} produtos importados. ${result.skippedCount} linhas ignoradas.`);
       setImportPreview(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao importar produtos.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao importar produtos.');
     } finally {
       setSavingAction(null);
     }
@@ -432,7 +433,7 @@ export default function AdminMenuPage() {
       setRecommendationConfig(null);
       setNotice('Configuracao de Peca tambem salva.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar recomendacoes.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao salvar recomendacoes.');
     } finally {
       setSavingAction(null);
     }
@@ -440,7 +441,7 @@ export default function AdminMenuPage() {
 
   const saveCombo = async (payload: AdminMenuComboPayload, combo?: MenuCombo) => {
     setSavingAction(combo?.id ? `save-combo-${combo.id}` : 'save-combo');
-    setError(null);
+    setActionError(null);
     try {
       const saved = combo?.id
         ? await updateAdminMenuCombo({ companyId, branchId, comboId: combo.id, payload })
@@ -451,7 +452,7 @@ export default function AdminMenuPage() {
       });
       setNotice(combo?.id ? 'Combo atualizado com sucesso.' : 'Combo criado com sucesso.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar combo.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao salvar combo.');
     } finally {
       setSavingAction(null);
     }
@@ -459,13 +460,13 @@ export default function AdminMenuPage() {
 
   const disableCombo = async (combo: MenuCombo) => {
     setSavingAction(`delete-combo-${combo.id}`);
-    setError(null);
+    setActionError(null);
     try {
       const saved = await deleteAdminMenuCombo({ companyId, branchId, comboId: combo.id });
       setCombos((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
       setNotice('Combo desativado.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao desativar combo.');
+      setActionError(err instanceof Error ? err.message : 'Falha ao desativar combo.');
     } finally {
       setSavingAction(null);
     }
@@ -478,7 +479,7 @@ export default function AdminMenuPage() {
         subtitle="Gerencie produtos, categorias, precos e adicionais"
         right={
           <div className={styles.headerActions}>
-            <Badge tone={error ? 'warning' : 'success'}>{error ? 'Fallback local' : 'API conectada'}</Badge>
+            <Badge tone={loadError ? 'warning' : 'success'}>{loadError ? 'Fallback local' : 'API conectada'}</Badge>
             <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>Novo produto</Button>
             <Button onClick={() => openCategoryModal()}>Nova categoria</Button>
             <Button onClick={() => setActiveTab('import')}>Importar produtos</Button>
@@ -505,10 +506,18 @@ export default function AdminMenuPage() {
         </div>
       ) : null}
 
-      {error ? (
+      {loadError ? (
         <div className={styles.warning}>
           <strong>Cardapio real indisponivel.</strong>
-          <span>Exibindo dados locais para manter a tela operacional.</span>
+          <span>{loadError}. Exibindo dados locais para manter a tela operacional.</span>
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className={styles.warning}>
+          <strong>Acao nao concluida.</strong>
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)}>Fechar</button>
         </div>
       ) : null}
 
@@ -516,14 +525,14 @@ export default function AdminMenuPage() {
         <section className={styles.workspace}>
           <aside className={styles.categories}>
             <div className={styles.sidebarTitle}>Categorias</div>
-            {categories.map((item) => (
+            {categories.filter((item) => item.name !== 'all').map((item) => (
               <button
                 type="button"
                 key={item.name}
                 className={`${styles.categoryButton} ${category === item.name ? styles.categoryActive : ''}`.trim()}
                 onClick={() => setCategory(item.name)}
               >
-                <span>{item.name === 'all' ? 'Todas' : item.name}</span>
+                <span>{item.name}</span>
                 <Badge>{item.count}</Badge>
               </button>
             ))}
@@ -557,7 +566,7 @@ export default function AdminMenuPage() {
                     key={product.id}
                     product={product}
                     onEdit={() => setModal({ mode: 'edit', product })}
-                    onAddons={() => setModal({ mode: 'addons', product })}
+                    onAddons={() => setModal({ mode: 'edit', product })}
                     onVariations={() => setModal({ mode: 'variations', product })}
                     onToggle={() => void toggleAvailability(product)}
                     onDuplicate={() => void duplicateProduct(product)}
@@ -607,7 +616,16 @@ export default function AdminMenuPage() {
         </section>
       ) : null}
 
-      {activeTab === 'addons' ? <AddonsManagementPanel products={products} onOpenAddons={(product) => setModal({ mode: 'addons', product })} /> : null}
+      {activeTab === 'addons' ? (
+        <AddonsManagementPanel
+          companyId={companyId}
+          branchId={branchId}
+          products={products}
+          onProductsChanged={setProducts}
+          onError={setActionError}
+          onNotice={setNotice}
+        />
+      ) : null}
 
       {activeTab === 'combos' ? (
         <CombosManagementPanel
@@ -620,7 +638,7 @@ export default function AdminMenuPage() {
       ) : null}
 
       {activeTab === 'featured' ? (
-        <FeaturedProductsPanel products={featuredProducts} allProducts={products} savingAction={savingAction} onMove={(id, direction) => void moveFeatured(id, direction)} onToggleFeatured={(product) => void toggleFeatured(product)} />
+        <FeaturedProductsPanel products={featuredProducts} savingAction={savingAction} onMove={(id, direction) => void moveFeatured(id, direction)} onToggleFeatured={(product) => void toggleFeatured(product)} />
       ) : null}
 
       {activeTab === 'import' ? (
@@ -639,7 +657,7 @@ export default function AdminMenuPage() {
           companyId={companyId}
           branchId={branchId}
           onProductChanged={upsertProduct}
-          onError={(message) => setError(message)}
+          onError={(message) => setActionError(message)}
           onNotice={(message) => setNotice(message)}
           variationApi={{
             fetch: fetchAdminMenuProductVariations,
