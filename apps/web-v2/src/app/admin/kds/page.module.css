@@ -1,4 +1,4 @@
-﻿.page {
+.page {
   min-height: 100vh;
   padding: 28px 0 44px;
   display: grid;
@@ -272,5 +272,95 @@
 @media (max-width: 640px) {
   .summaryGrid {
     grid-template-columns: 1fr;
+  }
+}
+.ticketBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.ticketModal {
+  width: min(720px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  border-radius: 28px;
+  padding: 18px;
+}
+
+.ticketHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ticketHeader small {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ticketHeader h2 {
+  margin: 2px 0;
+  font-size: 30px;
+  letter-spacing: -0.06em;
+}
+
+.ticketHeader span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.ticketPaper {
+  margin: 0;
+  padding: 18px;
+  min-height: 260px;
+  border-radius: 20px;
+  border: 1px dashed #94a3b8;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.04) 0 1px, transparent 1px 28px);
+  color: #0f172a;
+  font: 800 14px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ticketActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+@media print {
+  .page > :not(.ticketBackdrop),
+  .ticketHeader button,
+  .ticketActions {
+    display: none !important;
+  }
+
+  .ticketBackdrop {
+    position: static;
+    padding: 0;
+    background: white;
+    backdrop-filter: none;
+  }
+
+  .ticketModal {
+    width: 100%;
+    max-height: none;
+    box-shadow: none;
+    border: 0;
   }
 }
