@@ -4,6 +4,8 @@ import { TENANT_PERMISSIONS } from './rbac';
 import { OrdersController } from '../orders/orders.controller';
 import { PdvController } from '../pdv/pdv.controller';
 import { KdsController } from '../kds/kds.controller';
+import { CommandsController, TablesController } from '../tables/tables.controller';
+import { FinanceController } from '../finance/finance.controller';
 import { SettingsController } from '../settings/settings.controller';
 import { AdminUsersController } from '../admin-users/admin-users.controller';
 import { AdminBillingController } from '../billing/admin-billing.controller';
@@ -44,6 +46,7 @@ describe('RBAC route permissions metadata', () => {
   });
 
   it('pdv exige pdv.operate no controller', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, PdvController)).toBe('pdv');
     const classPermissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PdvController);
     expect(classPermissions).toEqual([TENANT_PERMISSIONS.PDV_OPERATE]);
   });
@@ -51,6 +54,28 @@ describe('RBAC route permissions metadata', () => {
   it('kds exige kds.operate no controller', () => {
     const classPermissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, KdsController);
     expect(classPermissions).toEqual([TENANT_PERMISSIONS.KDS_OPERATE]);
+  });
+
+  it('mesas e comandas exigem modulo waiter_app e permissao operacional', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, TablesController)).toBe('waiter_app');
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, CommandsController)).toBe('waiter_app');
+    expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, TablesController)).toEqual([
+      TENANT_PERMISSIONS.ORDERS_MANAGE,
+    ]);
+    expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, CommandsController)).toEqual([
+      TENANT_PERMISSIONS.ORDERS_MANAGE,
+    ]);
+  });
+
+  it('financeiro exige modulo financial e permissoes financeiras', () => {
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, FinanceController)).toBe('financial');
+    expect(methodPermissions(FinanceController.prototype, 'overview')).toEqual([
+      TENANT_PERMISSIONS.FINANCE_READ,
+      TENANT_PERMISSIONS.FINANCE_MANAGE,
+    ]);
+    expect(methodPermissions(FinanceController.prototype, 'createManualLedger')).toEqual([
+      TENANT_PERMISSIONS.FINANCE_MANAGE,
+    ]);
   });
 
   it('settings separa leitura e escrita', () => {

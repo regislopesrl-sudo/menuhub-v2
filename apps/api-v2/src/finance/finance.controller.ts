@@ -4,6 +4,8 @@ import { RequirePermissions } from '../common/permissions.decorator';
 import { RequireAdminGuard } from '../common/require-admin.guard';
 import { TENANT_PERMISSIONS } from '../common/rbac';
 import type { RequestContext } from '../common/request-context';
+import { ModuleAccess } from '../modules/module-access.decorator';
+import { ModuleGuard } from '../modules/module.guard';
 import {
   FinanceService,
   type AccountSettlementInput,
@@ -13,7 +15,8 @@ import {
 } from './finance.service';
 
 @Controller('v2/admin/finance')
-@UseGuards(RequireAdminGuard)
+@UseGuards(RequireAdminGuard, ModuleGuard)
+@ModuleAccess('financial')
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
