@@ -191,6 +191,8 @@ export class CheckoutService {
         order: {
           ...checkoutResult.order,
           id: persisted.id,
+          orderNumber: persisted.orderNumber,
+          trackingToken: persisted.publicTrackingToken ?? undefined,
         },
         payment: {
           ...checkoutResult.payment,
@@ -211,6 +213,8 @@ export class CheckoutService {
       order: {
         ...checkoutResult.order,
         id: persisted.id,
+        orderNumber: persisted.orderNumber,
+        trackingToken: persisted.publicTrackingToken ?? undefined,
       },
     };
   }

@@ -41,7 +41,12 @@ describe('CheckoutService', () => {
         }),
       },
       repo ?? {
-        createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-1', status: 'CONFIRMED' }),
+        createOrder: jest.fn().mockResolvedValue({
+          id: 'order_db',
+          orderNumber: 'V2-1',
+          status: 'CONFIRMED',
+          publicTrackingToken: 'trk_public_1',
+        }),
         attachPaymentIntent: jest.fn().mockResolvedValue({ id: 'order_db' }),
       },
       { emitOrderCreated: jest.fn() } as any,
@@ -62,6 +67,8 @@ describe('CheckoutService', () => {
     expect(result.payment.providerPaymentId).toBe('mock_pix_1');
     expect(result.payment.qrCodeText).toBeTruthy();
     expect(result.payment.expiresAt).toBeTruthy();
+    expect(result.order.trackingToken).toBe('trk_public_1');
+    expect(result.order.orderNumber).toBe('V2-1');
   });
 
   it('pagamento recusado mantem fluxo atual', async () => {
@@ -75,7 +82,12 @@ describe('CheckoutService', () => {
       { quoteByAddress: jest.fn().mockResolvedValue(quoteOk()) } as any,
       { createPixPayment: jest.fn() } as any,
       {
-        createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-1', status: 'PENDING_CONFIRMATION' }),
+        createOrder: jest.fn().mockResolvedValue({
+          id: 'order_db',
+          orderNumber: 'V2-1',
+          status: 'PENDING_CONFIRMATION',
+          publicTrackingToken: 'trk_declined',
+        }),
         attachPaymentIntent: jest.fn(),
       } as any,
       { emitOrderCreated: jest.fn() } as any,
@@ -203,7 +215,12 @@ describe('CheckoutService', () => {
       validateItems: jest.fn().mockResolvedValue({ storeId: 'store_1', items: [{ productId: 'p1', name: 'Pizza', quantity: 1, unitPrice: 40, selectedOptions: [] }] }),
     };
     const repo = {
-      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-3', status: 'CONFIRMED' }),
+      createOrder: jest.fn().mockResolvedValue({
+        id: 'order_db',
+        orderNumber: 'V2-3',
+        status: 'CONFIRMED',
+        publicTrackingToken: 'trk_takeout',
+      }),
       attachPaymentIntent: jest.fn().mockResolvedValue({ id: 'order_db' }),
     };
     const quoteService = { quoteByAddress: jest.fn() };
@@ -224,6 +241,7 @@ describe('CheckoutService', () => {
     );
 
     expect(result.order.id).toBe('order_db');
+    expect(result.order.trackingToken).toBe('trk_takeout');
     expect(quoteService.quoteByAddress).not.toHaveBeenCalled();
     expect(repo.createOrder).toHaveBeenCalledWith(
       expect.anything(),

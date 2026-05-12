@@ -93,6 +93,7 @@ describe('OrderPrismaRepository', () => {
     expect(prismaMock.order.create).toHaveBeenCalled();
     const createData = prismaMock.order.create.mock.calls[0][0].data;
     expect(createData.deliveryAreaId).toBe('area_1');
+    expect(createData.publicTrackingToken).toMatch(/^trk_/);
     expect(createData.deliveryDistanceMeters).toBe(2400);
     expect(createData.deliveryDurationSec).toBe(600);
     expect(createData.items.create[0].addons.create).toEqual([
@@ -207,6 +208,30 @@ describe('OrderPrismaRepository', () => {
           include: {
             addons: true,
           },
+        },
+      },
+    });
+  });
+
+  it('findByPublicTrackingToken busca pedido sem expor tenant por parametro', async () => {
+    const prismaMock = {
+      order: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'order_db_1' }),
+      },
+    } as any;
+
+    const repo = new OrderPrismaRepository(prismaMock);
+    await repo.findByPublicTrackingToken('trk_public_123');
+
+    expect(prismaMock.order.findFirst).toHaveBeenCalledWith({
+      where: {
+        publicTrackingToken: 'trk_public_123',
+        deletedAt: null,
+      },
+      include: {
+        timelineEvents: {
+          orderBy: { createdAt: 'asc' },
+          take: 50,
         },
       },
     });

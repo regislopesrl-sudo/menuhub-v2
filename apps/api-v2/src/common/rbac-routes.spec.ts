@@ -135,6 +135,14 @@ describe('RBAC route permissions metadata', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, BillingWebhookController.prototype.handleWebhook)).toBe(true);
   });
 
+  it('tracking publico de pedidos nao exige JWT e tracking tenant exige orders.read/manage', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, OrdersController.prototype.getPublicTracking)).toBe(true);
+    expect(methodPermissions(OrdersController.prototype, 'getTrackingById')).toEqual([
+      TENANT_PERMISSIONS.ORDERS_READ,
+      TENANT_PERMISSIONS.ORDERS_MANAGE,
+    ]);
+  });
+
   it('admin-menu usa modulo menu e exige catalog.read/manage para leitura e catalog.manage para escrita', () => {
     expect(Reflect.getMetadata(MODULE_ACCESS_KEY, AdminMenuController)).toBe('menu');
     expect(Reflect.getMetadata(MODULE_ACCESS_KEY, AdminMenuUtilityController)).toBe('menu');
