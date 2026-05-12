@@ -347,6 +347,7 @@ export default function DeliveryPage() {
   }, [success?.trackingToken]);
 
   const checkoutIssues = useMemo(() => {
+    if (success) return [];
     const issues: string[] = [];
     if (!items.length) issues.push('Adicione pelo menos um item ao carrinho.');
     if (!customerName.trim()) issues.push('Informe seu nome.');
@@ -378,6 +379,7 @@ export default function DeliveryPage() {
     quote,
     scheduledAt,
     street,
+    success,
   ]);
 
   const checkoutStep = success ? 4 : items.length === 0 ? 1 : checkoutIssues.length > 0 ? 2 : 3;
@@ -890,14 +892,42 @@ export default function DeliveryPage() {
               ) : null}
               {error ? <div className={styles.feedbackError}>{error}</div> : null}
               {success ? (
-                <div className={styles.feedbackSuccess}>
-                  Pedido criado com sucesso. ID: {success.orderId} | Total: {brl(success.total)}
-                  <div>Pedido: {success.orderStatus}</div>
-                  <div>Pagamento: {success.paymentStatus}</div>
-                  {paymentStatusMessage ? <div>{paymentStatusMessage}</div> : null}
-                  {success.orderNumber ? <div>Número do pedido: {success.orderNumber}</div> : null}
-                  {success.provider ? <div>Provider: {success.provider}</div> : null}
-                  {success.providerPaymentId ? <div>Provider Payment ID: {success.providerPaymentId}</div> : null}
+                <div className={styles.confirmationCard}>
+                  <div className={styles.confirmationHeader}>
+                    <div>
+                      <span>Pedido recebido</span>
+                      <strong>{success.orderNumber ?? success.orderId}</strong>
+                    </div>
+                    <Badge tone={success.paymentStatus === 'PAID' || success.paymentStatus === 'APPROVED' ? 'success' : 'warning'}>
+                      {success.paymentStatus}
+                    </Badge>
+                  </div>
+                  <div className={styles.confirmationGrid}>
+                    <div>
+                      <small>Total</small>
+                      <strong>{brl(success.total)}</strong>
+                    </div>
+                    <div>
+                      <small>Status do pedido</small>
+                      <strong>{tracking?.status ?? success.orderStatus}</strong>
+                    </div>
+                    <div>
+                      <small>Pagamento</small>
+                      <strong>{success.provider ?? paymentMethod}</strong>
+                    </div>
+                    <div>
+                      <small>Estimativa</small>
+                      <strong>{tracking?.estimatedMinutes ? `${tracking.estimatedMinutes} min` : 'Atualizando'}</strong>
+                    </div>
+                  </div>
+                  {paymentStatusMessage ? <div className={styles.confirmationNotice}>{paymentStatusMessage}</div> : null}
+                  {success.trackingToken ? (
+                    <div className={styles.trackingTokenBox}>
+                      <span>Token de acompanhamento</span>
+                      <strong>{success.trackingToken}</strong>
+                      <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.trackingToken ?? '')}>Copiar</Button>
+                    </div>
+                  ) : null}
 
                   {success.paymentStatus === 'PENDING' && success.qrCodeText ? (
                     <div className={styles.pixBox}>
@@ -910,29 +940,37 @@ export default function DeliveryPage() {
                   ) : null}
 
                   <div className={styles.trackingBox}>
-                    <strong>Status do pedido</strong>
+                    <div className={styles.row}>
+                      <strong>Acompanhamento em tempo real</strong>
+                      <Badge tone="success">Atualiza automaticamente</Badge>
+                    </div>
                     {trackingError ? <div className={styles.feedbackError}>{trackingError}</div> : null}
-                    {(tracking?.timeline ?? []).map((event) => (
-                      <div key={`${event.status}-${event.createdAt}`} className={styles.trackingStep}>
-                        <span />
-                        <div>
-                          <strong>{event.message}</strong>
-                          <small>{new Date(event.createdAt).toLocaleString('pt-BR')}</small>
+                    {(tracking?.timeline ?? []).length > 0 ? (
+                      (tracking?.timeline ?? []).map((event) => (
+                        <div key={`${event.status}-${event.createdAt}`} className={styles.trackingStep}>
+                          <span />
+                          <div>
+                            <strong>{event.message}</strong>
+                            <small>{new Date(event.createdAt).toLocaleString('pt-BR')}</small>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {tracking?.estimatedMinutes ? <div>ETA: {tracking.estimatedMinutes} min</div> : null}
+                      ))
+                    ) : (
+                      <div className={styles.muted}>Buscando os primeiros eventos do pedido...</div>
+                    )}
                   </div>
                 </div>
               ) : null}
 
-              <Button
-                variant="primary"
-                disabled={loading || checkoutBlocked || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
-                onClick={() => void handleCheckout()}
-              >
-                {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
-              </Button>
+              {!success ? (
+                <Button
+                  variant="primary"
+                  disabled={loading || checkoutBlocked || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
+                  onClick={() => void handleCheckout()}
+                >
+                  {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
+                </Button>
+              ) : null}
             </Card>
             </Card>
           </div>
