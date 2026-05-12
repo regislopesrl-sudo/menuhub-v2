@@ -31,6 +31,13 @@ export async function createTable(payload: { name: string; capacity?: number }) 
   });
 }
 
+export async function updateTable(id: string, payload: { name?: string; capacity?: number; status?: TableStatus }) {
+  return apiFetch<TableItem>(`/v2/tables/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function openTableSession(tableId: string, payload: { guestCount?: number; commandCode?: string }) {
   return apiFetch<{ session: { id: string }; command: { id: string; code: string } }>(`/v2/tables/${tableId}/sessions/open`, {
     method: 'POST',
@@ -66,4 +73,3 @@ export async function mergeCommands(commandIds: string[]) {
     body: JSON.stringify({ commandIds }),
   });
 }
-
