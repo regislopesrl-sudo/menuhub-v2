@@ -200,3 +200,51 @@ export async function patchOrderStatus(input: {
   });
 }
 
+export async function cancelOrder(input: {
+  id: string;
+  reasonCode: string;
+  reasonText?: string;
+  internalNote?: string;
+  headers: OrdersHeaders;
+}): Promise<OrderDetail> {
+  return apiFetch<OrderDetail>(`/v2/orders/${input.id}/cancel`, {
+    method: 'PATCH',
+    headers: buildHeaders(input.headers),
+    body: JSON.stringify({
+      reasonCode: input.reasonCode,
+      reasonText: input.reasonText,
+      internalNote: input.internalNote,
+    }),
+  });
+}
+
+export async function addOrderInternalNote(input: {
+  id: string;
+  note: string;
+  headers: OrdersHeaders;
+}): Promise<OrderDetail> {
+  return apiFetch<OrderDetail>(`/v2/orders/${input.id}/internal-note`, {
+    method: 'PATCH',
+    headers: buildHeaders(input.headers),
+    body: JSON.stringify({ note: input.note }),
+  });
+}
+
+export async function refundOrderMock(input: {
+  id: string;
+  amount: number;
+  reasonCode: string;
+  reasonText?: string;
+  headers: OrdersHeaders;
+}): Promise<OrderDetail> {
+  return apiFetch<OrderDetail>(`/v2/orders/${input.id}/refund`, {
+    method: 'PATCH',
+    headers: buildHeaders(input.headers),
+    body: JSON.stringify({
+      amount: input.amount,
+      reasonCode: input.reasonCode,
+      reasonText: input.reasonText,
+    }),
+  });
+}
+

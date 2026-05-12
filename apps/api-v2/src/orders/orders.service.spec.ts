@@ -10,8 +10,26 @@ describe('OrdersService', () => {
   };
 
   function createService(repoMock: any, eventsMock?: any, stockMock?: any) {
+    const repository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'order_1',
+        orderNumber: 'V2-1',
+        status: 'CONFIRMED',
+        subtotal: 50,
+        discountAmount: 0,
+        deliveryFee: 0,
+        totalAmount: 50,
+        paymentStatus: 'UNPAID',
+        paidAmount: 0,
+        refundedAmount: 0,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        items: [],
+      }),
+      listTimeline: jest.fn().mockResolvedValue([]),
+      ...repoMock,
+    };
     return new OrdersService(
-      repoMock,
+      repository,
       eventsMock ?? { emitOrderStatusUpdated: jest.fn() },
       stockMock ?? { consumeByOrder: jest.fn() },
     );

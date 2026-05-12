@@ -8,6 +8,13 @@ import { calculateOrderItemTotal } from './order-pricing';
 
 export interface FindManyOrdersFilters {
   status?: string;
+  channel?: string;
+  paymentStatus?: string;
+  activeOnly?: boolean;
+  delayedOnly?: boolean;
+  search?: string;
+  sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
+  sortDirection?: 'asc' | 'desc';
   page: number;
   limit: number;
   createdFrom?: Date;
@@ -294,6 +301,17 @@ export class OrderPrismaRepository {
       companyId: ctx.companyId,
       ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
       ...(filters.status ? { status: filters.status as any } : {}),
+      ...(filters.channel ? { channel: filters.channel.toUpperCase() as any } : {}),
+      ...(filters.paymentStatus ? { paymentStatus: filters.paymentStatus.toUpperCase() as any } : {}),
+      ...(filters.activeOnly && !filters.status ? { status: { in: ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION', 'READY', 'WAITING_PICKUP', 'WAITING_DISPATCH', 'OUT_FOR_DELIVERY'] as any[] } } : {}),
+      ...(filters.search
+        ? {
+            OR: [
+              { orderNumber: { contains: filters.search } },
+              { internalNotes: { contains: filters.search } },
+            ],
+          }
+        : {}),
       ...(filters.createdFrom || filters.createdTo
         ? {
             createdAt: {
@@ -304,12 +322,21 @@ export class OrderPrismaRepository {
         : {}),
     };
 
+    const delayedCutoff = new Date(Date.now() - 30 * 60 * 1000);
+    const delayedWhere = filters.delayedOnly
+      ? {
+          createdAt: { lt: delayedCutoff },
+          status: { in: ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION'] as any[] },
+        }
+      : {};
+    const whereWithDelay = { ...where, ...delayedWhere };
+    const orderBy = this.resolveOrderBy(filters.sortBy, filters.sortDirection);
     const skip = (filters.page - 1) * filters.limit;
     const [total, rows] = await Promise.all([
-      this.prisma.order.count({ where }),
+      this.prisma.order.count({ where: whereWithDelay }),
       this.prisma.order.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
+        where: whereWithDelay,
+        orderBy,
         skip,
         take: filters.limit,
       }),
@@ -369,7 +396,10 @@ export class OrderPrismaRepository {
       });
       const updated = await tx.order.update({
         where: { id: existing.id },
-        data: { status: status as any },
+        data: {
+          status: status as any,
+          ...this.statusTimestampPatch(status),
+        },
         include: {
           items: {
             include: {
@@ -739,5 +769,24 @@ export class OrderPrismaRepository {
     } catch {
       return {};
     }
+  }
+
+  private resolveOrderBy(sortBy?: string, sortDirection?: 'asc' | 'desc') {
+    const direction = sortDirection === 'asc' ? 'asc' : 'desc';
+    if (sortBy === 'updatedAt') return { updatedAt: direction } as const;
+    if (sortBy === 'total') return { totalAmount: direction } as const;
+    if (sortBy === 'status') return { status: direction } as const;
+    return { createdAt: direction } as const;
+  }
+
+  private statusTimestampPatch(status: string) {
+    const now = new Date();
+    if (status === 'CONFIRMED') return { confirmedAt: now };
+    if (status === 'IN_PREPARATION') return { preparationStartedAt: now };
+    if (status === 'READY') return { readyAt: now };
+    if (status === 'OUT_FOR_DELIVERY') return { dispatchedAt: now };
+    if (status === 'DELIVERED') return { deliveredAt: now };
+    if (status === 'FINALIZED') return { finalizedAt: now };
+    return {};
   }
 }

@@ -4,6 +4,9 @@ import type { RequestContext } from '../common/request-context';
 import { OrderPrismaRepository, type FindManyOrdersFilters } from './order.prisma';
 import { OrdersEventsService } from './orders-events.service';
 import { StockService } from '../stock/stock.service';
+import { assertCanCancelOrder, assertCanTransitionOrderStatus } from './orders-status.policy';
+import { AUDIT_ACTIONS } from '../common/audit-log';
+import { recordAuditFromContext } from '../common/audit-log-recorder';
 
 export interface OrderReadDto {
   id: string;
@@ -48,8 +51,23 @@ export interface OrderReadDto {
     refundedAmount: number;
   };
   createdAt: string;
+  updatedAt?: string;
+  statusUpdatedAt?: string;
+  elapsedMinutes: number;
+  isDelayed: boolean;
+  delayLevel: 'none' | 'attention' | 'urgent';
   preparationStartedAt?: string;
   readyAt?: string;
+  timeline?: Array<{
+    type: string;
+    label: string;
+    status: string;
+    message: string;
+    createdAt: string;
+    at: string;
+    actor: { role: string; name: string };
+  }>;
+  timelineSource?: 'events' | 'fallback';
 }
 
 export interface OrderListItemDto {
@@ -60,6 +78,12 @@ export interface OrderListItemDto {
   total: number;
   paymentStatus: string;
   createdAt: string;
+  updatedAt?: string;
+  statusUpdatedAt?: string;
+  customerName?: string;
+  elapsedMinutes: number;
+  isDelayed: boolean;
+  delayLevel: 'none' | 'attention' | 'urgent';
 }
 
 export interface OrderListResponseDto {
@@ -86,7 +110,8 @@ export class OrdersService {
       throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
     }
 
-    return this.toOrderReadDto(order);
+    const timeline = await this.orderRepository.listTimeline(id, ctx);
+    return this.toOrderReadDto(order, Array.isArray(timeline) ? timeline : undefined);
   }
 
   async updateStatus(
@@ -98,6 +123,12 @@ export class OrdersService {
     if (!Object.values(OrderStatus).includes(status as OrderStatus)) {
       throw new BadRequestException(`Status inválido: '${status}'.`);
     }
+
+    const current = await this.orderRepository.findById(id, ctx);
+    if (!current) {
+      throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    }
+    assertCanTransitionOrderStatus(current.status, status);
 
     const order = await this.orderRepository.updateStatus(id, status, ctx);
     if (!order) {
@@ -127,6 +158,14 @@ export class OrdersService {
       }
     }
 
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.ORDER_STATUS_UPDATE,
+      outcome: 'success',
+      ctx,
+      target: { type: 'order', id: order.id, label: order.orderNumber },
+      metadata: { previousStatus: current.status, newStatus: order.status, channel: order.channel },
+    });
+
     return this.toOrderReadDto(order);
   }
 
@@ -141,12 +180,22 @@ export class OrdersService {
   ): Promise<OrderReadDto> {
     const reasonCode = String(input.reasonCode ?? '').trim();
     if (!reasonCode) throw new BadRequestException('reasonCode obrigatorio para cancelamento.');
+    const current = await this.orderRepository.findById(id, ctx);
+    if (!current) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    assertCanCancelOrder(current.status);
     const order = await this.orderRepository.cancelOrder(id, ctx, {
       reasonCode,
       reasonText: input.reasonText,
       internalNote: input.internalNote,
     });
     if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.ORDER_CANCEL,
+      outcome: 'success',
+      ctx,
+      target: { type: 'order', id: order.id, label: order.orderNumber },
+      metadata: { previousStatus: current.status, reasonCode, hasReasonText: Boolean(input.reasonText) },
+    });
     return this.toOrderReadDto(order);
   }
 
@@ -155,6 +204,13 @@ export class OrdersService {
     if (!text) throw new BadRequestException('note obrigatoria.');
     const order = await this.orderRepository.addInternalNote(id, ctx, text);
     if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.ORDER_INTERNAL_NOTE_ADD,
+      outcome: 'success',
+      ctx,
+      target: { type: 'order', id: order.id, label: order.orderNumber },
+      metadata: { noteLength: text.length },
+    });
     return this.toOrderReadDto(order);
   }
 
@@ -175,6 +231,13 @@ export class OrdersService {
       throw new BadRequestException(message);
     }
     if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    recordAuditFromContext({
+      action: AUDIT_ACTIONS.ORDER_REFUND_MOCK,
+      outcome: 'success',
+      ctx,
+      target: { type: 'order', id: order.id, label: order.orderNumber },
+      metadata: { amount, reasonCode, reasonText: input.reasonText },
+    });
     return this.toOrderReadDto(order);
   }
 
@@ -188,8 +251,12 @@ export class OrdersService {
     );
   }
 
-  private toOrderReadDto(order: any): OrderReadDto {
+  private toOrderReadDto(order: any, timelineRows?: any[]): OrderReadDto {
     const snapshot = this.readCheckoutSnapshot(order.internalNotes);
+    const timing = this.buildTiming(order);
+    const timeline = timelineRows?.length
+      ? timelineRows.map((event) => this.toTimelineDto(event))
+      : this.buildFallbackTimeline(order);
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -224,8 +291,15 @@ export class OrdersService {
         refundedAmount: Number(order.refundedAmount),
       },
       createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt?.toISOString?.(),
+      statusUpdatedAt: this.resolveStatusUpdatedAt(order),
+      elapsedMinutes: timing.elapsedMinutes,
+      isDelayed: timing.isDelayed,
+      delayLevel: timing.delayLevel,
       preparationStartedAt: order.preparationStartedAt ? order.preparationStartedAt.toISOString() : undefined,
       readyAt: order.readyAt ? order.readyAt.toISOString() : undefined,
+      timeline,
+      timelineSource: timelineRows?.length ? 'events' : 'fallback',
     };
   }
 
@@ -267,6 +341,13 @@ export class OrdersService {
     ctx: RequestContext,
     query: {
       status?: string;
+      channel?: string;
+      paymentStatus?: string;
+      activeOnly?: boolean;
+      delayedOnly?: boolean;
+      search?: string;
+      sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
+      sortDirection?: 'asc' | 'desc';
       page?: number;
       limit?: number;
       createdFrom?: string;
@@ -280,6 +361,13 @@ export class OrdersService {
 
     const filters: FindManyOrdersFilters = {
       status: query.status,
+      channel: query.channel,
+      paymentStatus: query.paymentStatus,
+      activeOnly: query.activeOnly,
+      delayedOnly: query.delayedOnly,
+      search: query.search,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
       page,
       limit,
       createdFrom,
@@ -291,10 +379,14 @@ export class OrdersService {
       id: order.id,
       orderNumber: order.orderNumber,
       channel: order.channel,
+      customerName: this.readCheckoutSnapshot((order as any).internalNotes)?.customer?.name,
       status: order.status,
       total: Number(order.totalAmount),
       paymentStatus: order.paymentStatus,
       createdAt: order.createdAt.toISOString(),
+      updatedAt: (order as any).updatedAt?.toISOString?.(),
+      statusUpdatedAt: this.resolveStatusUpdatedAt(order),
+      ...this.buildTiming(order),
     }));
 
     const totalPages = Math.max(1, Math.ceil(result.total / limit));
@@ -307,5 +399,125 @@ export class OrdersService {
         totalPages,
       },
     };
+  }
+
+  async summary(
+    ctx: RequestContext,
+    query: { dateFrom?: string; dateTo?: string; channel?: string },
+  ) {
+    const createdFrom = query.dateFrom ? new Date(query.dateFrom) : new Date(new Date().setHours(0, 0, 0, 0));
+    const createdTo = query.dateTo ? new Date(query.dateTo) : new Date();
+    const result = await this.orderRepository.findMany(ctx, {
+      page: 1,
+      limit: 100,
+      createdFrom,
+      createdTo,
+      channel: query.channel,
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
+    });
+    const rows = result.rows;
+    const activeStatuses = ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION', 'READY', 'WAITING_PICKUP', 'WAITING_DISPATCH', 'OUT_FOR_DELIVERY'];
+    const totalOrders = result.total;
+    const activeOrders = rows.filter((row) => activeStatuses.includes(row.status)).length;
+    const delayedOrders = rows.filter((row) => this.buildTiming(row).isDelayed).length;
+    const preparingOrders = rows.filter((row) => row.status === 'IN_PREPARATION').length;
+    const readyOrders = rows.filter((row) => ['READY', 'WAITING_PICKUP', 'WAITING_DISPATCH'].includes(row.status)).length;
+    const canceledOrders = rows.filter((row) => row.status === 'CANCELED').length;
+    const grossRevenue = rows.reduce((sum, row) => sum + Number(row.totalAmount ?? 0), 0);
+    const canceledRevenue = rows
+      .filter((row) => ['CANCELED', 'REFUNDED'].includes(row.status) || ['CANCELED', 'REFUNDED'].includes(row.paymentStatus))
+      .reduce((sum, row) => sum + Number(row.totalAmount ?? 0), 0);
+    const netRevenue = Math.max(0, grossRevenue - canceledRevenue);
+
+    return {
+      totalOrders,
+      activeOrders,
+      delayedOrders,
+      preparingOrders,
+      readyOrders,
+      canceledOrders,
+      grossRevenue,
+      netRevenue,
+      canceledRevenue,
+      averageTicket: totalOrders > 0 ? Number((netRevenue / totalOrders).toFixed(2)) : 0,
+      ordersByChannel: this.countBy(rows, 'channel'),
+      ordersByStatus: this.countBy(rows, 'status'),
+      paymentsByStatus: this.countBy(rows, 'paymentStatus'),
+      dateFrom: createdFrom.toISOString(),
+      dateTo: createdTo.toISOString(),
+    };
+  }
+
+  private buildTiming(order: any) {
+    const createdAt = order.createdAt instanceof Date ? order.createdAt : new Date(order.createdAt);
+    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 60000));
+    const activeDelayed = ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION'].includes(order.status);
+    const delayLevel = activeDelayed && elapsedMinutes >= 45 ? 'urgent' : activeDelayed && elapsedMinutes >= 25 ? 'attention' : 'none';
+    return { elapsedMinutes, isDelayed: delayLevel !== 'none', delayLevel } as const;
+  }
+
+  private resolveStatusUpdatedAt(order: any) {
+    const candidates = [
+      order.finalizedAt,
+      order.deliveredAt,
+      order.dispatchedAt,
+      order.readyAt,
+      order.preparationStartedAt,
+      order.confirmedAt,
+      order.canceledAt,
+      order.updatedAt,
+    ].filter(Boolean);
+    return candidates[0]?.toISOString?.();
+  }
+
+  private toTimelineDto(event: any) {
+    const status = event.newStatus ?? event.previousStatus ?? event.eventType;
+    return {
+      type: event.eventType,
+      label: this.timelineLabel(event.eventType),
+      status,
+      message: event.reasonText ?? this.timelineLabel(event.eventType),
+      createdAt: event.createdAt.toISOString(),
+      at: event.createdAt.toISOString(),
+      actor: { role: String(event.actorType ?? 'SYSTEM'), name: event.actorUserId ?? 'Sistema' },
+    };
+  }
+
+  private buildFallbackTimeline(order: any) {
+    return [
+      { status: 'CREATED', at: order.createdAt },
+      order.confirmedAt ? { status: 'CONFIRMED', at: order.confirmedAt } : null,
+      order.preparationStartedAt ? { status: 'IN_PREPARATION', at: order.preparationStartedAt } : null,
+      order.readyAt ? { status: 'READY', at: order.readyAt } : null,
+      order.dispatchedAt ? { status: 'OUT_FOR_DELIVERY', at: order.dispatchedAt } : null,
+      order.deliveredAt ? { status: 'DELIVERED', at: order.deliveredAt } : null,
+      order.finalizedAt ? { status: 'FINALIZED', at: order.finalizedAt } : null,
+      order.canceledAt ? { status: 'CANCELED', at: order.canceledAt } : null,
+    ].filter(Boolean).map((row: any) => ({
+      type: 'order.timeline.fallback',
+      label: row.status,
+      status: row.status,
+      message: row.status,
+      createdAt: row.at.toISOString(),
+      at: row.at.toISOString(),
+      actor: { role: 'SYSTEM', name: 'Sistema' },
+    }));
+  }
+
+  private timelineLabel(type: string) {
+    if (type === 'order.status.updated') return 'Status atualizado';
+    if (type === 'order.canceled') return 'Pedido cancelado';
+    if (type === 'order.internal_note.added') return 'Observacao interna';
+    if (type === 'order.refund.mock') return 'Reembolso mock';
+    return type;
+  }
+
+  private countBy(rows: any[], key: string) {
+    return rows.reduce<Record<string, number>>((acc, row) => {
+      const value = String(row[key] ?? 'UNKNOWN');
+      acc[value] = (acc[value] ?? 0) + 1;
+      return acc;
+    }, {});
   }
 }
