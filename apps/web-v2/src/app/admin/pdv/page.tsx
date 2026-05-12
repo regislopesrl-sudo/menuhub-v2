@@ -91,6 +91,7 @@ export default function AdminPdvPage() {
   const [sessionSummary, setSessionSummary] = useState<PdvSessionSummary | null>(null);
   const [openingBalanceInput, setOpeningBalanceInput] = useState('0');
   const [declaredCashInput, setDeclaredCashInput] = useState('');
+  const [closureNotesInput, setClosureNotesInput] = useState('');
   const [movements, setMovements] = useState<PdvSessionMovement[]>([]);
   const [operatorSummary, setOperatorSummary] = useState<PdvOperatorSummary | null>(null);
   const [sessionDivergence, setSessionDivergence] = useState<PdvSessionDivergence | null>(null);
@@ -448,12 +449,14 @@ export default function AdminPdvPage() {
         branchId,
         sessionId: openSession.id,
         declaredCashAmount: Number(declaredCashInput || '0'),
+        closureNotes: closureNotesInput.trim() || undefined,
       });
       setOpenSession(null);
       setSessionSummary(null);
       setMovements([]);
       setOperatorSummary(null);
       setSessionDivergence(null);
+      setClosureNotesInput('');
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : 'Falha ao fechar caixa.');
     } finally {
@@ -580,6 +583,11 @@ export default function AdminPdvPage() {
                 value={declaredCashInput}
                 onChange={(e) => setDeclaredCashInput(e.target.value)}
                 placeholder="Valor declarado no caixa"
+              />
+              <Input
+                value={closureNotesInput}
+                onChange={(e) => setClosureNotesInput(e.target.value)}
+                placeholder="Justificativa se houver divergencia"
               />
               <Button variant="danger" onClick={() => void handleCloseSession()} disabled={sessionActionLoading}>
                 {sessionActionLoading ? 'Fechando...' : 'Fechar Caixa'}
@@ -791,6 +799,7 @@ export default function AdminPdvPage() {
                 <div><small>Diferenca</small><strong>{currency(sessionDivergence.cashDifference ?? 0)}</strong></div>
                 <div><small>Diferenca abs.</small><strong>{currency(sessionDivergence.absoluteDifference ?? 0)}</strong></div>
                 <div><small>Status</small><strong>{sessionDivergence.status}</strong></div>
+                <div><small>Severidade</small><strong>{sessionDivergence.divergenceSeverity}</strong></div>
                 {sessionDivergence.closureNotes ? (
                   <div><small>Obs. fechamento</small><strong>{sessionDivergence.closureNotes}</strong></div>
                 ) : null}

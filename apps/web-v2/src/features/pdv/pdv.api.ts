@@ -123,6 +123,7 @@ export interface PdvSessionDivergence {
   cashDifference: number | null;
   absoluteDifference: number | null;
   divergenceLevel: 'none' | 'shortage' | 'overage';
+  divergenceSeverity: 'none' | 'low' | 'medium' | 'high' | 'critical';
   closureNotes?: string;
 }
 
@@ -199,11 +200,12 @@ export async function closePdvSession(input: {
   branchId?: string;
   sessionId: string;
   declaredCashAmount?: number;
+  closureNotes?: string;
 }) {
   return apiFetch(`/v2/pdv/sessions/${input.sessionId}/close`, {
     method: 'POST',
     headers: pdvHeaders(input),
-    body: JSON.stringify({ declaredCashAmount: input.declaredCashAmount }),
+    body: JSON.stringify({ declaredCashAmount: input.declaredCashAmount, closureNotes: input.closureNotes }),
   });
 }
 
@@ -383,6 +385,9 @@ function normalizeSessionDivergence(payload: unknown, sessionId: string): PdvSes
     cashDifference,
     absoluteDifference,
     divergenceLevel: data.divergenceLevel === 'shortage' || data.divergenceLevel === 'overage' ? data.divergenceLevel : 'none',
+    divergenceSeverity: ['low', 'medium', 'high', 'critical'].includes(String((data as any).divergenceSeverity))
+      ? ((data as any).divergenceSeverity as 'low' | 'medium' | 'high' | 'critical')
+      : 'none',
     closureNotes: typeof data.closureNotes === 'string' ? data.closureNotes : undefined,
   };
 }
