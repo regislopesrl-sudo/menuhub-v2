@@ -14,6 +14,11 @@ import { ModuleGuard } from '../modules/module.guard';
 export class KdsController {
   constructor(private readonly kdsService: KdsService) {}
 
+  @Get('stations')
+  async listStations() {
+    return this.kdsService.listStations();
+  }
+
   @Get('orders')
   async listOrders(
     @CurrentContext() ctx: RequestContext,

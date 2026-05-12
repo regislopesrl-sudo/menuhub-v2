@@ -53,12 +53,25 @@ export interface KdsBoardResponse {
   };
 }
 
+export interface KdsStation {
+  key: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  label: string;
+  prepTargetMinutes: number;
+}
+
 function buildHeaders(input: OrdersHeaders): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'x-company-id': input.companyId,
     ...(input.branchId ? { 'x-branch-id': input.branchId } : {}),
   };
+}
+
+export async function listKdsStations(headers: OrdersHeaders): Promise<KdsStation[]> {
+  return apiFetch<KdsStation[]>('/v2/kds/stations', {
+    method: 'GET',
+    headers: buildHeaders(headers),
+  });
 }
 
 export async function listKdsOrders(

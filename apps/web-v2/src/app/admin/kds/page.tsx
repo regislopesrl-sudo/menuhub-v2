@@ -65,7 +65,7 @@ function mapOrderDetailToKds(detail: Awaited<ReturnType<typeof getOrderById>>): 
     priorityLevel: elapsed > prepTargetMinutes + 5 ? 'urgent' : elapsed >= prepTargetMinutes ? 'attention' : 'normal',
     station: 'hot_kitchen',
     totals: detail.totals,
-    customer: detail.customer,
+    customer: detail.customer?.name ? { name: detail.customer.name } : undefined,
     deliveryAddress: detail.deliveryAddress,
     items: detail.items.map((item) => ({
       id: item.id,

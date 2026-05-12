@@ -17,6 +17,7 @@ describe('KdsService', () => {
     orderNumber: 'V2-20260430-AAAAAA',
     channel: 'delivery',
     status: 'CONFIRMED',
+    customer: { name: 'Cliente Teste', phone: '11999999999' },
     totals: { subtotal: 20, discount: 0, deliveryFee: 5, total: 25 },
     deliveryFee: 5,
     items: [
@@ -78,7 +79,19 @@ describe('KdsService', () => {
     expect(result.data[0].orderNumber).toBe(orderDetail.orderNumber);
     expect(result.columns.new).toHaveLength(1);
     expect(result.data[0].totals.total).toBe(25);
-    expect(result.data[0].customer).toBeUndefined();
+    expect(result.data[0].customer).toEqual({ name: 'Cliente Teste' });
+    expect(result.data[0].customer).not.toHaveProperty('phone');
+  });
+
+  it('lists premium kitchen stations with SLA targets', () => {
+    const stations = service.listStations();
+
+    expect(stations).toEqual([
+      { key: 'hot_kitchen', label: 'Cozinha quente', prepTargetMinutes: 20 },
+      { key: 'cold_kitchen', label: 'Cozinha fria', prepTargetMinutes: 12 },
+      { key: 'assembly', label: 'Montagem', prepTargetMinutes: 10 },
+      { key: 'expedition', label: 'Expedicao', prepTargetMinutes: 8 },
+    ]);
   });
 
   it('updates status to IN_PREPARATION and emits event', async () => {
