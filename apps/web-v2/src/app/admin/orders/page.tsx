@@ -49,7 +49,6 @@ const STATUS_ACTIONS: Array<{ label: string; status: (typeof STATUS_OPTIONS)[num
   { label: 'Saiu para entrega', status: 'OUT_FOR_DELIVERY' },
   { label: 'Entregue', status: 'DELIVERED' },
   { label: 'Finalizar', status: 'FINALIZED' },
-  { label: 'Cancelar', status: 'CANCELED', danger: true },
 ];
 
 const KANBAN_COLUMNS = [
@@ -171,10 +170,18 @@ export default function AdminOrdersPage() {
     openOrderDetail,
     closeOrderDetail,
     updateOrderStatus,
+    cancelSelectedOrder,
+    addInternalNote,
+    refundSelectedOrderMock,
   } = useOrders(headers);
   const access = useModuleAccess(headers, 'orders');
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [cancelReasonCode, setCancelReasonCode] = useState('customer_request');
+  const [cancelReasonText, setCancelReasonText] = useState('');
+  const [internalNote, setInternalNote] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('operator_adjustment');
   const [draftFilters, setDraftFilters] = useState<OrdersFilters>({
     sortBy: 'createdAt',
     sortDirection: 'desc',
@@ -228,6 +235,34 @@ export default function AdminOrdersPage() {
       createdFrom: draftFilters.createdFrom || undefined,
       createdTo: draftFilters.createdTo || undefined,
     });
+  };
+
+  const submitCancel = async () => {
+    if (!selectedOrder) return;
+    await cancelSelectedOrder(selectedOrder.id, {
+      reasonCode: cancelReasonCode,
+      reasonText: cancelReasonText || undefined,
+      internalNote: internalNote || undefined,
+    });
+    setCancelReasonText('');
+  };
+
+  const submitInternalNote = async () => {
+    if (!selectedOrder || !internalNote.trim()) return;
+    await addInternalNote(selectedOrder.id, internalNote.trim());
+    setInternalNote('');
+  };
+
+  const submitRefund = async () => {
+    if (!selectedOrder) return;
+    const amount = Number(refundAmount || '0');
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    await refundSelectedOrderMock(selectedOrder.id, {
+      amount,
+      reasonCode: refundReason,
+      reasonText: refundReason,
+    });
+    setRefundAmount('');
   };
 
   return (
@@ -568,6 +603,38 @@ export default function AdminOrdersPage() {
                         {isUpdatingStatus === action.status ? 'Atualizando...' : action.label}
                       </Button>
                     ))}
+                  </div>
+                </Card>
+
+                <Card className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Cancelamento, observacoes e reembolso</h3>
+                  <div className={styles.formGrid}>
+                    <Select value={cancelReasonCode} onChange={(event) => setCancelReasonCode(event.target.value)}>
+                      <option value="customer_request">Solicitacao do cliente</option>
+                      <option value="out_of_stock">Item indisponivel</option>
+                      <option value="payment_issue">Problema no pagamento</option>
+                      <option value="duplicate_order">Pedido duplicado</option>
+                      <option value="operator_error">Erro operacional</option>
+                    </Select>
+                    <Input placeholder="Detalhe do cancelamento" value={cancelReasonText} onChange={(event) => setCancelReasonText(event.target.value)} />
+                    <Button variant="danger" disabled={isUpdatingStatus === 'CANCELED' || ['CANCELED', 'FINALIZED', 'REFUNDED'].includes(selectedOrder.status)} onClick={() => void submitCancel()}>
+                      Cancelar com motivo
+                    </Button>
+                  </div>
+                  <div className={styles.formGrid}>
+                    <Input placeholder="Observacao interna" value={internalNote} onChange={(event) => setInternalNote(event.target.value)} />
+                    <Button onClick={() => void submitInternalNote()}>Adicionar observacao</Button>
+                  </div>
+                  <div className={styles.formGrid}>
+                    <Input placeholder="Valor reembolso mock" value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} />
+                    <Select value={refundReason} onChange={(event) => setRefundReason(event.target.value)}>
+                      <option value="operator_adjustment">Ajuste operacional</option>
+                      <option value="customer_refund">Reembolso ao cliente</option>
+                      <option value="payment_test">Teste local</option>
+                    </Select>
+                    <Button disabled={selectedOrder.paymentSummary?.status === 'REFUNDED'} onClick={() => void submitRefund()}>
+                      Reembolsar mock/local
+                    </Button>
                   </div>
                 </Card>
               </>

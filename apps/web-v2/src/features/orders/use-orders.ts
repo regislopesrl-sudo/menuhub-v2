@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  addOrderInternalNote,
+  cancelOrder,
   getOrderById,
   getOrderSummary,
   listOrders,
   patchOrderStatus,
+  refundOrderMock,
   type OrderDetail,
   type OrderListItem,
   type OrderSummary,
@@ -239,6 +242,62 @@ export function useOrders(headers: OrdersHeaders) {
     [loadSummary, stableHeaders],
   );
 
+  const cancelSelectedOrder = useCallback(
+    async (id: string, input: { reasonCode: string; reasonText?: string; internalNote?: string }) => {
+      setIsUpdatingStatus('CANCELED');
+      setError(null);
+      setDetailError(null);
+      try {
+        const updated = await cancelOrder({ id, headers: stableHeaders, ...input });
+        setSelectedOrder(updated);
+        setOrders((current) => upsertListItem(current, detailToListItem(updated)));
+        void loadSummary();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao cancelar pedido.';
+        setError(message);
+        setDetailError(message);
+      } finally {
+        setIsUpdatingStatus(null);
+      }
+    },
+    [loadSummary, stableHeaders],
+  );
+
+  const addInternalNote = useCallback(
+    async (id: string, note: string) => {
+      setError(null);
+      setDetailError(null);
+      try {
+        const updated = await addOrderInternalNote({ id, note, headers: stableHeaders });
+        setSelectedOrder(updated);
+        setOrders((current) => upsertListItem(current, detailToListItem(updated)));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao adicionar observacao interna.';
+        setError(message);
+        setDetailError(message);
+      }
+    },
+    [stableHeaders],
+  );
+
+  const refundSelectedOrderMock = useCallback(
+    async (id: string, input: { amount: number; reasonCode: string; reasonText?: string }) => {
+      setError(null);
+      setDetailError(null);
+      try {
+        const updated = await refundOrderMock({ id, headers: stableHeaders, ...input });
+        setSelectedOrder(updated);
+        setOrders((current) => upsertListItem(current, detailToListItem(updated)));
+        void loadSummary();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao processar reembolso mock.';
+        setError(message);
+        setDetailError(message);
+      }
+    },
+    [loadSummary, stableHeaders],
+  );
+
   return {
     orders,
     loading,
@@ -262,6 +321,9 @@ export function useOrders(headers: OrdersHeaders) {
     openOrderDetail,
     closeOrderDetail,
     updateOrderStatus,
+    cancelSelectedOrder,
+    addInternalNote,
+    refundSelectedOrderMock,
   };
 }
 

@@ -14,6 +14,13 @@ export class OrdersController {
   async list(
     @CurrentContext() ctx: RequestContext,
     @Query('status') status?: string,
+    @Query('channel') channel?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('activeOnly') activeOnly?: string,
+    @Query('delayedOnly') delayedOnly?: string,
+    @Query('search') search?: string,
+    @Query('sortBy') sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status',
+    @Query('sortDirection') sortDirection?: 'asc' | 'desc',
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('createdFrom') createdFrom?: string,
@@ -21,11 +28,29 @@ export class OrdersController {
   ) {
     return this.ordersService.list(ctx, {
       status,
+      channel,
+      paymentStatus,
+      activeOnly: activeOnly === 'true' ? true : activeOnly === 'false' ? false : undefined,
+      delayedOnly: delayedOnly === 'true' ? true : delayedOnly === 'false' ? false : undefined,
+      search,
+      sortBy,
+      sortDirection,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       createdFrom,
       createdTo,
     });
+  }
+
+  @Get('summary')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_READ, TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async summary(
+    @CurrentContext() ctx: RequestContext,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('channel') channel?: string,
+  ) {
+    return this.ordersService.summary(ctx, { dateFrom, dateTo, channel });
   }
 
   @Get(':id')
