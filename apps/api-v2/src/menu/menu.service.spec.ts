@@ -1,4 +1,4 @@
-import { MenuService } from './menu.service';
+﻿import { MenuService } from './menu.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 describe('MenuService', () => {
@@ -366,13 +366,48 @@ describe('MenuService', () => {
 
     expect(prismaMock.company.findFirst).toHaveBeenCalledWith({
       where: { slug: 'company-a', status: 'ACTIVE' },
-      select: { id: true },
+      select: { id: true, tradeName: true, logoUrl: true },
     });
     expect(prismaMock.product.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ companyId: 'company_a' }),
       }),
     );
+  });
+  it('carrega vitrine publica com configuracao visual da empresa', async () => {
+    const prismaMock = {
+      company: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'company_a', tradeName: 'Loja Demo', logoUrl: 'https://img.local/logo.png' }),
+      },
+      companyConfiguration: {
+        findUnique: jest.fn().mockResolvedValue({
+          publicTitle: 'Delivery Demo',
+          publicDescription: 'Pedido online premium',
+          bannerUrl: 'https://img.local/banner.png',
+          brandColor: '#123456',
+          closedMessage: 'Fechado agora',
+        }),
+      },
+      product: {
+        findMany: jest.fn(),
+      },
+    } as any;
+
+    const { service } = createService(prismaMock);
+
+    const result = await service.getPublicStorefrontByCompanySlug('Company-A');
+
+    expect(result).toEqual({
+      companyId: 'company_a',
+      branchId: null,
+      publicTitle: 'Delivery Demo',
+      publicDescription: 'Pedido online premium',
+      logoUrl: 'https://img.local/logo.png',
+      bannerUrl: 'https://img.local/banner.png',
+      brandColor: '#123456',
+      closedMessage: 'Fechado agora',
+    });
+    expect(prismaMock.product.findMany).not.toHaveBeenCalled();
   });
 
   it('bloqueia menu publico quando modulo menu nao esta ativo', async () => {
@@ -430,3 +465,5 @@ describe('MenuService', () => {
     });
   });
 });
+
+

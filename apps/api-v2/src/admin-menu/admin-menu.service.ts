@@ -16,6 +16,7 @@ import type {
   UpdateAvailabilityDto,
   UpdateComboDto,
   UpdateCategoryDto,
+  UpdateAddonGroupProductsDto,
   UpdateProductDto,
   UpdateProductVariationDto,
 } from './dto/admin-menu.dto';
@@ -26,6 +27,7 @@ type AdminMenuProductAvailabilityInput = UpdateAvailabilityDto;
 type AdminMenuImportInput = ImportPreviewDto;
 type AdminMenuRecommendationInput = ProductRecommendationDto;
 type AdminMenuAddonGroupInput = CreateAddonGroupDto | UpdateAddonGroupDto;
+type AdminMenuAddonGroupProductsInput = UpdateAddonGroupProductsDto;
 type AdminMenuAddonOptionInput = CreateAddonOptionDto | UpdateAddonOptionDto;
 type AdminMenuVariationInput = CreateProductVariationDto | UpdateProductVariationDto;
 type AdminMenuComboInput = CreateComboDto | UpdateComboDto;
@@ -281,6 +283,16 @@ export class AdminMenuService {
     return this.mapProduct(product).addonGroups;
   }
 
+  async listAddonGroups(ctx: RequestContext) {
+    await this.assertBranchBelongsToCompany(ctx);
+    const groups = await this.prisma.addonGroup.findMany({
+      where: { companyId: ctx.companyId },
+      include: this.addonGroupInclude(),
+      orderBy: [{ name: 'asc' }],
+    });
+    return groups.map((group: any) => this.mapAddonGroup(group));
+  }
+
   async listProductVariations(productId: string, ctx: RequestContext) {
     const product = await this.findProductOrThrow(productId, ctx);
     return this.mapProduct(product).variations;
@@ -430,6 +442,46 @@ export class AdminMenuService {
     return this.mapAddonGroup(group);
   }
 
+  async updateAddonGroupProducts(groupId: string, ctx: RequestContext, input: AdminMenuAddonGroupProductsInput) {
+    await this.findAddonGroupOrThrow(groupId, ctx);
+    const productIds = Array.from(new Set((input.productIds ?? []).map((id) => String(id).trim()).filter(Boolean)));
+    const products = productIds.length
+      ? await this.prisma.product.findMany({
+          where: {
+            id: { in: productIds },
+            companyId: ctx.companyId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        })
+      : [];
+
+    if (products.length !== productIds.length) {
+      throw new BadRequestException('Todos os produtos selecionados devem pertencer a empresa atual.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.productAddonGroup.deleteMany({
+        where: {
+          addonGroupId: groupId,
+          ...(productIds.length ? { productId: { notIn: productIds } } : {}),
+        },
+      });
+      if (productIds.length > 0) {
+        await tx.productAddonGroup.createMany({
+          data: productIds.map((productId) => ({ productId, addonGroupId: groupId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    const group = await this.prisma.addonGroup.findFirst({
+      where: { id: groupId, companyId: ctx.companyId },
+      include: this.addonGroupInclude(),
+    });
+    return this.mapAddonGroup(group);
+  }
+
   async deleteAddonGroup(groupId: string, ctx: RequestContext) {
     await this.findAddonGroupOrThrow(groupId, ctx);
     await this.prisma.addonGroup.delete({ where: { id: groupId } });
@@ -529,6 +581,7 @@ export class AdminMenuService {
       ...(input.promotionalPrice !== undefined ? { promotionalPrice } : {}),
       ...(normalizedImageUrl !== undefined ? { imageUrl: normalizedImageUrl } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : {}),
+      ...(typeof input.featured === 'boolean' ? { isFeatured: input.featured } : {}),
       ...this.mapChannelData(input.channels),
       ...(sortOrder !== undefined ? { sortOrder } : {}),
       ...(prepTimeMinutes !== undefined ? { prepTimeMinutes } : {}),
@@ -854,6 +907,8 @@ export class AdminMenuService {
       required: Boolean(group.required),
       allowMultiple: Boolean(group.allowMultiple),
       options: (group.items ?? []).map((item: any) => this.mapAddonOption(item)),
+      linkedProductIds: (group.productLinks ?? []).map((link: any) => link.productId),
+      productCount: Number(group.productLinks?.length ?? 0),
     };
   }
 
@@ -922,6 +977,12 @@ export class AdminMenuService {
     const trimmed = value?.trim() ?? '';
     if (!trimmed) {
       return null;
+    }
+    if (/^data:image\/(png|jpe?g|webp);base64,/i.test(trimmed)) {
+      if (trimmed.length > 2_100_000) {
+        throw new BadRequestException('Imagem comercial importada excede o tamanho maximo permitido.');
+      }
+      return trimmed;
     }
     if (trimmed.length > 2048) {
       throw new BadRequestException('URL da imagem comercial excede o tamanho maximo permitido.');

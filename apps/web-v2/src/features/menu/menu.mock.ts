@@ -34,6 +34,8 @@ export interface MenuProduct {
     maxSelect: number;
     required: boolean;
     allowMultiple: boolean;
+    linkedProductIds?: string[];
+    productCount?: number;
     options: Array<{
       id: string;
       name: string;

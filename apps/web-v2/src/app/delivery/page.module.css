@@ -118,9 +118,38 @@
 
 .menuTools {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin: 8px 0 14px;
+}
+
+.categoryScroller {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: thin;
+}
+
+.categoryPill,
+.categoryPillActive {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #334155;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 9px 14px;
+}
+
+.categoryPill:hover,
+.categoryPillActive {
+  border-color: rgba(37, 87, 246, 0.38);
+  background: linear-gradient(135deg, #2557f6, #7c3aed);
+  box-shadow: 0 12px 24px rgba(37, 87, 246, 0.18);
+  color: white;
 }
 
 .badgeRow {
@@ -138,13 +167,16 @@
   gap: 10px;
   background: #fff;
   box-shadow: var(--shadow-sm);
+  cursor: pointer;
   transition: transform 160ms var(--ease), border-color 160ms var(--ease), box-shadow 160ms var(--ease);
 }
 
-.productCard:hover {
+.productCard:hover,
+.productCard:focus-visible {
   transform: translateY(-3px);
   border-color: #93c5fd;
   box-shadow: var(--shadow);
+  outline: none;
 }
 
 .productMedia {
@@ -232,11 +264,39 @@
 }
 
 .modal {
-  width: min(650px, 100%);
+  width: min(760px, 100%);
   max-height: 85vh;
   overflow: auto;
   padding: 18px;
   border-radius: 26px;
+}
+
+.productDetailPrice {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.productDetailPrice strong {
+  color: var(--text);
+  font-size: 28px;
+}
+
+.quantitySelector {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.quantitySelector span {
+  color: var(--text);
+  font-weight: 900;
 }
 
 .optionRow {
@@ -355,4 +415,215 @@
 
 .modalTitle {
   margin: 0;
+}
+
+
+/* Customer storefront layout 2026-05 */
+.page {
+  min-height: 100vh;
+  padding: 0 0 48px;
+  display: block;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 34%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.13), transparent 28%),
+    linear-gradient(180deg, #eef5ff 0%, #f8fafc 46%, #fff7ed 100%);
+}
+
+.storefrontHero {
+  width: 100%;
+  min-height: clamp(260px, 42vw, 520px);
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: clamp(18px, 3vw, 34px);
+  background:
+    radial-gradient(circle at 22% 24%, rgba(255, 255, 255, 0.68), transparent 28%),
+    linear-gradient(135deg, #172554 0%, #2563eb 44%, #f97316 100%);
+  background-size: cover;
+  background-position: center;
+  border-radius: 0 0 38px 38px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.storefrontHero::after {
+  content: '';
+  position: absolute;
+  inset: auto -8% -24% 48%;
+  height: 58%;
+  background: rgba(255, 255, 255, 0.16);
+  filter: blur(18px);
+  border-radius: 999px;
+}
+
+.storeIdentity {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(16px);
+}
+
+.storeLogo {
+  width: 58px;
+  height: 58px;
+  border-radius: 22px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 1000;
+  letter-spacing: -0.05em;
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed, #f97316);
+}
+
+.storeLogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.storeNameBox {
+  min-width: min(320px, 52vw);
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(248, 250, 252, 0.92);
+  border-radius: 24px;
+  padding: 10px 16px;
+  display: grid;
+  gap: 2px;
+}
+
+.storeNameBox small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.storeNameBox strong {
+  color: #0f172a;
+  font-size: clamp(18px, 2vw, 26px);
+  letter-spacing: -0.05em;
+}
+
+.cartFloatingButton {
+  position: fixed;
+  left: clamp(14px, 2vw, 28px);
+  top: clamp(14px, 2vw, 28px);
+  z-index: 180;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  box-shadow: 0 18px 48px rgba(37, 99, 235, 0.34);
+  padding: 12px 14px 12px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 1000;
+  cursor: pointer;
+}
+
+.cartFloatingButton strong {
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  display: grid;
+  place-items: center;
+}
+
+.layout {
+  width: min(1280px, 100% - 32px);
+  margin: -42px auto 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  position: relative;
+  z-index: 2;
+}
+
+.leftCol {
+  display: grid;
+  gap: 18px;
+}
+
+.rightCol {
+  display: none;
+}
+
+.cartModal {
+  width: min(760px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 30px;
+}
+
+.cartModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cartPanel {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.cartPanel > .row:first-child {
+  display: none;
+}
+
+.productsGrid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.productCard {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.productCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.13);
+}
+
+@media (max-width: 760px) {
+  .storefrontHero {
+    min-height: 360px;
+    border-radius: 0 0 28px 28px;
+  }
+
+  .storeIdentity {
+    border-radius: 28px;
+    align-items: stretch;
+  }
+
+  .storeNameBox {
+    min-width: 0;
+  }
+
+  .layout {
+    width: min(100% - 20px, 1280px);
+    margin-top: -30px;
+  }
+
+  .cartFloatingButton {
+    top: 10px;
+    left: 10px;
+  }
 }

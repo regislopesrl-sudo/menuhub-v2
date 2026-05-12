@@ -8,13 +8,11 @@ import styles from '../page.module.css';
 
 export function FeaturedProductsPanel({
   products,
-  allProducts,
   savingAction,
   onMove,
   onToggleFeatured,
 }: {
   products: MenuProduct[];
-  allProducts: MenuProduct[];
   savingAction: string | null;
   onMove: (productId: string, direction: -1 | 1) => void;
   onToggleFeatured: (product: MenuProduct) => void;
@@ -22,16 +20,10 @@ export function FeaturedProductsPanel({
   return (
     <section className={styles.simpleGrid}>
       {products.length === 0 ? (
-        <>
-          <EmptyState title="Sem destaques" description="Marque produtos como destaque para montar esta vitrine." />
-          {allProducts.map((product) => (
-            <Card key={product.id} className={styles.managementCard}>
-              <strong>{product.name}</strong>
-              <span>{product.categoryName ?? 'Sem categoria'} | {brl(product.price)}</span>
-              <Button variant="primary" onClick={() => onToggleFeatured(product)}>Marcar como destaque</Button>
-            </Card>
-          ))}
-        </>
+        <EmptyState
+          title="Sem destaques"
+          description="Abra um produto, clique em Editar e marque a opcao Destaque no cardapio."
+        />
       ) : null}
       {products.map((product, index) => (
         <Card key={product.id} className={styles.managementCard}>

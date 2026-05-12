@@ -11,6 +11,7 @@ import { readJwtPayload } from '@/lib/auth-claims';
 
 export function TopNav() {
   const pathname = usePathname();
+  const isPublicDeliveryRoute = pathname === '/delivery' || pathname.startsWith('/delivery/');
   const [mounted, setMounted] = useState(false);
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -45,6 +46,8 @@ export function TopNav() {
     [mounted, modules, session?.accessToken],
   );
 
+  if (isPublicDeliveryRoute) return null;
+
   return (
     <header className={styles.wrap}>
       <nav className={styles.nav}>
@@ -77,3 +80,4 @@ export function TopNav() {
     </header>
   );
 }
+

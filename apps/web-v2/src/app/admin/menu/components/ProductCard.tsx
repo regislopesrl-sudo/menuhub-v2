@@ -1,4 +1,5 @@
-﻿import { Badge } from '@/components/ui/Badge';
+﻿import type { KeyboardEvent, MouseEvent } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import type { MenuProduct } from '@/features/menu/menu.mock';
@@ -32,9 +33,28 @@ export function ProductCard({
   const basePrice = product.salePrice ?? product.price;
   const costPrice = product.costPrice ?? 0;
   const margin = basePrice > 0 ? ((basePrice - costPrice) / basePrice) * 100 : null;
+  const stopActionClick = (event: MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+  const stopActionKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onEdit();
+    }
+  };
 
   return (
-    <Card className={`${styles.productCard} ${product.available === false ? styles.productInactive : ''}`.trim()}>
+    <Card
+      className={`${styles.productCard} ${product.available === false ? styles.productInactive : ''}`.trim()}
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={handleKeyDown}
+      aria-label={`Abrir configuracao do produto ${product.name}`}
+    >
       <div className={styles.productMedia}>
         {hasImage ? <img src={product.imageUrl} alt={product.name} /> : <span>{product.name.slice(0, 2).toUpperCase()}</span>}
       </div>
@@ -49,7 +69,7 @@ export function ProductCard({
           </Badge>
         </div>
 
-        <div className={styles.pricePanel}>
+        <div className={styles.pricePanel} aria-label="Resumo financeiro do produto">
           <div>
             <span>Base</span>
             <strong>{brl(basePrice)}</strong>
@@ -76,19 +96,17 @@ export function ProductCard({
           </div>
         </div>
 
-        <ChannelBadges channels={product.channels} />
-
-        <div className={styles.cardFooter}>
-          <Badge>{product.categoryName ?? 'Sem categoria'}</Badge>
-          {product.sku ? <Badge>{product.sku}</Badge> : null}
-          <Badge>{product.prepTimeMinutes ? `${product.prepTimeMinutes} min` : 'Sem tempo'}</Badge>
-          <Badge tone={(product.variations ?? []).length > 0 ? 'success' : 'default'}>{(product.variations ?? []).length} variacoes</Badge>
-          <Badge tone={addonCount > 0 ? 'warning' : 'default'}>{addonCount} grupos</Badge>
+        <div className={styles.compactMeta}>
+          <span>{product.categoryName ?? 'Sem categoria'}</span>
+          {product.sku ? <span>{product.sku}</span> : null}
+          <span>{product.prepTimeMinutes ? `${product.prepTimeMinutes} min` : 'Sem tempo'}</span>
+          <span>{(product.variations ?? []).length} variacoes</span>
+          <span>{addonCount} grupos</span>
         </div>
 
-        <AddonSummary product={product} />
+        <ChannelBadges channels={product.channels} />
 
-        <div className={styles.actions}>
+        <div className={styles.actions} onClick={stopActionClick} onKeyDown={stopActionKeyDown}>
           <Button variant="primary" onClick={onEdit}>Editar</Button>
           <Button onClick={onToggle} disabled={actionLoading === `toggle-${product.id}`}>
             {actionLoading === `toggle-${product.id}` ? 'Salvando...' : product.available === false ? 'Ativar' : 'Desativar'}
@@ -100,32 +118,10 @@ export function ProductCard({
             {product.featured ? 'Remover destaque' : 'Destacar'}
           </Button>
           <Button onClick={onVariations}>Variacoes</Button>
-          <Button onClick={onAddons}>Adicionais</Button>
+          <Button onClick={onAddons}>Editar adicionais</Button>
           <Button onClick={onRecommendations}>Peca tambem</Button>
         </div>
       </div>
     </Card>
-  );
-}
-
-function AddonSummary({ product }: { product: MenuProduct }) {
-  const groups = product.addonGroups ?? [];
-
-  if (groups.length === 0) {
-    return <p className={styles.addonSummaryEmpty}>Sem grupos de adicionais configurados.</p>;
-  }
-
-  return (
-    <div className={styles.addonSummary}>
-      {groups.slice(0, 2).map((group) => (
-        <div key={group.id}>
-          <strong>{group.name}</strong>
-          <span>
-            {group.required ? 'Obrigatorio' : 'Opcional'} | {group.minSelect}-{group.maxSelect} | {(group.options ?? []).length} opcoes
-          </span>
-        </div>
-      ))}
-      {groups.length > 2 ? <small>+ {groups.length - 2} grupos adicionais</small> : null}
-    </div>
   );
 }

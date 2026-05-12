@@ -1,6 +1,17 @@
 ﻿import { mockMenuProducts, type MenuCombo, type MenuProduct, type MenuProductVariation, type MenuRecommendationConfig } from './menu.mock';
 import { apiFetch } from '@/lib/api-fetch';
 
+export type DeliveryStorefrontSettings = {
+  companyId: string;
+  branchId?: string | null;
+  publicTitle: string;
+  publicDescription: string;
+  logoUrl: string;
+  bannerUrl: string;
+  brandColor: string;
+  closedMessage: string;
+};
+
 type MenuApiItem = {
   id: string;
   type?: 'product' | 'combo';
@@ -35,6 +46,8 @@ type MenuApiItem = {
     maxSelect: number;
     required: boolean;
     allowMultiple: boolean;
+    linkedProductIds?: string[];
+    productCount?: number;
     options: Array<{
       id: string;
       name: string;
@@ -43,6 +56,29 @@ type MenuApiItem = {
     }>;
   }>;
 };
+
+export async function fetchDeliveryStorefront(input: {
+  companyId: string;
+  branchId?: string;
+  companySlug?: string;
+}): Promise<DeliveryStorefrontSettings> {
+  const companySlug = input.companySlug?.trim();
+  if (!companySlug) {
+    return {
+      companyId: input.companyId,
+      branchId: input.branchId ?? null,
+      publicTitle: process.env.NEXT_PUBLIC_STOREFRONT_NAME ?? 'MenuHub Demo',
+      publicDescription: 'Cardapio online',
+      logoUrl: process.env.NEXT_PUBLIC_STOREFRONT_LOGO_URL ?? '',
+      bannerUrl: process.env.NEXT_PUBLIC_STOREFRONT_BANNER_URL ?? '',
+      brandColor: '#2557f6',
+      closedMessage: 'Loja fechada no momento. Voltamos em breve.',
+    };
+  }
+
+  const path = `/v2/menu/public/${encodeURIComponent(companySlug)}/storefront${input.branchId ? `?branchId=${encodeURIComponent(input.branchId)}` : ''}`;
+  return apiFetch<DeliveryStorefrontSettings>(path, { method: 'GET' });
+}
 
 export async function fetchDeliveryMenu(input: {
   companyId: string;
@@ -132,6 +168,8 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     },
     addonGroups: (item.addonGroups ?? []).map((group) => ({
       ...group,
+      linkedProductIds: group.linkedProductIds ?? [],
+      productCount: Number(group.productCount ?? group.linkedProductIds?.length ?? 0),
       options: (group.options ?? []).map((option) => ({
         ...option,
         price: Number(option.price ?? 0),
@@ -154,6 +192,7 @@ export type AdminMenuProductPayload = {
   prepTimeMinutes?: number;
   imageUrl?: string;
   available?: boolean;
+  featured?: boolean;
   sortOrder?: number;
   channels?: {
     delivery?: boolean;
@@ -423,6 +462,16 @@ export async function fetchAdminMenuProductAddonGroups(input: {
   });
 }
 
+export async function fetchAdminMenuAddonGroups(input: {
+  companyId: string;
+  branchId?: string;
+}): Promise<MenuAddonGroup[]> {
+  return apiFetch<MenuAddonGroup[]>('/v2/admin/menu/addon-groups', {
+    method: 'GET',
+    headers: adminHeaders(input),
+  });
+}
+
 export async function createAdminMenuAddonGroup(input: {
   companyId: string;
   branchId?: string;
@@ -446,6 +495,19 @@ export async function updateAdminMenuAddonGroup(input: {
     method: 'PATCH',
     headers: adminHeaders(input),
     body: JSON.stringify(input.payload),
+  });
+}
+
+export async function updateAdminMenuAddonGroupProducts(input: {
+  companyId: string;
+  branchId?: string;
+  groupId: string;
+  productIds: string[];
+}): Promise<MenuAddonGroup> {
+  return apiFetch<MenuAddonGroup>(`/v2/admin/menu/addon-groups/${input.groupId}/products`, {
+    method: 'PATCH',
+    headers: adminHeaders(input),
+    body: JSON.stringify({ productIds: input.productIds }),
   });
 }
 

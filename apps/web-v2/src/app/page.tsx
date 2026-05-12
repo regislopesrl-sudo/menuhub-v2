@@ -20,10 +20,23 @@ type LoginResponse = {
 const API_BASE = process.env.NEXT_PUBLIC_API_V2_URL ?? 'http://localhost:3202';
 const WS_BASE = process.env.NEXT_PUBLIC_API_V2_WS_URL ?? API_BASE;
 
+function getEnvironmentLabel() {
+  const appEnv = String(process.env.NEXT_PUBLIC_APP_ENV ?? '').trim().toLowerCase();
+  if (appEnv === 'hml') return 'Ambiente HML';
+  if (appEnv === 'prd' || appEnv === 'production') return 'Ambiente Produção';
+  if (appEnv === 'local' || appEnv === 'dev' || appEnv === 'development') return 'Ambiente Local';
+
+  const apiBase = API_BASE.toLowerCase();
+  if (apiBase.includes('hml')) return 'Ambiente HML';
+  if (apiBase.includes('localhost') || apiBase.includes('127.0.0.1')) return 'Ambiente Local';
+  return 'Ambiente Operacional';
+}
+
 export default function HomePage() {
   const router = useRouter();
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
+  const environmentLabel = getEnvironmentLabel();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -119,7 +132,7 @@ export default function HomePage() {
         <p className={styles.subtitle}>Gestão operacional para restaurante, PDV, cozinha e delivery</p>
 
         <div className={styles.badgeRow}>
-          <Badge tone="warning">Ambiente HML</Badge>
+          <Badge tone={environmentLabel === 'Ambiente Local' ? 'success' : 'warning'}>{environmentLabel}</Badge>
           <small className={styles.statusText}>
             API: {apiStatus === 'up' ? 'online' : apiStatus === 'down' ? 'offline' : 'verificando'} | WS:{' '}
             {wsStatus === 'up' ? 'conectado' : wsStatus === 'down' ? 'desconectado' : 'verificando'}

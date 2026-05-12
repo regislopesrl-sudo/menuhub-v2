@@ -13,6 +13,15 @@ export class MenuController {
     return this.menuService.list(ctx);
   }
 
+  @Get('public/:companySlug/storefront')
+  @Public()
+  async getPublicStorefrontByCompanySlug(
+    @Param('companySlug') companySlug: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.menuService.getPublicStorefrontByCompanySlug(companySlug, branchId);
+  }
+
   @Get('public/:companySlug')
   @Public()
   async listPublicByCompanySlug(
