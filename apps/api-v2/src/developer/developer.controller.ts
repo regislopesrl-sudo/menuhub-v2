@@ -556,6 +556,7 @@ export class DeveloperController {
     @Body() body: { enabled: boolean },
   ) {
     assertRequiredModuleKey(moduleKey);
+    assertCanPerformPlatformAction(ctx, 'modules:manage');
     assertCompanyScope(ctx, companyId);
     return this.modulesService.updateCompanyModuleOverride({
       companyId,

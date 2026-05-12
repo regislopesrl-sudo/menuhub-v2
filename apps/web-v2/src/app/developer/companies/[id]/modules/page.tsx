@@ -51,6 +51,12 @@ function sourceLabel(source: 'plan' | 'override' | 'default'): string {
   return 'default';
 }
 
+function overrideLabel(value: boolean | null): string {
+  if (value === true) return 'liberado manualmente';
+  if (value === false) return 'bloqueado manualmente';
+  return 'sem override';
+}
+
 export default function DeveloperCompanyModulesPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -157,9 +163,26 @@ export default function DeveloperCompanyModulesPage() {
         <PremiumSummaryCard label="Overrides manuais" value={summary.overrides} />
       </section>
 
+      <Card className={styles.policyCard}>
+        <div>
+          <span className={styles.eyebrow}>Liberacao tecnica</span>
+          <h2>Painel manual de modulos da plataforma</h2>
+          <p>
+            Use esta tela apenas para suporte tecnico, homologacao comercial ou excecoes autorizadas.
+            Administradores da loja continuam configurando apenas o uso operacional dos modulos liberados.
+          </p>
+        </div>
+        <div className={styles.policyList}>
+          <Badge tone="warning">exige platform:modules:manage</Badge>
+          <Badge>auditoria de override</Badge>
+          <Badge>assinatura continua obrigatoria</Badge>
+        </div>
+      </Card>
+
       {!canEdit ? (
         <Card className={styles.alertCard}>
-          Assinatura inativa. Ative a assinatura para alterar modulos.
+          Assinatura inativa. Ative a assinatura para alterar modulos. O override tecnico nao substitui
+          uma assinatura cancelada, expirada ou inadimplente.
           <div className={styles.actionRow}>
             <Link href={`/developer/companies/${companyId}/subscription`}>
               <Button variant="primary">Ir para assinatura</Button>
@@ -201,6 +224,7 @@ export default function DeveloperCompanyModulesPage() {
                   Origem: {sourceLabel(row.source)}
                   {row.blockedReason ? ` · ${row.blockedReason}` : ''}
                 </p>
+                <p className={styles.overrideText}>Override: {overrideLabel(row.overrideEnabled)}</p>
 
                 {moduleErrors[row.key] ? <p className={styles.moduleError}>{moduleErrors[row.key]}</p> : null}
 

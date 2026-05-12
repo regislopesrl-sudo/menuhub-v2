@@ -47,8 +47,9 @@ describe('SaaS Subscription Flow', () => {
       {
         companyId: 'c1',
         userRole: 'developer',
+        source: 'jwt',
         requestId: 'r1',
-        permissions: [],
+        permissions: ['platform:modules:manage'],
       },
       { enabled: true },
     );

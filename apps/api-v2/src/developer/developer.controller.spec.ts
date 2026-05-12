@@ -522,6 +522,57 @@ describe('DeveloperController', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('module override exige permissao tecnica de modules manage', async () => {
+    expect(() =>
+      controller.updateCompanyModule(
+        'c1',
+        'pdv' as ModuleKey,
+        {
+          companyId: 'c1',
+          userRole: 'developer',
+          source: 'jwt',
+          requestId: 'r1',
+          permissions: ['platform:companies:update'],
+        },
+        { enabled: true },
+      ),
+    ).toThrow(ForbiddenException);
+
+    expect(modulesService.updateCompanyModuleOverride).not.toHaveBeenCalled();
+  });
+
+  it('module override permite nivel tecnico com platform modules manage', async () => {
+    modulesService.updateCompanyModuleOverride.mockResolvedValueOnce({
+      companyId: 'c1',
+      moduleKey: 'pdv',
+      enabled: true,
+    });
+
+    const result = await controller.updateCompanyModule(
+      'c1',
+      'pdv' as ModuleKey,
+      {
+        companyId: 'c1',
+        userRole: 'developer',
+        source: 'jwt',
+        requestId: 'r1',
+        permissions: ['platform:modules:manage'],
+      },
+      { enabled: true },
+    );
+
+    expect(modulesService.updateCompanyModuleOverride).toHaveBeenCalledWith({
+      companyId: 'c1',
+      moduleKey: 'pdv',
+      enabled: true,
+    });
+    expect(result).toEqual({
+      companyId: 'c1',
+      moduleKey: 'pdv',
+      enabled: true,
+    });
+  });
+
   it('change plan bloqueia quando assinatura nao existe', async () => {
     prisma.companySubscription.findUnique.mockResolvedValueOnce(null);
 
