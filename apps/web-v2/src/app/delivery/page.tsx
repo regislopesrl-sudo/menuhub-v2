@@ -24,6 +24,20 @@ function brl(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
+function productDisplayPrice(product: MenuProduct): number {
+  return Number(product.promotionalPrice ?? product.deliveryPrice ?? product.price ?? 0);
+}
+
+function productInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
 function normalizePhone(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11);
   if (digits.length <= 2) return digits;
@@ -468,7 +482,7 @@ export default function DeliveryPage() {
         .map((option) => ({ groupId: group.id, optionId: option.id, name: option.name, price: option.price })),
     );
 
-    addItem(customizingProduct, selectedAddonData, customizingQuantity);
+    addItem({ ...customizingProduct, price: productDisplayPrice(customizingProduct) }, selectedAddonData, customizingQuantity);
     setCartOpen(true);
     setCustomizingProduct(null);
     setSelectedAddons([]);
@@ -520,10 +534,12 @@ export default function DeliveryPage() {
                         if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
                       }}
                     >
-                      <div className={styles.productMedia} aria-hidden />
+                      <div className={styles.productMedia} aria-hidden>
+                        {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(product.name)}</span>}
+                      </div>
                       <div className={styles.row}>
                         <strong>{product.name}</strong>
-                        <strong>{brl(product.price)}</strong>
+                        <strong>{brl(productDisplayPrice(product))}</strong>
                       </div>
                       <div className={styles.muted}>{product.description}</div>
                       <Button variant="primary" onClick={(event) => { event.stopPropagation(); openCustomize(product); }}>Ver produto</Button>
@@ -574,7 +590,9 @@ export default function DeliveryPage() {
                       if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
                     }}
                   >
-                    <div className={styles.productMedia} aria-hidden />
+                    <div className={styles.productMedia} aria-hidden>
+                      {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(product.name)}</span>}
+                    </div>
                     <div className={styles.badgeRow}>
                       {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
                       {product.promotionalPrice ? <Badge tone="success">Promo</Badge> : null}
@@ -582,7 +600,7 @@ export default function DeliveryPage() {
                     </div>
                     <div className={styles.row}>
                       <strong>{product.name}</strong>
-                      <strong>{brl(product.price)}</strong>
+                      <strong>{brl(productDisplayPrice(product))}</strong>
                     </div>
                     <div className={styles.muted}>{product.description}</div>
                     <Button
@@ -724,8 +742,8 @@ export default function DeliveryPage() {
                   {recommendedProducts.map((product) => (
                     <div key={product.id} className={styles.recommendationItem}>
                       <span>{product.name}</span>
-                      <strong>{brl(product.price)}</strong>
-                      <Button onClick={() => addItem(product, [])}>Adicionar</Button>
+                      <strong>{brl(productDisplayPrice(product))}</strong>
+                      <Button onClick={() => addItem({ ...product, price: productDisplayPrice(product) }, [])}>Adicionar</Button>
                     </div>
                   ))}
                 </div>
@@ -858,13 +876,31 @@ export default function DeliveryPage() {
             <Card className={styles.modal} onClick={(e: any) => e.stopPropagation()}>
               {(() => {
                 const localErrors = validateGroups(customizingProduct, selectedAddons);
+                const basePrice = productDisplayPrice(customizingProduct);
                 return (
                   <>
-                    <h3 className={styles.modalTitle}>{customizingProduct.name}</h3>
-                    <p className={styles.muted}>{customizingProduct.description}</p>
+                    <div className={styles.productDetailHero}>
+                      <div className={styles.productDetailMedia}>
+                        {customizingProduct.imageUrl ? (
+                          <img src={customizingProduct.imageUrl} alt={customizingProduct.name} />
+                        ) : (
+                          <span>{productInitials(customizingProduct.name)}</span>
+                        )}
+                      </div>
+                      <div className={styles.productDetailSummary}>
+                        <div className={styles.badgeRow}>
+                          {customizingProduct.categoryName ? <Badge tone="default">{customizingProduct.categoryName}</Badge> : null}
+                          {customizingProduct.prepTimeMinutes ? <Badge tone="warning">{customizingProduct.prepTimeMinutes} min</Badge> : null}
+                          {(customizingProduct.addonGroups ?? []).length > 0 ? <Badge tone="success">Com opcionais</Badge> : null}
+                        </div>
+                        <h3 className={styles.modalTitle}>{customizingProduct.name}</h3>
+                        <p className={styles.muted}>{customizingProduct.description || 'Monte seu item e adicione ao carrinho.'}</p>
+                      </div>
+                    </div>
                     <div className={styles.productDetailPrice}>
-                      <strong>{brl(customizingProduct.price)}</strong>
-                      {customizingProduct.promotionalPrice ? <Badge tone="success">Promo {brl(customizingProduct.promotionalPrice)}</Badge> : null}
+                      <strong>{brl(basePrice)}</strong>
+                      {customizingProduct.promotionalPrice ? <Badge tone="success">Preco promocional</Badge> : null}
+                      {customizingProduct.deliveryPrice && customizingProduct.deliveryPrice !== customizingProduct.price ? <Badge tone="default">Preco delivery</Badge> : null}
                     </div>
 
                     <div className={styles.quantitySelector}>
@@ -914,7 +950,7 @@ export default function DeliveryPage() {
                     ) : null}
 
                     <div className={styles.row}>
-                      <strong>Total: {brl(customizingQuantity * (customizingProduct.price + addonTotal(customizingProduct, selectedAddons)))}</strong>
+                      <strong>Total: {brl(customizingQuantity * (basePrice + addonTotal(customizingProduct, selectedAddons)))}</strong>
                       <div className={styles.modalActions}>
                         <Button onClick={() => setCustomizingProduct(null)}>Cancelar</Button>
                         <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0}>
