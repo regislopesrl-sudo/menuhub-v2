@@ -304,6 +304,7 @@ export default function KdsPage() {
           <Badge tone={socketStatus === 'connected' ? 'success' : socketStatus === 'connecting' ? 'warning' : 'danger'}>
             {socketStatus === 'connected' ? 'Conectado' : socketStatus === 'connecting' ? 'Conectando' : 'Desconectado'}
           </Badge>
+          <Button onClick={() => window.open('/admin/kds/tv', '_blank', 'noopener,noreferrer')}>Tela TV</Button>
           {!soundArmed ? (
             <Button variant="primary" onClick={() => void activateSound()}>Ativar som</Button>
           ) : (
