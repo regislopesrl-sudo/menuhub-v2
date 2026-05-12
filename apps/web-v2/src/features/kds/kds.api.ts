@@ -14,6 +14,10 @@ export interface KdsOrderCard {
   lateMinutes: number;
   priorityLevel: 'normal' | 'attention' | 'urgent';
   station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  routing?: {
+    source: 'product' | 'channel';
+    itemStations: Array<{ station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'; label: string; count: number }>;
+  };
   totals: {
     subtotal: number;
     discount: number;
@@ -57,6 +61,8 @@ export interface KdsStation {
   key: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
   label: string;
   prepTargetMinutes: number;
+  productStationKeys: readonly string[];
+  routingDescription: string;
 }
 
 function buildHeaders(input: OrdersHeaders): Record<string, string> {

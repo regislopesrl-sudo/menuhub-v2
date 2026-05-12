@@ -26,6 +26,7 @@ type MenuApiItem = {
   deliveryPrice?: number;
   promotionalPrice?: number;
   prepTimeMinutes?: number;
+  kitchenStation?: 'FRYER' | 'DRINKS' | 'DESSERTS' | 'EXPEDITION';
   categoryId?: string;
   categoryName?: string;
   available?: boolean;
@@ -151,6 +152,7 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     deliveryPrice: item.deliveryPrice !== undefined ? Number(item.deliveryPrice) : undefined,
     promotionalPrice: item.promotionalPrice !== undefined ? Number(item.promotionalPrice) : undefined,
     prepTimeMinutes: item.prepTimeMinutes !== undefined ? Number(item.prepTimeMinutes) : undefined,
+    kitchenStation: item.kitchenStation,
     categoryId: item.categoryId,
     categoryName: item.categoryName ?? 'Sem categoria',
     available,
@@ -190,6 +192,7 @@ export type AdminMenuProductPayload = {
   deliveryPrice?: number;
   promotionalPrice?: number | null;
   prepTimeMinutes?: number;
+  kitchenStation?: 'FRYER' | 'DRINKS' | 'DESSERTS' | 'EXPEDITION' | null;
   imageUrl?: string;
   available?: boolean;
   featured?: boolean;

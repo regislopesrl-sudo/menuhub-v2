@@ -87,11 +87,71 @@ describe('KdsService', () => {
     const stations = service.listStations();
 
     expect(stations).toEqual([
-      { key: 'hot_kitchen', label: 'Cozinha quente', prepTargetMinutes: 20 },
-      { key: 'cold_kitchen', label: 'Cozinha fria', prepTargetMinutes: 12 },
-      { key: 'assembly', label: 'Montagem', prepTargetMinutes: 10 },
-      { key: 'expedition', label: 'Expedicao', prepTargetMinutes: 8 },
+      {
+        key: 'hot_kitchen',
+        label: 'Cozinha quente',
+        prepTargetMinutes: 20,
+        productStationKeys: ['FRYER'],
+        routingDescription: 'Frituras, grelha, chapa e preparos quentes.',
+      },
+      {
+        key: 'cold_kitchen',
+        label: 'Cozinha fria',
+        prepTargetMinutes: 12,
+        productStationKeys: ['DRINKS', 'DESSERTS'],
+        routingDescription: 'Bebidas, sobremesas e montagem fria.',
+      },
+      {
+        key: 'assembly',
+        label: 'Montagem',
+        prepTargetMinutes: 10,
+        productStationKeys: [],
+        routingDescription: 'Pedidos delivery/web sem estacao de produto definida.',
+      },
+      {
+        key: 'expedition',
+        label: 'Expedicao',
+        prepTargetMinutes: 8,
+        productStationKeys: ['EXPEDITION'],
+        routingDescription: 'Conferencia, embalagem e expedicao.',
+      },
     ]);
+  });
+
+
+  it('routes KDS order by product station before channel fallback', async () => {
+    (ordersServiceMock.list as jest.Mock)
+      .mockResolvedValueOnce({ data: [{ id: 'ord-1' }], pagination: {} })
+      .mockResolvedValueOnce({ data: [], pagination: {} })
+      .mockResolvedValueOnce({ data: [], pagination: {} });
+    (ordersServiceMock.getById as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'PDV',
+      items: [
+        { ...orderDetail.items[0], station: 'DESSERTS' },
+      ],
+    });
+
+    const result = await service.listOrders(ctx);
+
+    expect(result.data[0].station).toBe('cold_kitchen');
+    expect(result.data[0].routing).toEqual({
+      source: 'product',
+      itemStations: [{ station: 'cold_kitchen', label: 'Cozinha fria', count: 1 }],
+    });
+  });
+
+  it('prints kitchen ticket using product station label', async () => {
+    (ordersServiceMock.getById as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'PDV',
+      items: [{ ...orderDetail.items[0], station: 'EXPEDITION' }],
+    });
+
+    const ticket = await service.printKitchenTicket('ord-1', ctx);
+
+    expect(ticket.station).toBe('expedition');
+    expect(ticket.content).toContain('Estacao: Expedicao');
   });
 
   it('updates status to IN_PREPARATION and emits event', async () => {

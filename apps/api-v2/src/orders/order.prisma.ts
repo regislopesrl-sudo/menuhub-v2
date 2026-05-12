@@ -1,5 +1,6 @@
 ﻿import { Injectable } from '@nestjs/common';
 import type { CheckoutResult } from '@delivery-futuro/order-core';
+import type { KitchenStation } from '@prisma/client';
 import type { RequestContext } from '../common/request-context';
 import { PrismaService } from '../database/prisma.service';
 import type { DeliveryQuoteResponse } from '../delivery/dto/delivery-quote.dto';
@@ -39,6 +40,10 @@ export class OrderPrismaRepository {
   ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
+    const productStations = await this.readProductKitchenStations(
+      ctx.companyId,
+      result.order.items.map((item) => item.productId),
+    );
     const customerSnapshot = result.order.customer
       ? {
           customer: {
@@ -92,6 +97,7 @@ export class OrderPrismaRepository {
               create: result.order.items.map((item) => ({
                 productId: item.productId,
                 productNameSnapshot: item.name,
+                station: productStations.get(item.productId) ?? undefined,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
                 totalPrice: calculateOrderItemTotal({
@@ -722,6 +728,33 @@ export class OrderPrismaRepository {
     if (channel === 'waiter_app') return 'WAITER_APP';
     if (channel === 'kiosk') return 'KIOSK';
     return 'WEB';
+  }
+
+  private async readProductKitchenStations(
+    companyId: string,
+    productIds: Array<string | null | undefined>,
+  ): Promise<Map<string, KitchenStation>> {
+    const uniqueIds = Array.from(new Set(productIds.filter(Boolean) as string[]));
+    const productDelegate = (this.prisma as any).product;
+    if (uniqueIds.length === 0 || !productDelegate?.findMany) return new Map();
+
+    const products = await productDelegate.findMany({
+      where: {
+        companyId,
+        id: { in: uniqueIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        kitchenStation: true,
+      },
+    });
+
+    return new Map(
+      products
+        .filter((product: { id: string; kitchenStation?: string | null }) => product.kitchenStation)
+        .map((product: { id: string; kitchenStation: KitchenStation }) => [product.id, product.kitchenStation]),
+    );
   }
 
   private buildOrderNumber(): string {

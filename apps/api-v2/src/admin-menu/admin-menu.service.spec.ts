@@ -218,6 +218,16 @@ describe('AdminMenuService', () => {
     expect(result.id).toBe('prod_new');
   });
 
+
+  it('bloqueia estacao de cozinha invalida no produto', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    await expect(service.updateProduct('prod_1', ctx, { kitchenStation: 'PIZZA' as any })).rejects.toThrow(
+      'Estacao de cozinha invalida para o produto.',
+    );
+  });
+
   it('cria categoria real', async () => {
     const prisma = prismaMock();
     prisma.productCategory.findFirst.mockResolvedValue(null);
