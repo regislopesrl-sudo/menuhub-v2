@@ -59,6 +59,12 @@ export class ProcurementController {
     return this.procurementService.approvePurchaseOrder(ctx, id);
   }
 
+  @Post('purchase-orders/:id/cancel')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  cancelPurchaseOrder(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.cancelPurchaseOrder(ctx, id);
+  }
+
   @Post('purchase-orders/:id/receive')
   @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
   receivePurchaseOrder(
