@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
@@ -12,13 +12,7 @@ import {
   createManualFinanceEntry,
   createManualPayable,
   createManualReceivable,
-  getFinanceOverview,
-  getFinanceReconciliation,
-  listFinanceCategories,
-  listFinanceCostCenters,
-  listFinanceLedger,
-  listFinancePayables,
-  listFinanceReceivables,
+  getFinanceReport,
   settlePayable,
   settleReceivable,
   type FinanceAccount,
@@ -74,22 +68,14 @@ export default function AdminFinancePage() {
     setError(null);
     const params = { from, to };
     try {
-      const [ov, led, payableRows, receivableRows, rec, categoryRows, costCenterRows] = await Promise.all([
-        getFinanceOverview(params),
-        listFinanceLedger(params),
-        listFinancePayables(params),
-        listFinanceReceivables(params),
-        getFinanceReconciliation(params),
-        listFinanceCategories(params),
-        listFinanceCostCenters(params),
-      ]);
-      setOverview(ov);
-      setLedger(led);
-      setPayables(payableRows);
-      setReceivables(receivableRows);
-      setReconciliation(rec);
-      setCategories(categoryRows);
-      setCostCenters(costCenterRows);
+      const report = await getFinanceReport(params);
+      setOverview(report.overview);
+      setLedger(report.ledger);
+      setPayables(report.payables);
+      setReceivables(report.receivables);
+      setReconciliation(report.reconciliation);
+      setCategories(report.categories);
+      setCostCenters(report.costCenters);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar financeiro.');
     } finally {

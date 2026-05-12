@@ -73,6 +73,48 @@ export class FinanceService {
     };
   }
 
+  async getReport(ctx: RequestContext, query: FinanceQuery = {}) {
+    const [overview, cashFlow, dre, reconciliation, ledger, payables, receivables, categories, costCenters] = await Promise.all([
+      this.getOverview(ctx, query),
+      this.getCashFlow(ctx, query),
+      this.getDre(ctx, query),
+      this.getReconciliation(ctx, query),
+      this.listLedger(ctx, query),
+      this.listPayables(ctx, query),
+      this.listReceivables(ctx, query),
+      this.listCategories(ctx, query),
+      this.listCostCenters(ctx, query),
+    ]);
+
+    const categoryBreakdown = this.buildCategoryBreakdown(ledger, payables, receivables);
+    const costCenterBreakdown = this.buildCostCenterBreakdown(ledger, payables, receivables);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      period: overview.period,
+      branchId: overview.branchId,
+      overview,
+      cashFlow,
+      dre,
+      reconciliation,
+      ledger,
+      payables,
+      receivables,
+      categories,
+      costCenters,
+      breakdowns: {
+        categories: categoryBreakdown,
+        costCenters: costCenterBreakdown,
+      },
+      totals: {
+        ledgerEntries: ledger.length,
+        payables: payables.length,
+        receivables: receivables.length,
+        openPayables: overview.openPayables,
+        openReceivables: overview.openReceivables,
+      },
+    };
+  }
   async getCashFlow(ctx: RequestContext, query: FinanceQuery = {}) {
     const period = this.resolvePeriod(query);
     const scope = await this.resolveBranchScope(ctx, query.branchId);
@@ -535,6 +577,76 @@ export class FinanceService {
     });
   }
 
+  private buildCategoryBreakdown(
+    ledger: Array<{ entryType: string; amount: number; category?: string | null }>,
+    payables: Array<{ amount: number; paidAmount: number; category?: string | null; status: string }>,
+    receivables: Array<{ amount: number; paidAmount: number; category?: string | null; status: string }>,
+  ) {
+    const map = new Map<string, { key: string; label: string; revenue: number; expense: number; pendingReceivable: number; pendingPayable: number }>();
+    const ensure = (keyRaw?: string | null) => {
+      const key = this.clean(keyRaw ?? undefined) ?? 'uncategorized';
+      if (!map.has(key)) {
+        map.set(key, { key, label: this.toLabel(key), revenue: 0, expense: 0, pendingReceivable: 0, pendingPayable: 0 });
+      }
+      return map.get(key)!;
+    };
+
+    for (const item of ledger) {
+      const row = ensure(item.category);
+      if (item.entryType === 'REVENUE') row.revenue = this.money(row.revenue + item.amount);
+      if (item.entryType === 'EXPENSE') row.expense = this.money(row.expense + item.amount);
+    }
+    for (const item of payables) {
+      const row = ensure(item.category);
+      const openAmount = Math.max(0, item.amount - item.paidAmount);
+      row.expense = this.money(row.expense + item.paidAmount);
+      if (item.status !== 'PAID' && item.status !== 'CANCELED') row.pendingPayable = this.money(row.pendingPayable + openAmount);
+    }
+    for (const item of receivables) {
+      const row = ensure(item.category);
+      const openAmount = Math.max(0, item.amount - item.paidAmount);
+      row.revenue = this.money(row.revenue + item.paidAmount);
+      if (item.status !== 'PAID' && item.status !== 'CANCELED') row.pendingReceivable = this.money(row.pendingReceivable + openAmount);
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  private buildCostCenterBreakdown(
+    ledger: Array<{ entryType: string; amount: number; metadata?: unknown }>,
+    payables: Array<{ amount: number; paidAmount: number; costCenter?: string | null; status: string }>,
+    receivables: Array<{ amount: number; paidAmount: number; costCenter?: string | null; status: string }>,
+  ) {
+    const map = new Map<string, { key: string; label: string; revenue: number; expense: number; pendingReceivable: number; pendingPayable: number }>();
+    const ensure = (keyRaw?: string | null) => {
+      const key = this.clean(keyRaw ?? undefined) ?? 'uncategorized';
+      if (!map.has(key)) {
+        map.set(key, { key, label: this.toLabel(key), revenue: 0, expense: 0, pendingReceivable: 0, pendingPayable: 0 });
+      }
+      return map.get(key)!;
+    };
+
+    for (const item of ledger) {
+      const metadata = item.metadata as { costCenter?: unknown } | null;
+      const row = ensure(typeof metadata?.costCenter === 'string' ? metadata.costCenter : null);
+      if (item.entryType === 'REVENUE') row.revenue = this.money(row.revenue + item.amount);
+      if (item.entryType === 'EXPENSE') row.expense = this.money(row.expense + item.amount);
+    }
+    for (const item of payables) {
+      const row = ensure(item.costCenter);
+      const openAmount = Math.max(0, item.amount - item.paidAmount);
+      row.expense = this.money(row.expense + item.paidAmount);
+      if (item.status !== 'PAID' && item.status !== 'CANCELED') row.pendingPayable = this.money(row.pendingPayable + openAmount);
+    }
+    for (const item of receivables) {
+      const row = ensure(item.costCenter);
+      const openAmount = Math.max(0, item.amount - item.paidAmount);
+      row.revenue = this.money(row.revenue + item.paidAmount);
+      if (item.status !== 'PAID' && item.status !== 'CANCELED') row.pendingReceivable = this.money(row.pendingReceivable + openAmount);
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }
   private resolvePeriod(query: FinanceQuery): Period {
     const now = new Date();
     const from = query.from ? new Date(query.from) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

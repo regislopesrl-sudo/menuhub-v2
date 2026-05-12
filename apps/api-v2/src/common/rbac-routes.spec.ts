@@ -74,6 +74,10 @@ describe('RBAC route permissions metadata', () => {
       TENANT_PERMISSIONS.FINANCE_READ,
       TENANT_PERMISSIONS.FINANCE_MANAGE,
     ]);
+    expect(methodPermissions(FinanceController.prototype, 'report')).toEqual([
+      TENANT_PERMISSIONS.FINANCE_READ,
+      TENANT_PERMISSIONS.FINANCE_MANAGE,
+    ]);
     expect(methodPermissions(FinanceController.prototype, 'createManualLedger')).toEqual([
       TENANT_PERMISSIONS.FINANCE_MANAGE,
     ]);
