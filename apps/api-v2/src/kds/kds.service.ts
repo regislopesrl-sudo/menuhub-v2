@@ -4,6 +4,14 @@ import { OrdersEventsService } from '../orders/orders-events.service';
 import { OrdersService } from '../orders/orders.service';
 
 const KDS_STATUSES = ['CONFIRMED', 'IN_PREPARATION', 'READY'] as const;
+const KDS_STATIONS = [
+  { key: 'hot_kitchen', label: 'Cozinha quente', prepTargetMinutes: 20 },
+  { key: 'cold_kitchen', label: 'Cozinha fria', prepTargetMinutes: 12 },
+  { key: 'assembly', label: 'Montagem', prepTargetMinutes: 10 },
+  { key: 'expedition', label: 'Expedicao', prepTargetMinutes: 8 },
+] as const;
+
+type KdsStationKey = (typeof KDS_STATIONS)[number]['key'];
 
 export interface KdsOrderCardDto {
   id: string;
@@ -17,7 +25,7 @@ export interface KdsOrderCardDto {
   prepTargetMinutes: number;
   lateMinutes: number;
   priorityLevel: 'normal' | 'attention' | 'urgent';
-  station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  station: KdsStationKey;
   totals: {
     subtotal: number;
     discount: number;
@@ -26,7 +34,6 @@ export interface KdsOrderCardDto {
   };
   customer?: {
     name: string;
-    phone: string;
   };
   deliveryAddress?: {
     street: string;
@@ -51,9 +58,15 @@ export interface KdsOrderCardDto {
 export interface KdsPrintTicketDto {
   orderId: string;
   orderNumber: string;
-  station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition';
+  station: KdsStationKey;
   printedAt: string;
   content: string;
+}
+
+export interface KdsStationDto {
+  key: KdsStationKey;
+  label: string;
+  prepTargetMinutes: number;
 }
 
 @Injectable()
@@ -62,6 +75,10 @@ export class KdsService {
     private readonly ordersService: OrdersService,
     private readonly ordersEvents: OrdersEventsService,
   ) {}
+
+  listStations(): KdsStationDto[] {
+    return KDS_STATIONS.map((station) => ({ ...station }));
+  }
 
   async listOrders(
     ctx: RequestContext,
@@ -107,7 +124,7 @@ export class KdsService {
           priorityLevel: this.resolvePriority(elapsed, prepTargetMinutes),
           station,
           totals: detail.totals,
-          customer: detail.customer,
+          customer: this.sanitizeCustomer(detail.customer),
           deliveryAddress: detail.deliveryAddress,
           items: detail.items.map((item) => ({
             id: item.id,
@@ -216,7 +233,7 @@ export class KdsService {
       ),
       station: this.resolveStation(updated.channel ?? 'unknown'),
       totals: updated.totals,
-      customer: updated.customer,
+      customer: this.sanitizeCustomer(updated.customer),
       deliveryAddress: updated.deliveryAddress,
       items: updated.items.map((item) => ({
         id: item.id,
@@ -232,18 +249,20 @@ export class KdsService {
     return Math.max(0, Math.floor(diffMs / 60000));
   }
 
-  private resolveStation(channel: string): 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition' {
+  private resolveStation(channel: string): KdsStationKey {
     const normalized = String(channel).toUpperCase();
     if (normalized === 'PDV' || normalized === 'KIOSK' || normalized === 'WAITER_APP') return 'hot_kitchen';
     if (normalized === 'WEB' || normalized === 'WHATSAPP') return 'assembly';
     return 'expedition';
   }
 
-  private resolvePrepTargetMinutes(station: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'): number {
-    if (station === 'hot_kitchen') return 20;
-    if (station === 'cold_kitchen') return 12;
-    if (station === 'assembly') return 10;
-    return 8;
+  private resolvePrepTargetMinutes(station: KdsStationKey): number {
+    return KDS_STATIONS.find((item) => item.key === station)?.prepTargetMinutes ?? 8;
+  }
+
+  private sanitizeCustomer(customer?: { name?: string | null } | null): { name: string } | undefined {
+    const name = String(customer?.name ?? '').trim();
+    return name ? { name } : undefined;
   }
 
   private resolvePriority(

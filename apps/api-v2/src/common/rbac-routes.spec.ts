@@ -54,6 +54,7 @@ describe('RBAC route permissions metadata', () => {
   it('kds exige kds.operate no controller', () => {
     const classPermissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, KdsController);
     expect(classPermissions).toEqual([TENANT_PERMISSIONS.KDS_OPERATE]);
+    expect(Reflect.getMetadata(MODULE_ACCESS_KEY, KdsController)).toBe('kds');
   });
 
   it('mesas e comandas exigem modulo waiter_app e permissao operacional', () => {
