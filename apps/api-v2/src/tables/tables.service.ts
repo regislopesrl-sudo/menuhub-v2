@@ -6,14 +6,21 @@ function assertCompany(ctx: RequestContext) {
   if (!ctx.companyId) throw new BadRequestException('companyId ausente no contexto.');
 }
 
+function assertBranch(ctx: RequestContext): string {
+  assertCompany(ctx);
+  const branchId = String(ctx.branchId ?? '').trim();
+  if (!branchId) throw new BadRequestException('branchId obrigatorio para mesas e comandas.');
+  return branchId;
+}
+
 @Injectable()
 export class TablesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listTables(ctx: RequestContext) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     return this.prisma.tableRestaurant.findMany({
-      where: { branch: { companyId: ctx.companyId }, ...(ctx.branchId ? { branchId: ctx.branchId } : {}) },
+      where: { branchId, branch: { companyId: ctx.companyId } },
       orderBy: [{ name: 'asc' }],
       include: {
         sessions: {
@@ -26,15 +33,14 @@ export class TablesService {
   }
 
   async createTable(ctx: RequestContext, input: { name?: string; capacity?: number }) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     const name = String(input.name ?? '').trim();
     if (!name) throw new BadRequestException('name obrigatorio.');
-    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio para criar mesa.');
     const capacity = Math.max(1, Number(input.capacity ?? 1));
 
     return this.prisma.tableRestaurant.create({
       data: {
-        branchId: ctx.branchId,
+        branchId,
         name,
         capacity,
         status: 'FREE',
@@ -43,8 +49,8 @@ export class TablesService {
   }
 
   async updateTable(ctx: RequestContext, id: string, input: { name?: string; capacity?: number; status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' }) {
-    assertCompany(ctx);
-    const table = await this.prisma.tableRestaurant.findFirst({ where: { id, branch: { companyId: ctx.companyId } } });
+    const branchId = assertBranch(ctx);
+    const table = await this.prisma.tableRestaurant.findFirst({ where: { id, branchId, branch: { companyId: ctx.companyId } } });
     if (!table) throw new NotFoundException('Mesa nao encontrada.');
 
     const patch: Record<string, unknown> = {};
@@ -65,11 +71,11 @@ export class TablesService {
   }
 
   async openSession(ctx: RequestContext, tableId: string, input: { guestCount?: number; commandCode?: string }) {
-    assertCompany(ctx);
-    const table = await this.prisma.tableRestaurant.findFirst({ where: { id: tableId, branch: { companyId: ctx.companyId } } });
+    const branchId = assertBranch(ctx);
+    const table = await this.prisma.tableRestaurant.findFirst({ where: { id: tableId, branchId, branch: { companyId: ctx.companyId } } });
     if (!table) throw new NotFoundException('Mesa nao encontrada.');
 
-    const open = await this.prisma.tableSession.findFirst({ where: { tableId, status: 'OPEN' } });
+    const open = await this.prisma.tableSession.findFirst({ where: { tableId, branchId, status: 'OPEN' } });
     if (open) throw new BadRequestException('Mesa ja possui sessao aberta.');
 
     const guestCount = Math.max(1, Number(input.guestCount ?? 1));
@@ -103,9 +109,9 @@ export class TablesService {
   }
 
   async closeSession(ctx: RequestContext, sessionId: string) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     const session = await this.prisma.tableSession.findFirst({
-      where: { id: sessionId, branch: { companyId: ctx.companyId } },
+      where: { id: sessionId, branchId, branch: { companyId: ctx.companyId } },
       include: { table: true },
     });
     if (!session) throw new NotFoundException('Sessao nao encontrada.');
@@ -132,19 +138,19 @@ export class TablesService {
   }
 
   async transferSession(ctx: RequestContext, sessionId: string, toTableId: string) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     if (!toTableId) throw new BadRequestException('toTableId obrigatorio.');
 
     const session = await this.prisma.tableSession.findFirst({
-      where: { id: sessionId, branch: { companyId: ctx.companyId }, status: 'OPEN' },
+      where: { id: sessionId, branchId, branch: { companyId: ctx.companyId }, status: 'OPEN' },
       include: { table: true },
     });
     if (!session) throw new NotFoundException('Sessao aberta nao encontrada.');
 
-    const target = await this.prisma.tableRestaurant.findFirst({ where: { id: toTableId, branch: { companyId: ctx.companyId } } });
+    const target = await this.prisma.tableRestaurant.findFirst({ where: { id: toTableId, branchId, branch: { companyId: ctx.companyId } } });
     if (!target) throw new NotFoundException('Mesa destino nao encontrada.');
 
-    const targetOpen = await this.prisma.tableSession.findFirst({ where: { tableId: toTableId, status: 'OPEN' } });
+    const targetOpen = await this.prisma.tableSession.findFirst({ where: { tableId: toTableId, branchId, status: 'OPEN' } });
     if (targetOpen) throw new BadRequestException('Mesa destino ja ocupada.');
 
     return this.prisma.$transaction(async (tx) => {
@@ -157,12 +163,12 @@ export class TablesService {
   }
 
   async listOpenCommands(ctx: RequestContext) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     return this.prisma.command.findMany({
       where: {
         status: 'OPEN',
+        branchId,
         branch: { companyId: ctx.companyId },
-        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
       },
       orderBy: { openedAt: 'asc' },
       include: {
@@ -174,9 +180,9 @@ export class TablesService {
   }
 
   async splitCommand(ctx: RequestContext, commandId: string, splitByGuests: boolean) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     const command = await this.prisma.command.findFirst({
-      where: { id: commandId, branch: { companyId: ctx.companyId }, status: 'OPEN' },
+      where: { id: commandId, branchId, branch: { companyId: ctx.companyId }, status: 'OPEN' },
       select: { id: true, guestCount: true },
     });
     if (!command) throw new NotFoundException('Comanda nao encontrada.');
@@ -190,12 +196,12 @@ export class TablesService {
   }
 
   async mergeCommands(ctx: RequestContext, commandIds: string[]) {
-    assertCompany(ctx);
+    const branchId = assertBranch(ctx);
     const ids = Array.from(new Set(commandIds.filter(Boolean)));
     if (ids.length < 2) throw new BadRequestException('Informe pelo menos duas comandas para juntar.');
 
     const commands = await this.prisma.command.findMany({
-      where: { id: { in: ids }, branch: { companyId: ctx.companyId }, status: 'OPEN' },
+      where: { id: { in: ids }, branchId, branch: { companyId: ctx.companyId }, status: 'OPEN' },
       select: { id: true, code: true },
     });
 
