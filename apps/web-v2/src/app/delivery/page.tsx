@@ -659,6 +659,24 @@ export default function DeliveryPage() {
 
             <Card className={styles.section}>
               <h2 className={styles.sectionTitle}>Endereço e cliente</h2>
+              <div className={styles.fulfillmentCards} aria-label="Tipo de atendimento">
+                <button
+                  type="button"
+                  className={fulfillmentType === 'DELIVERY' ? styles.fulfillmentCardActive : styles.fulfillmentCard}
+                  onClick={() => setFulfillmentType('DELIVERY')}
+                >
+                  <strong>Receber em casa</strong>
+                  <span>Calcule frete e acompanhe o pedido.</span>
+                </button>
+                <button
+                  type="button"
+                  className={fulfillmentType === 'TAKEOUT' ? styles.fulfillmentCardActive : styles.fulfillmentCard}
+                  onClick={() => setFulfillmentType('TAKEOUT')}
+                >
+                  <strong>Retirar no balcão</strong>
+                  <span>Sem frete e com retirada mais rápida.</span>
+                </button>
+              </div>
               <div className={styles.inline}>
                 <div>
                   <label className="ui-label">Tipo de atendimento</label>
@@ -689,6 +707,10 @@ export default function DeliveryPage() {
 
               {fulfillmentType === 'DELIVERY' ? (
                 <>
+                  <div className={styles.addressHint}>
+                    <strong>{hasAddress ? 'CEP e numero informados' : 'Informe CEP e numero para cotar'}</strong>
+                    <span>{quoteLoading ? 'Calculando frete...' : quote ? `Frete ${brl(deliveryFee)}${quote.deliveryQuote.areaName ? ` - ${quote.deliveryQuote.areaName}` : ''}` : 'A cotacao e feita automaticamente.'}</span>
+                  </div>
                   <div className={styles.inline}>
                     <div>
                       <label className="ui-label">CEP</label>
@@ -723,8 +745,17 @@ export default function DeliveryPage() {
                   </div>
                 </>
               ) : (
-                <div className={styles.muted}>Retirada selecionada: não é necessário informar endereço para concluir o pedido.</div>
+                <div className={styles.takeoutBox}>
+                  <strong>Retirada selecionada</strong>
+                  <span>Voce nao precisa informar endereco. Avise seu nome e telefone para identificarmos o pedido no balcao.</span>
+                </div>
               )}
+              {scheduledAt ? (
+                <div className={styles.scheduleBox}>
+                  <strong>Pedido agendado</strong>
+                  <span>{Number.isNaN(new Date(scheduledAt).getTime()) ? 'Data invalida' : new Date(scheduledAt).toLocaleString('pt-BR')}</span>
+                </div>
+              ) : null}
               <div className={styles.checkoutReadiness}>
                 <div>
                   <strong>{checkoutIssues.length === 0 ? 'Tudo pronto para finalizar' : 'Faltam alguns dados'}</strong>

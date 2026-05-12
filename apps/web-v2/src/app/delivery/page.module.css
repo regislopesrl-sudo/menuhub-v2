@@ -477,7 +477,8 @@
   }
 
   .confirmationGrid,
-  .trackingTokenBox {
+  .trackingTokenBox,
+  .fulfillmentCards {
     grid-template-columns: 1fr;
   }
 }
@@ -692,6 +693,76 @@
   background: linear-gradient(135deg, #dcfce7, #dbeafe);
   border-color: rgba(34, 197, 94, 0.42);
   color: #14532d;
+}
+
+.fulfillmentCards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.fulfillmentCard,
+.fulfillmentCardActive {
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  text-align: left;
+}
+
+.fulfillmentCard {
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+}
+
+.fulfillmentCardActive {
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.18), transparent 34%),
+    linear-gradient(135deg, #eff6ff, #f5f3ff);
+  border-color: rgba(37, 99, 235, 0.36);
+  color: #1d4ed8;
+  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.12);
+}
+
+.fulfillmentCard strong,
+.fulfillmentCardActive strong {
+  font-size: 15px;
+}
+
+.fulfillmentCard span,
+.fulfillmentCardActive span,
+.addressHint span,
+.takeoutBox span,
+.scheduleBox span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.addressHint,
+.takeoutBox,
+.scheduleBox {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.addressHint {
+  background: linear-gradient(135deg, #eff6ff, #ecfeff);
+}
+
+.takeoutBox {
+  background: linear-gradient(135deg, #fff7ed, #fefce8);
+}
+
+.scheduleBox {
+  background: linear-gradient(135deg, #f5f3ff, #eff6ff);
 }
 
 .checkoutReadiness,
