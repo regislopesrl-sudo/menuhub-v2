@@ -10,7 +10,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { connectOrdersSocket, type OrdersEventPayload } from '@/features/orders/orders.socket';
 import { getOrderById, type OrdersHeaders } from '@/features/orders/orders.api';
-import { bumpKdsOrder, listKdsOrders, printKdsOrder, readyKdsOrder, startKdsOrder, type KdsOrderCard } from '@/features/kds/kds.api';
+import { bumpKdsOrder, listKdsOrders, listKdsStations, printKdsOrder, readyKdsOrder, startKdsOrder, type KdsOrderCard, type KdsStation } from '@/features/kds/kds.api';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
 
@@ -87,6 +87,7 @@ export default function KdsPage() {
   );
 
   const [orders, setOrders] = useState<KdsOrderCard[]>([]);
+  const [stations, setStations] = useState<KdsStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
@@ -115,6 +116,14 @@ export default function KdsPage() {
       setLoading(false);
     }
   }, [headers, stationFilter, channelFilter]);
+
+  const loadStations = useCallback(async () => {
+    try {
+      setStations(await listKdsStations(headers));
+    } catch {
+      setStations([]);
+    }
+  }, [headers]);
 
   const upsertOrder = useCallback((order: KdsOrderCard) => {
     setOrders((prev) => {
@@ -166,6 +175,10 @@ export default function KdsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadStations();
+  }, [loadStations]);
 
   useEffect(() => {
     const socket = connectOrdersSocket({
@@ -247,6 +260,27 @@ export default function KdsPage() {
     };
   }, [orders, tick]);
 
+  const stationLabels = useMemo(() => {
+    const fallback = new Map<string, string>([
+      ['hot_kitchen', 'Cozinha quente'],
+      ['cold_kitchen', 'Cozinha fria'],
+      ['assembly', 'Montagem'],
+      ['expedition', 'Expedicao'],
+    ]);
+    for (const station of stations) fallback.set(station.key, station.label);
+    return fallback;
+  }, [stations]);
+
+  const boardSummary = useMemo(() => {
+    const allOrders = [...board.new, ...board.preparing, ...board.ready];
+    const urgent = allOrders.filter((order) => order.priorityLevel === 'urgent').length;
+    const late = allOrders.filter((order) => order.lateMinutes > 0).length;
+    const avgElapsed = allOrders.length
+      ? Math.round(allOrders.reduce((sum, order) => sum + order.elapsedMinutes, 0) / allOrders.length)
+      : 0;
+    return { total: allOrders.length, urgent, late, avgElapsed };
+  }, [board]);
+
   if (access.loading) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
   }
@@ -272,10 +306,14 @@ export default function KdsPage() {
           <Button onClick={() => void load()}>Atualizar</Button>
           <select value={stationFilter} onChange={(e) => setStationFilter(e.target.value as any)} className={styles.filterSelect}>
             <option value="all">Todas estacoes</option>
-            <option value="hot_kitchen">Cozinha quente</option>
-            <option value="cold_kitchen">Cozinha fria</option>
-            <option value="assembly">Montagem</option>
-            <option value="expedition">Expedicao</option>
+            {(stations.length > 0 ? stations : [
+              { key: 'hot_kitchen', label: 'Cozinha quente', prepTargetMinutes: 20 },
+              { key: 'cold_kitchen', label: 'Cozinha fria', prepTargetMinutes: 12 },
+              { key: 'assembly', label: 'Montagem', prepTargetMinutes: 10 },
+              { key: 'expedition', label: 'Expedicao', prepTargetMinutes: 8 },
+            ]).map((station) => (
+              <option key={station.key} value={station.key}>{station.label}</option>
+            ))}
           </select>
           <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value as any)} className={styles.filterSelect}>
             <option value="all">Todos canais</option>
@@ -307,6 +345,31 @@ export default function KdsPage() {
       ) : null}
 
       {!loading && !error ? (
+        <section className={styles.summaryGrid} aria-label="Resumo operacional da cozinha">
+          <Card className={styles.summaryCard}>
+            <small>Fila total</small>
+            <strong>{boardSummary.total}</strong>
+            <span>Pedidos ativos no KDS</span>
+          </Card>
+          <Card className={styles.summaryCard}>
+            <small>Urgentes</small>
+            <strong>{boardSummary.urgent}</strong>
+            <span>Acima do limite critico</span>
+          </Card>
+          <Card className={styles.summaryCard}>
+            <small>Atrasados</small>
+            <strong>{boardSummary.late}</strong>
+            <span>Passaram do SLA da estacao</span>
+          </Card>
+          <Card className={styles.summaryCard}>
+            <small>Tempo medio</small>
+            <strong>{boardSummary.avgElapsed} min</strong>
+            <span>Desde a criacao do pedido</span>
+          </Card>
+        </section>
+      ) : null}
+
+      {!loading && !error ? (
         <section className={styles.board}>
           <Card className={styles.column}>
             <header className={styles.columnHeader}>
@@ -321,6 +384,7 @@ export default function KdsPage() {
                   order={order}
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
+                  stationLabel={stationLabels.get(order.station) ?? order.station}
                   onActionLabel={actionLoading === `start-${order.id}` ? 'Iniciando...' : 'Iniciar preparo'}
                   onAction={() => void withAction(`start-${order.id}`, () => startKdsOrder(order.id, headers))}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
@@ -346,6 +410,7 @@ export default function KdsPage() {
                   order={order}
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
+                  stationLabel={stationLabels.get(order.station) ?? order.station}
                   onActionLabel={actionLoading === `ready-${order.id}` ? 'Atualizando...' : 'Marcar pronto'}
                   onAction={() => void withAction(`ready-${order.id}`, () => readyKdsOrder(order.id, headers))}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
@@ -371,6 +436,7 @@ export default function KdsPage() {
                   order={order}
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
+                  stationLabel={stationLabels.get(order.station) ?? order.station}
                   onActionLabel={actionLoading === `bump-${order.id}` ? 'Finalizando...' : 'Finalizar'}
                   onAction={() => void withAction(`bump-${order.id}`, () => bumpKdsOrder(order.id, headers))}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
@@ -392,6 +458,7 @@ function OrderCard({
   order,
   urgency,
   urgencyLabel,
+  stationLabel,
   onActionLabel,
   onAction,
   onPrintLabel,
@@ -403,6 +470,7 @@ function OrderCard({
   order: KdsOrderCard;
   urgency: 'normal' | 'attention' | 'urgent';
   urgencyLabel: string;
+  stationLabel: string;
   onActionLabel: string;
   onAction: () => void;
   onPrintLabel: string;
@@ -413,6 +481,7 @@ function OrderCard({
 }) {
   const totalMinutes = elapsedMinutes(order.createdAt);
   const prepMinutes = order.preparationStartedAt ? elapsedMinutes(order.preparationStartedAt) : null;
+  const slaPercent = Math.min(100, Math.round((totalMinutes / Math.max(1, order.prepTargetMinutes)) * 100));
 
   return (
     <Card
@@ -429,8 +498,11 @@ function OrderCard({
         <strong className={styles.timeBadge}>{totalMinutes} min</strong>
       </div>
       <div className={styles.row}>
-        <small className={styles.meta}>Estacao: {order.station}</small>
+        <small className={styles.meta}>Estacao: {stationLabel}</small>
         <small className={styles.meta}>SLA: {order.prepTargetMinutes} min</small>
+      </div>
+      <div className={styles.slaTrack} aria-label={`SLA ${slaPercent}%`}>
+        <span className={urgency === 'urgent' ? styles.slaUrgent : urgency === 'attention' ? styles.slaAttention : styles.slaNormal} style={{ width: `${slaPercent}%` }} />
       </div>
       {order.lateMinutes > 0 ? <small className={styles.meta}>Atraso: {order.lateMinutes} min</small> : null}
       {prepMinutes !== null ? <small className={styles.meta}>Tempo em preparo: {prepMinutes} min</small> : null}
