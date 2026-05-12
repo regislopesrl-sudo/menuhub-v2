@@ -10,7 +10,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { connectOrdersSocket, type OrdersEventPayload } from '@/features/orders/orders.socket';
 import { getOrderById, type OrdersHeaders } from '@/features/orders/orders.api';
-import { bumpKdsOrder, listKdsOrders, listKdsStations, printKdsOrder, readyKdsOrder, startKdsOrder, type KdsOrderCard, type KdsStation } from '@/features/kds/kds.api';
+import { bumpKdsOrder, listKdsOrders, listKdsStations, printKdsOrder, readyKdsOrder, startKdsOrder, type KdsOrderCard, type KdsPrintTicket, type KdsStation } from '@/features/kds/kds.api';
 import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
 
@@ -88,6 +88,8 @@ export default function KdsPage() {
 
   const [orders, setOrders] = useState<KdsOrderCard[]>([]);
   const [stations, setStations] = useState<KdsStation[]>([]);
+  const [printPreview, setPrintPreview] = useState<KdsPrintTicket | null>(null);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
@@ -219,9 +221,13 @@ export default function KdsPage() {
   const printTicket = async (orderId: string) => {
     setActionLoading(`print-${orderId}`);
     setPrintFeedback(null);
+    setPrintPreview(null);
     try {
       const ticket = await printKdsOrder(orderId, headers);
-      setPrintFeedback(`Comanda ${ticket.orderNumber} preparada para impressao (${ticket.station}).`);
+      const stationLabel = stationLabels.get(ticket.station) ?? ticket.station;
+      setPrintFeedback(`Comanda ${ticket.orderNumber} preparada para impressao (${stationLabel}).`);
+      setPrintPreview(ticket);
+      setShowPrintPreview(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao gerar comanda.');
     } finally {
@@ -340,7 +346,30 @@ export default function KdsPage() {
       {printFeedback ? (
         <div className={styles.successBox}>
           <span>{printFeedback}</span>
-          <Button onClick={() => setPrintFeedback(null)}>Fechar</Button>
+          <div className={styles.actions}>
+            {printPreview ? <Button onClick={() => setShowPrintPreview(true)}>Ver comanda</Button> : null}
+            <Button onClick={() => setPrintFeedback(null)}>Fechar</Button>
+          </div>
+        </div>
+      ) : null}
+
+      {printPreview && showPrintPreview ? (
+        <div className={styles.ticketBackdrop} onClick={() => setShowPrintPreview(false)}>
+          <Card className={styles.ticketModal} onClick={(event) => event.stopPropagation()}>
+            <header className={styles.ticketHeader}>
+              <div>
+                <small>Previa de comanda</small>
+                <h2>{printPreview.orderNumber}</h2>
+                <span>{stationLabels.get(printPreview.station) ?? printPreview.station} | {new Date(printPreview.printedAt).toLocaleString('pt-BR')}</span>
+              </div>
+              <Button onClick={() => setShowPrintPreview(false)}>Fechar</Button>
+            </header>
+            <pre className={styles.ticketPaper}>{printPreview.content}</pre>
+            <div className={styles.ticketActions}>
+              <Button variant="primary" onClick={() => window.print()}>Imprimir pelo navegador</Button>
+              <Button onClick={() => void navigator?.clipboard?.writeText(printPreview.content)}>Copiar conteudo</Button>
+            </div>
+          </Card>
         </div>
       ) : null}
 
@@ -539,4 +568,3 @@ function OrderCard({
     </Card>
   );
 }
-
