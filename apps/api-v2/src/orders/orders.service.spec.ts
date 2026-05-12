@@ -258,6 +258,95 @@ describe('OrdersService', () => {
     });
   });
 
+  it('tracking por token publico retorna payload sanitizado', async () => {
+    const repoMock = {
+      findByPublicTrackingToken: jest.fn().mockResolvedValue({
+        id: 'order_public',
+        orderNumber: 'V2-PUBLIC',
+        status: 'OUT_FOR_DELIVERY',
+        paymentStatus: 'PAID',
+        subtotal: 40,
+        discountAmount: 0,
+        deliveryFee: 8,
+        totalAmount: 48,
+        paidAmount: 48,
+        refundedAmount: 0,
+        deliveryDistanceMeters: 2400,
+        deliveryDurationSec: 900,
+        internalNotes: JSON.stringify({
+          checkoutSnapshot: {
+            customer: { name: 'Maria', phone: '11999990000' },
+            deliveryAddress: { street: 'Rua A', number: '10', neighborhood: 'Centro' },
+          },
+        }),
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        timelineEvents: [
+          {
+            eventType: 'order.status.updated',
+            newStatus: 'OUT_FOR_DELIVERY',
+            reasonText: null,
+            createdAt: new Date('2026-05-01T10:20:00.000Z'),
+          },
+        ],
+        items: [],
+      }),
+    } as any;
+    const service = createService(repoMock);
+
+    const result = await service.getPublicTrackingByToken('trk_public');
+
+    expect(repoMock.findByPublicTrackingToken).toHaveBeenCalledWith('trk_public');
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'order_public',
+        orderNumber: 'V2-PUBLIC',
+        status: 'OUT_FOR_DELIVERY',
+        paymentStatus: 'PAID',
+        trackingSecurity: 'public_token',
+        estimatedMinutes: 15,
+        deliveryDistanceMeters: 2400,
+        deliveryFee: 8,
+        total: 48,
+      }),
+    );
+    expect(result).not.toHaveProperty('customer');
+    expect(result).not.toHaveProperty('deliveryAddress');
+    expect(JSON.stringify(result)).not.toContain('11999990000');
+  });
+
+  it('tracking publico bloqueia token vazio ou inexistente', async () => {
+    const service = createService({ findByPublicTrackingToken: jest.fn().mockResolvedValue(null) } as any);
+
+    await expect(service.getPublicTrackingByToken('')).rejects.toThrow('trackingToken obrigatorio.');
+    await expect(service.getPublicTrackingByToken('trk_missing')).rejects.toThrow(
+      'Pedido nao encontrado para o token informado.',
+    );
+  });
+
+  it('tracking tenant respeita company/branch via repository', async () => {
+    const repoMock = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'order_1',
+        orderNumber: 'V2-1',
+        status: 'CONFIRMED',
+        paymentStatus: 'UNPAID',
+        deliveryFee: 0,
+        totalAmount: 50,
+        deliveryDistanceMeters: 0,
+        deliveryDurationSec: 0,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+        items: [],
+      }),
+      listTimeline: jest.fn().mockResolvedValue([]),
+    } as any;
+    const service = createService(repoMock);
+
+    const result = await service.getTrackingById('order_1', ctxBase);
+
+    expect(repoMock.findById).toHaveBeenCalledWith('order_1', ctxBase);
+    expect(result.trackingSecurity).toBe('tenant_header');
+  });
+
   it('cancela pedido com motivo', async () => {
     const repoMock = {
       cancelOrder: jest.fn().mockResolvedValue({

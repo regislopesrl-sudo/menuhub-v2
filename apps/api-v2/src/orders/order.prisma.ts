@@ -58,6 +58,7 @@ export class OrderPrismaRepository {
             branchId,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
+            publicTrackingToken: this.buildPublicTrackingToken(),
             orderType: this.mapOrderType(result.order.channel, options?.pdvOrderType, options?.orderTypeOverride),
             channel: this.mapChannel(result.order.channel),
             status: this.mapOrderStatus(result.order.status),
@@ -141,6 +142,21 @@ export class OrderPrismaRepository {
           include: {
             addons: true,
           },
+        },
+      },
+    });
+  }
+
+  async findByPublicTrackingToken(token: string) {
+    return this.prisma.order.findFirst({
+      where: {
+        publicTrackingToken: token,
+        deletedAt: null,
+      },
+      include: {
+        timelineEvents: {
+          orderBy: { createdAt: 'asc' },
+          take: 50,
         },
       },
     });
@@ -715,6 +731,12 @@ export class OrderPrismaRepository {
     const d = String(now.getUTCDate()).padStart(2, '0');
     const shortId = Math.random().toString(36).slice(2, 8).toUpperCase();
     return `V2-${y}${m}${d}-${shortId}`;
+  }
+
+  private buildPublicTrackingToken(): string {
+    const randomPart = Math.random().toString(36).slice(2, 14);
+    const timePart = Date.now().toString(36);
+    return `trk_${timePart}_${randomPart}`;
   }
 
   private async resolveBranchId(ctx: RequestContext): Promise<string> {

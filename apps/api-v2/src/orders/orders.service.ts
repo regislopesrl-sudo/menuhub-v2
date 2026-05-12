@@ -96,6 +96,23 @@ export interface OrderListResponseDto {
   };
 }
 
+export interface OrderTrackingDto {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  timeline: Array<{
+    status: string;
+    message: string;
+    createdAt: string;
+  }>;
+  estimatedMinutes?: number;
+  deliveryDistanceMeters: number;
+  deliveryFee: number;
+  total: number;
+  trackingSecurity: 'tenant_header' | 'public_token';
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -171,6 +188,27 @@ export class OrdersService {
 
   async getTimeline(id: string, ctx: RequestContext) {
     return this.orderRepository.listTimeline(id, ctx);
+  }
+
+  async getTrackingById(id: string, ctx: RequestContext): Promise<OrderTrackingDto> {
+    const order = await this.orderRepository.findById(id, ctx);
+    if (!order) {
+      throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+    }
+    const timeline = await this.orderRepository.listTimeline(id, ctx);
+    return this.toOrderTrackingDto(order, Array.isArray(timeline) ? timeline : undefined, 'tenant_header');
+  }
+
+  async getPublicTrackingByToken(token: string): Promise<OrderTrackingDto> {
+    const normalized = String(token ?? '').trim();
+    if (!normalized) {
+      throw new BadRequestException('trackingToken obrigatorio.');
+    }
+    const order = await this.orderRepository.findByPublicTrackingToken(normalized);
+    if (!order) {
+      throw new NotFoundException('Pedido nao encontrado para o token informado.');
+    }
+    return this.toOrderTrackingDto(order, (order as any).timelineEvents, 'public_token');
   }
 
   async cancelOrder(
@@ -301,6 +339,47 @@ export class OrdersService {
       timeline,
       timelineSource: timelineRows?.length ? 'events' : 'fallback',
     };
+  }
+
+  private toOrderTrackingDto(
+    order: any,
+    timelineRows: any[] | undefined,
+    trackingSecurity: OrderTrackingDto['trackingSecurity'],
+  ): OrderTrackingDto {
+    const timeline = (timelineRows?.length ? timelineRows : this.buildFallbackTimeline(order)).map((event: any) => ({
+      status: String(event.newStatus ?? event.status ?? event.eventType ?? 'UNKNOWN'),
+      message: String(event.reasonText ?? event.message ?? this.timelineLabel(String(event.eventType ?? event.status ?? 'UNKNOWN'))),
+      createdAt: this.toIsoString(event.createdAt ?? event.at ?? order.createdAt),
+    }));
+
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      timeline,
+      estimatedMinutes: this.resolveEstimatedMinutes(order),
+      deliveryDistanceMeters: Number(order.deliveryDistanceMeters ?? 0),
+      deliveryFee: Number(order.deliveryFee ?? 0),
+      total: Number(order.totalAmount ?? 0),
+      trackingSecurity,
+    };
+  }
+
+  private resolveEstimatedMinutes(order: any): number | undefined {
+    const duration = Number(order.deliveryDurationSec ?? 0);
+    if (Number.isFinite(duration) && duration > 0) {
+      return Math.ceil(duration / 60);
+    }
+    return undefined;
+  }
+
+  private toIsoString(value: unknown): string {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    const parsed = new Date(String(value ?? Date.now()));
+    return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
   }
 
   private readCheckoutSnapshot(internalNotes: unknown):

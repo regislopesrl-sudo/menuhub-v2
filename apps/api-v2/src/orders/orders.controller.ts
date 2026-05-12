@@ -4,6 +4,7 @@ import type { RequestContext } from '../common/request-context';
 import { RequirePermissions } from '../common/permissions.decorator';
 import { TENANT_PERMISSIONS } from '../common/rbac';
 import { OrdersService } from './orders.service';
+import { Public } from '../common/public.decorator';
 
 @Controller('v2/orders')
 export class OrdersController {
@@ -51,6 +52,18 @@ export class OrdersController {
     @Query('channel') channel?: string,
   ) {
     return this.ordersService.summary(ctx, { dateFrom, dateTo, channel });
+  }
+
+  @Get('tracking/:token')
+  @Public()
+  async getPublicTracking(@Param('token') token: string) {
+    return this.ordersService.getPublicTrackingByToken(token);
+  }
+
+  @Get(':id/tracking')
+  @RequirePermissions(TENANT_PERMISSIONS.ORDERS_READ, TENANT_PERMISSIONS.ORDERS_MANAGE)
+  async getTrackingById(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.ordersService.getTrackingById(id, ctx);
   }
 
   @Get(':id')
