@@ -111,6 +111,39 @@ describe('OrderPrismaRepository', () => {
     expect(internalNotes.checkoutSnapshot.deliveryAddress.neighborhood).toBe('Centro');
   });
 
+
+  it('snapshota estacao de cozinha do produto no item do pedido', async () => {
+    const prismaMock = {
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_a' }),
+      },
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'p1', kitchenStation: 'FRYER' },
+          { id: 'p2', kitchenStation: 'DRINKS' },
+        ]),
+      },
+      order: {
+        create: jest.fn().mockResolvedValue({ id: 'order_db_1', items: [] }),
+      },
+    } as any;
+
+    const repo = new OrderPrismaRepository(prismaMock);
+    await repo.createOrder(checkoutResult, ctxBase);
+
+    expect(prismaMock.product.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company_a',
+        id: { in: ['p1', 'p2'] },
+        deletedAt: null,
+      },
+      select: { id: true, kitchenStation: true },
+    });
+    const createData = prismaMock.order.create.mock.calls[0][0].data;
+    expect(createData.items.create[0].station).toBe('FRYER');
+    expect(createData.items.create[1].station).toBe('DRINKS');
+  });
+
   it('bloqueia branch de outra empresa', async () => {
     const prismaMock = {
       branch: {

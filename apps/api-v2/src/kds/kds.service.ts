@@ -2,16 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type { RequestContext } from '../common/request-context';
 import { OrdersEventsService } from '../orders/orders-events.service';
 import { OrdersService } from '../orders/orders.service';
+import { KDS_STATIONS, resolveKdsPrepTargetMinutes, resolveKdsStation, type KdsStationKey } from './kds-routing';
 
 const KDS_STATUSES = ['CONFIRMED', 'IN_PREPARATION', 'READY'] as const;
-const KDS_STATIONS = [
-  { key: 'hot_kitchen', label: 'Cozinha quente', prepTargetMinutes: 20 },
-  { key: 'cold_kitchen', label: 'Cozinha fria', prepTargetMinutes: 12 },
-  { key: 'assembly', label: 'Montagem', prepTargetMinutes: 10 },
-  { key: 'expedition', label: 'Expedicao', prepTargetMinutes: 8 },
-] as const;
-
-type KdsStationKey = (typeof KDS_STATIONS)[number]['key'];
 
 export interface KdsOrderCardDto {
   id: string;
@@ -26,6 +19,10 @@ export interface KdsOrderCardDto {
   lateMinutes: number;
   priorityLevel: 'normal' | 'attention' | 'urgent';
   station: KdsStationKey;
+  routing: {
+    source: 'product' | 'channel';
+    itemStations: Array<{ station: KdsStationKey; label: string; count: number }>;
+  };
   totals: {
     subtotal: number;
     discount: number;
@@ -67,6 +64,8 @@ export interface KdsStationDto {
   key: KdsStationKey;
   label: string;
   prepTargetMinutes: number;
+  productStationKeys: readonly string[];
+  routingDescription: string;
 }
 
 @Injectable()
@@ -107,9 +106,10 @@ export class KdsService {
 
     const data = details
       .map<KdsOrderCardDto>((detail) => {
-        const station = this.resolveStation(detail.channel ?? 'unknown');
+        const routing = this.resolveRouting(detail);
+        const station = routing.station;
         const elapsed = this.calcElapsedMinutes(detail.createdAt);
-        const prepTargetMinutes = this.resolvePrepTargetMinutes(station);
+        const prepTargetMinutes = resolveKdsPrepTargetMinutes(station);
         return {
           id: detail.id,
           orderNumber: detail.orderNumber,
@@ -123,6 +123,7 @@ export class KdsService {
           lateMinutes: Math.max(0, elapsed - prepTargetMinutes),
           priorityLevel: this.resolvePriority(elapsed, prepTargetMinutes),
           station,
+          routing: { source: routing.source, itemStations: routing.itemStations },
           totals: detail.totals,
           customer: this.sanitizeCustomer(detail.customer),
           deliveryAddress: detail.deliveryAddress,
@@ -168,12 +169,13 @@ export class KdsService {
 
   async printKitchenTicket(id: string, ctx: RequestContext): Promise<KdsPrintTicketDto> {
     const detail = await this.ordersService.getById(id, ctx);
-    const station = this.resolveStation(detail.channel ?? 'unknown');
+    const routing = this.resolveRouting(detail);
+    const station = routing.station;
     const lines = [
       `COMANDA COZINHA - ${detail.orderNumber}`,
       `Canal: ${detail.channel ?? 'unknown'}`,
       `Status: ${detail.status}`,
-      `Estacao: ${station}`,
+      `Estacao: ${this.stationLabel(station)}`,
       '--- Itens ---',
       ...detail.items.map((item) => {
         const opts = item.selectedOptions?.length
@@ -212,6 +214,10 @@ export class KdsService {
       // non-blocking by design
     }
 
+    const routing = this.resolveRouting(updated);
+    const elapsed = this.calcElapsedMinutes(updated.createdAt);
+    const prepTargetMinutes = resolveKdsPrepTargetMinutes(routing.station);
+
     return {
       id: updated.id,
       orderNumber: updated.orderNumber,
@@ -220,18 +226,12 @@ export class KdsService {
       createdAt: updated.createdAt,
       preparationStartedAt: updated.preparationStartedAt,
       readyAt: updated.readyAt,
-      elapsedMinutes: this.calcElapsedMinutes(updated.createdAt),
-      prepTargetMinutes: this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
-      lateMinutes: Math.max(
-        0,
-        this.calcElapsedMinutes(updated.createdAt) -
-          this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
-      ),
-      priorityLevel: this.resolvePriority(
-        this.calcElapsedMinutes(updated.createdAt),
-        this.resolvePrepTargetMinutes(this.resolveStation(updated.channel ?? 'unknown')),
-      ),
-      station: this.resolveStation(updated.channel ?? 'unknown'),
+      elapsedMinutes: elapsed,
+      prepTargetMinutes,
+      lateMinutes: Math.max(0, elapsed - prepTargetMinutes),
+      priorityLevel: this.resolvePriority(elapsed, prepTargetMinutes),
+      station: routing.station,
+      routing: { source: routing.source, itemStations: routing.itemStations },
       totals: updated.totals,
       customer: this.sanitizeCustomer(updated.customer),
       deliveryAddress: updated.deliveryAddress,
@@ -249,15 +249,30 @@ export class KdsService {
     return Math.max(0, Math.floor(diffMs / 60000));
   }
 
-  private resolveStation(channel: string): KdsStationKey {
-    const normalized = String(channel).toUpperCase();
-    if (normalized === 'PDV' || normalized === 'KIOSK' || normalized === 'WAITER_APP') return 'hot_kitchen';
-    if (normalized === 'WEB' || normalized === 'WHATSAPP') return 'assembly';
-    return 'expedition';
+  private resolveRouting(detail: { channel?: string | null; items?: Array<{ station?: string | null }> }) {
+    const station = resolveKdsStation({
+      channel: detail.channel,
+      itemStations: (detail.items ?? []).map((item) => item.station),
+    });
+    return {
+      station,
+      source: (detail.items ?? []).some((item) => item.station) ? 'product' as const : 'channel' as const,
+      itemStations: this.countItemStations(detail.items ?? []),
+    };
   }
 
-  private resolvePrepTargetMinutes(station: KdsStationKey): number {
-    return KDS_STATIONS.find((item) => item.key === station)?.prepTargetMinutes ?? 8;
+  private countItemStations(items: Array<{ station?: string | null }>): Array<{ station: KdsStationKey; label: string; count: number }> {
+    const counts = new Map<KdsStationKey, number>();
+    for (const item of items) {
+      if (!item.station) continue;
+      const station = resolveKdsStation({ itemStations: [item.station] });
+      counts.set(station, (counts.get(station) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([station, count]) => ({ station, label: this.stationLabel(station), count }));
+  }
+
+  private stationLabel(station: KdsStationKey): string {
+    return KDS_STATIONS.find((item) => item.key === station)?.label ?? station;
   }
 
   private sanitizeCustomer(customer?: { name?: string | null } | null): { name: string } | undefined {

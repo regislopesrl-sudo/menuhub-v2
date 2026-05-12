@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PRODUCT_KITCHEN_STATIONS } from './dto/admin-menu.dto';
 import type { RequestContext } from '../common/request-context';
 import { PrismaService } from '../database/prisma.service';
 import type {
@@ -568,6 +569,7 @@ export class AdminMenuService {
     const categoryId = await this.resolveCategoryId(ctx, input.categoryId, input.categoryName);
     const sortOrder = this.parseProductSortOrder(input.sortOrder);
     const prepTimeMinutes = this.parsePrepTimeMinutes(input.prepTimeMinutes);
+    const kitchenStation = this.normalizeKitchenStation((input as any).kitchenStation);
     const data = {
       ...(creating ? { companyId: ctx.companyId } : {}),
       ...(name ? { name } : {}),
@@ -585,11 +587,23 @@ export class AdminMenuService {
       ...this.mapChannelData(input.channels),
       ...(sortOrder !== undefined ? { sortOrder } : {}),
       ...(prepTimeMinutes !== undefined ? { prepTimeMinutes } : {}),
+      ...((input as any).kitchenStation !== undefined ? { kitchenStation } : {}),
     };
     if (!creating && Object.keys(data).length === 0) {
       throw new BadRequestException('Informe pelo menos um campo do produto para atualizar.');
     }
     return data;
+  }
+
+  private normalizeKitchenStation(value: unknown): string | null | undefined {
+    if (value === null) return null;
+    if (value === undefined) return undefined;
+    const normalized = String(value).trim().toUpperCase();
+    if (!normalized) return null;
+    if (!(PRODUCT_KITCHEN_STATIONS as readonly string[]).includes(normalized)) {
+      throw new BadRequestException('Estacao de cozinha invalida para o produto.');
+    }
+    return normalized;
   }
 
   private async resolveCategoryId(
@@ -825,6 +839,7 @@ export class AdminMenuService {
       deliveryPrice: resolvedDeliveryPrice,
       promotionalPrice,
       prepTimeMinutes: Number(product.prepTimeMinutes ?? 0),
+      kitchenStation: product.kitchenStation ?? undefined,
       categoryId: product.categoryId ?? undefined,
       categoryName: product.category?.name ?? undefined,
       available: Boolean(product.isActive && !product.deletedAt),

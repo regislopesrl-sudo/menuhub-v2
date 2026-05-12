@@ -75,6 +75,7 @@ export function ProductModal({
   const [deliveryPrice, setDeliveryPrice] = useState(String(product?.deliveryPrice ?? product?.price ?? ''));
   const [promotionalPrice, setPromotionalPrice] = useState(String(product?.promotionalPrice ?? ''));
   const [prepTimeMinutes, setPrepTimeMinutes] = useState(String(product?.prepTimeMinutes ?? ''));
+  const [kitchenStation, setKitchenStation] = useState(product?.kitchenStation ?? '');
   const [sortOrder, setSortOrder] = useState(String(product?.sortOrder ?? product?.featuredSortOrder ?? '0'));
   const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? '');
   const [available, setAvailable] = useState(product?.available !== false);
@@ -112,6 +113,7 @@ export function ProductModal({
       deliveryPrice: deliveryPrice.trim() ? Number(deliveryPrice) : undefined,
       promotionalPrice: promotionalPrice.trim() ? Number(promotionalPrice) : null,
       prepTimeMinutes: prepTimeMinutes.trim() ? Number(prepTimeMinutes) : undefined,
+      kitchenStation: kitchenStation ? (kitchenStation as AdminMenuProductPayload['kitchenStation']) : null,
       sortOrder: sortOrder.trim() ? Number(sortOrder) : 0,
       imageUrl: imageUrl.trim() || undefined,
       available,
@@ -178,6 +180,7 @@ export function ProductModal({
             deliveryPrice={deliveryPrice}
             promotionalPrice={promotionalPrice}
             prepTimeMinutes={prepTimeMinutes}
+            kitchenStation={kitchenStation}
             sortOrder={sortOrder}
             imageUrl={imageUrl}
             available={available}
@@ -193,6 +196,7 @@ export function ProductModal({
             onDeliveryPriceChange={setDeliveryPrice}
             onPromotionalPriceChange={setPromotionalPrice}
             onPrepTimeMinutesChange={setPrepTimeMinutes}
+            onKitchenStationChange={setKitchenStation}
             onSortOrderChange={setSortOrder}
             onImageUrlChange={setImageUrl}
             onAvailableChange={setAvailable}
@@ -264,6 +268,7 @@ function ProductForm({
   deliveryPrice,
   promotionalPrice,
   prepTimeMinutes,
+  kitchenStation,
   sortOrder,
   imageUrl,
   available,
@@ -279,6 +284,7 @@ function ProductForm({
   onDeliveryPriceChange,
   onPromotionalPriceChange,
   onPrepTimeMinutesChange,
+  onKitchenStationChange,
   onSortOrderChange,
   onImageUrlChange,
   onAvailableChange,
@@ -295,6 +301,7 @@ function ProductForm({
   deliveryPrice: string;
   promotionalPrice: string;
   prepTimeMinutes: string;
+  kitchenStation: string;
   sortOrder: string;
   imageUrl: string;
   available: boolean;
@@ -310,6 +317,7 @@ function ProductForm({
   onDeliveryPriceChange: (value: string) => void;
   onPromotionalPriceChange: (value: string) => void;
   onPrepTimeMinutesChange: (value: string) => void;
+  onKitchenStationChange: (value: string) => void;
   onSortOrderChange: (value: string) => void;
   onImageUrlChange: (value: string) => void;
   onAvailableChange: (value: boolean) => void;
@@ -389,6 +397,16 @@ function ProductForm({
       <label>
         Tempo preparo (min)
         <Input value={prepTimeMinutes} onChange={(event) => onPrepTimeMinutesChange(event.target.value)} placeholder="Ex: 15" inputMode="numeric" />
+      </label>
+      <label>
+        Estacao KDS
+        <Select value={kitchenStation} onChange={(event) => onKitchenStationChange(event.target.value)}>
+          <option value="">Automatica por canal</option>
+          <option value="FRYER">Cozinha quente</option>
+          <option value="DRINKS">Bebidas / fria</option>
+          <option value="DESSERTS">Sobremesas / fria</option>
+          <option value="EXPEDITION">Expedicao</option>
+        </Select>
       </label>
       <label>
         Ordem no catalogo

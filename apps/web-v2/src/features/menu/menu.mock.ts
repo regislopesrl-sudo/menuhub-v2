@@ -14,6 +14,7 @@ export interface MenuProduct {
   deliveryPrice?: number;
   promotionalPrice?: number;
   prepTimeMinutes?: number;
+  kitchenStation?: 'FRYER' | 'DRINKS' | 'DESSERTS' | 'EXPEDITION';
   categoryId?: string;
   featured?: boolean;
   sortOrder?: number;

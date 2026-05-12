@@ -528,6 +528,12 @@ function OrderCard({
       </div>
       <div className={styles.row}>
         <small className={styles.meta}>Estacao: {stationLabel}</small>
+        {order.routing ? (
+          <small className={styles.routingMeta}>
+            {order.routing.source === 'product' ? 'Roteado pelo produto' : 'Roteado pelo canal'}
+            {order.routing.itemStations.length > 0 ? ` - ${order.routing.itemStations.map((item) => `${item.label} (${item.count})`).join(', ')}` : ''}
+          </small>
+        ) : null}
         <small className={styles.meta}>SLA: {order.prepTargetMinutes} min</small>
       </div>
       <div className={styles.slaTrack} aria-label={`SLA ${slaPercent}%`}>

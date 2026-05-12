@@ -34,6 +34,7 @@ export interface OrderReadDto {
   items: Array<{
     id: string;
     productId?: string | null;
+    station?: string | null;
     name: string;
     quantity: number;
     unitPrice: number;
@@ -312,6 +313,7 @@ export class OrdersService {
       items: order.items.map((item: any) => ({
         id: item.id,
         productId: item.productId,
+        station: item.station ?? undefined,
         name: item.productNameSnapshot,
         quantity: Number(item.quantity),
         unitPrice: Number(item.unitPrice),

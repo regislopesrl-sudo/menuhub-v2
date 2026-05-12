@@ -11,6 +11,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export const PRODUCT_KITCHEN_STATIONS = ['FRYER', 'DRINKS', 'DESSERTS', 'EXPEDITION'] as const;
+export type ProductKitchenStationDto = (typeof PRODUCT_KITCHEN_STATIONS)[number];
+
 export class ProductChannelsDto {
   @IsOptional()
   @IsBoolean()
@@ -106,6 +109,10 @@ export class CreateProductDto {
   @IsInt()
   @Min(0)
   prepTimeMinutes?: number;
+
+  @IsOptional()
+  @IsIn(PRODUCT_KITCHEN_STATIONS)
+  kitchenStation?: ProductKitchenStationDto | null;
 }
 
 export class UpdateProductDto extends CreateProductDto {}
