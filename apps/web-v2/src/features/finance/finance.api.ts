@@ -84,6 +84,41 @@ export type FinanceReconciliation = {
   }>;
 };
 
+export type FinanceBreakdownItem = {
+  key: string;
+  label: string;
+  revenue: number;
+  expense: number;
+  pendingReceivable: number;
+  pendingPayable: number;
+};
+
+export type FinanceReport = {
+  generatedAt: string;
+  period: FinancePeriod;
+  branchId: string | null;
+  overview: FinanceOverview;
+  cashFlow: CashFlow;
+  dre: Dre;
+  reconciliation: FinanceReconciliation;
+  ledger: FinanceLedgerEntry[];
+  payables: FinanceAccount[];
+  receivables: FinanceAccount[];
+  categories: FinanceOption[];
+  costCenters: FinanceOption[];
+  breakdowns: {
+    categories: FinanceBreakdownItem[];
+    costCenters: FinanceBreakdownItem[];
+  };
+  totals: {
+    ledgerEntries: number;
+    payables: number;
+    receivables: number;
+    openPayables: number;
+    openReceivables: number;
+  };
+};
+
 function query(params?: { from?: string; to?: string; branchId?: string }) {
   const search = new URLSearchParams();
   if (params?.from) search.set('from', params.from);
@@ -93,6 +128,9 @@ function query(params?: { from?: string; to?: string; branchId?: string }) {
   return value ? `?${value}` : '';
 }
 
+export function getFinanceReport(params?: { from?: string; to?: string; branchId?: string }) {
+  return apiFetch<FinanceReport>(`/v2/admin/finance/report${query(params)}`, { method: 'GET' });
+}
 export function getFinanceOverview(params?: { from?: string; to?: string; branchId?: string }) {
   return apiFetch<FinanceOverview>(`/v2/admin/finance/overview${query(params)}`, { method: 'GET' });
 }

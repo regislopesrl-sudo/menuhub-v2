@@ -26,6 +26,11 @@ export class FinanceController {
     return this.financeService.getOverview(ctx, query);
   }
 
+  @Get('report')
+  @RequirePermissions(TENANT_PERMISSIONS.FINANCE_READ, TENANT_PERMISSIONS.FINANCE_MANAGE)
+  report(@CurrentContext() ctx: RequestContext, @Query() query: FinanceQuery) {
+    return this.financeService.getReport(ctx, query);
+  }
   @Get('cash-flow')
   @RequirePermissions(TENANT_PERMISSIONS.FINANCE_READ, TENANT_PERMISSIONS.FINANCE_MANAGE)
   cashFlow(@CurrentContext() ctx: RequestContext, @Query() query: FinanceQuery) {

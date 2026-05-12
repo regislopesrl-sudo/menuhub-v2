@@ -153,6 +153,42 @@ describe('FinanceService', () => {
     return { prisma, service: new FinanceService(prisma) };
   }
 
+  it('gera relatorio financeiro consolidado com breakdowns premium', async () => {
+    const { service } = build();
+
+    const result = await service.getReport(ctx, {
+      from: '2026-05-01T00:00:00.000Z',
+      to: '2026-05-31T23:59:59.999Z',
+    });
+
+    expect(result.generatedAt).toBeTruthy();
+    expect(result.overview.openPayables).toBe(1);
+    expect(result.cashFlow.realized.balance).toBe(80);
+    expect(result.dre.operatingProfit).toBe(80);
+    expect(result.reconciliation.summary.totalItems).toBeGreaterThanOrEqual(3);
+    expect(result.ledger).toHaveLength(1);
+    expect(result.payables).toHaveLength(1);
+    expect(result.receivables).toHaveLength(1);
+    expect(result.breakdowns.categories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'compras', pendingPayable: 50 }),
+        expect.objectContaining({ key: 'vendas', pendingReceivable: 100 }),
+      ]),
+    );
+    expect(result.breakdowns.costCenters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'cozinha', pendingPayable: 50 }),
+        expect.objectContaining({ key: 'salao', pendingReceivable: 100 }),
+      ]),
+    );
+    expect(result.totals).toEqual({
+      ledgerEntries: 1,
+      payables: 1,
+      receivables: 1,
+      openPayables: 1,
+      openReceivables: 1,
+    });
+  });
   it('calcula fluxo de caixa separando realizado e previsto', async () => {
     const { service } = build();
 
