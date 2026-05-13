@@ -314,6 +314,7 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/production" title="Producao Interna" description="Ordens de preparo, execucao e finalizacao por filial" tone="orange" />
           <ActionTile href="/admin/tables" title="Mesas e Comandas" description="Salao, consumo local, transferencias e fechamento" tone="green" />
           <ActionTile href="/admin/payments" title="Pagamentos" description="PIX mock, webhooks e conciliacao operacional" tone="violet" />
+          <ActionTile href="/admin/notifications" title="Notificacoes" description="Eventos operacionais em tempo real" tone="blue" />
           <ActionTile href="/admin/finance" title="Financeiro" description="Fluxo de caixa, DRE e conciliacao local" tone="green" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
@@ -412,4 +413,5 @@ function computeKpis(orders: OrderListItem[]): DashboardKpis {
     averageTicket,
   };
 }
+
 
