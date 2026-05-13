@@ -733,6 +733,30 @@ export default function DeliveryPage() {
     setCheckoutView('phone');
   };
 
+  const requireCustomerBefore = (nextView: CheckoutView) => {
+    if (!items.length) {
+      setError('Sua sacola está vazia.');
+      return;
+    }
+
+    if (!hasCustomer) {
+      setError(null);
+      setPhoneLookup(customerPhone || phoneLookup);
+      setCheckoutView('phone');
+      return;
+    }
+
+    setError(null);
+    setCheckoutView(nextView);
+  };
+
+  useEffect(() => {
+    const protectedViews: CheckoutView[] = ['fulfillment', 'address', 'payment'];
+    if (!cartOpen || hasCustomer || !protectedViews.includes(checkoutView)) return;
+    setPhoneLookup(customerPhone || phoneLookup);
+    setCheckoutView('phone');
+  }, [cartOpen, checkoutView, customerPhone, hasCustomer, phoneLookup]);
+
   const confirmPhone = () => {
     const digits = phoneDigits(phoneLookup);
     if (digits.length < 10) {
@@ -1017,7 +1041,7 @@ export default function DeliveryPage() {
                   <button
                     type="button"
                     className={styles.deliveryCta}
-                    onClick={() => setCheckoutView('fulfillment')}
+                    onClick={() => requireCustomerBefore('fulfillment')}
                   >
                     <span className={styles.deliveryIcon}>?</span>
                     <span className={styles.deliveryCtaText}>
@@ -1189,7 +1213,7 @@ export default function DeliveryPage() {
                     </button>
                   </div>
                   {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
-                  <Button variant="primary" className={styles.continueButton} onClick={() => (fulfillmentType === 'DELIVERY' && !hasAddress ? setCheckoutView('address') : setCheckoutView('payment'))}>
+                  <Button variant="primary" className={styles.continueButton} onClick={() => requireCustomerBefore(fulfillmentType === 'DELIVERY' && !hasAddress ? 'address' : 'payment')}>
                     Continuar
                   </Button>
                 </section>
