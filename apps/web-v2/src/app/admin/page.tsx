@@ -77,9 +77,9 @@ const MODULE_CARDS: Array<{
   {
     key: 'reports',
     title: 'Relatorios',
-    href: '/admin',
+    href: '/admin/reports',
     description: 'Indicadores consolidados e visoes gerenciais da operacao.',
-    status: 'Em evolucao',
+    status: 'Premium',
   },
   {
     key: 'fiscal',
@@ -316,6 +316,7 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/payments" title="Pagamentos" description="PIX mock, webhooks e conciliacao operacional" tone="violet" />
           <ActionTile href="/admin/notifications" title="Notificacoes" description="Eventos operacionais em tempo real" tone="blue" />
           <ActionTile href="/admin/finance" title="Financeiro" description="Fluxo de caixa, DRE e conciliacao local" tone="green" />
+          <ActionTile href="/admin/reports" title="Relatorios" description="Vendas, canais, financeiro e indicadores gerenciais" tone="violet" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
 
