@@ -22,6 +22,8 @@ export interface CompanySettingsResponse {
   status: 'ACTIVE' | 'INACTIVE';
   publicTitle: string;
   publicDescription: string;
+  deliveryStoreName?: string;
+  deliveryHeroMedia?: string;
   bannerUrl: string;
   closedMessage: string;
 }
@@ -46,6 +48,17 @@ export interface BranchSettingsResponse {
   isActive: boolean;
   responsible: string;
   isOpen: boolean;
+}
+
+export interface BranchCepLookupResponse {
+  cep: string;
+  street: string;
+  complement: string;
+  district: string;
+  city: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface OperationScheduleChannel {
@@ -110,7 +123,13 @@ export interface OperationSettingsResponse {
 
 export interface PaymentSettingsResponse {
   branchId: string;
+  debitActive: boolean;
+  creditActive: boolean;
   pixActive: boolean;
+  pixOnlineActive: boolean;
+  creditOnlineActive: boolean;
+  foodVoucherActive: boolean;
+  mealVoucherActive: boolean;
   cashActive: boolean;
   onlineCardActive: boolean;
   presentCardActive: boolean;
@@ -158,6 +177,13 @@ export function patchBranchSettings(headers: SettingsHeaders | undefined, body: 
     method: 'PATCH',
     headers: buildHeaders(headers),
     body: JSON.stringify(body),
+  });
+}
+
+export function lookupBranchAddressByCep(headers: SettingsHeaders | undefined, cep: string) {
+  return apiFetch<BranchCepLookupResponse>(`/v2/settings/cep/${encodeURIComponent(cep)}`, {
+    method: 'GET',
+    headers: buildHeaders(headers),
   });
 }
 

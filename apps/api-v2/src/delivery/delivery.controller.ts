@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import { ModuleAccess } from '../modules/module-access.decorator';
@@ -10,6 +10,8 @@ import type { DeliveryFeeRule } from './delivery-fee-config.service';
 import { CepGeocodingService } from './cep-geocoding.service';
 import { DeliveryQuoteService } from './delivery-quote.service';
 import { DeliveryQuoteHttpResponse, DeliveryQuoteQueryDto } from './dto/delivery-quote.dto';
+import { Public } from '../common/public.decorator';
+import { SettingsService } from '../settings/settings.service';
 
 @Controller('v2/delivery')
 export class DeliveryController {
@@ -17,7 +19,14 @@ export class DeliveryController {
     private readonly deliveryService: DeliveryService,
     private readonly cepGeocodingService: CepGeocodingService,
     private readonly deliveryQuoteService: DeliveryQuoteService,
+    private readonly settingsService: SettingsService,
   ) {}
+
+  @Get('cep/:cep')
+  @Public()
+  lookupCep(@Param('cep') cep: string) {
+    return this.settingsService.lookupAddressByCep(cep);
+  }
 
   @Get('quote')
   @UseGuards(ModuleGuard)

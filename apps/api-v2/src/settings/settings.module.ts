@@ -7,5 +7,6 @@ import { RequireAdminGuard } from '../common/require-admin.guard';
 @Module({
   controllers: [SettingsController],
   providers: [SettingsService, PrismaService, RequireAdminGuard],
+  exports: [SettingsService],
 })
 export class SettingsModule {}

@@ -412,16 +412,8 @@ export default function AdminMenuPage() {
   };
 
   const openRecommendations = async (product: MenuProduct) => {
-    setSavingAction(`recommendations-${product.id}`);
-    setRecommendationConfig(null);
-    setModal({ mode: 'recommendations', product });
-    try {
-      setRecommendationConfig(await fetchAdminMenuRecommendations({ companyId, branchId, productId: product.id }));
-    } catch {
-      setRecommendationConfig({ title: 'Peca tambem', type: 'manual', limit: 4, active: true, productIds: [] });
-    } finally {
-      setSavingAction(null);
-    }
+    setActiveTab('recommendations');
+    setNotice(`A IA do Peca tambem ja decide automaticamente para ${product.name}.`);
   };
 
   const saveRecommendations = async (product: MenuProduct, payload: MenuRecommendationConfig) => {
@@ -645,7 +637,7 @@ export default function AdminMenuPage() {
         <ImportProductsPanel importCsv={importCsv} onImportCsvChange={setImportCsv} importPreview={importPreview} savingAction={savingAction} onPreview={() => void previewImport()} onCommit={() => void commitImport()} />
       ) : null}
 
-      {activeTab === 'recommendations' ? <RecommendationsPanel products={products} onOpenRecommendations={(product) => void openRecommendations(product)} /> : null}
+      {activeTab === 'recommendations' ? <RecommendationsPanel products={products} /> : null}
 
       {modal ? (
         <ProductModal

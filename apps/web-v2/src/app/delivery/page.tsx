@@ -1,16 +1,17 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import styles from './page.module.css';
 import { useCart } from '@/features/cart/use-cart';
 import {
   submitDeliveryCheckout,
   type OnlineCardPaymentInput,
 } from '@/features/checkout/checkout.api';
-import { postCheckoutQuote, type CheckoutQuoteResponse } from '@/features/checkout/checkout-quote.api';
+import { lookupDeliveryCep, postCheckoutQuote, type CheckoutQuoteResponse } from '@/features/checkout/checkout-quote.api';
 import { fetchPublicOrderTracking, type OrderTrackingResponse } from '@/features/checkout/order-tracking.api';
 import { fetchPixPaymentStatus } from '@/features/checkout/payment-status.api';
 import { fetchDeliveryMenu, fetchDeliveryStorefront, getMenuFallback, type DeliveryStorefrontSettings } from '@/features/menu/menu.api';
+import { getSmartMenuRecommendations } from '@/features/menu/menu-recommendations';
 import type { MenuProduct } from '@/features/menu/menu.mock';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -22,6 +23,12 @@ import { MercadoPagoCardBrick } from '@/features/checkout/components/mercado-pag
 
 function brl(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
+function formatCep(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 function productDisplayPrice(product: MenuProduct): number {
@@ -36,6 +43,126 @@ function productInitials(name: string): string {
     .map((part) => part[0])
     .join('')
     .toUpperCase();
+}
+
+function parseStorefrontMedia(value: string): Array<{ type: 'image' | 'video'; src: string }> {
+  return value
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((src) => ({
+      src,
+      type: src.startsWith('data:video') || /\.(mp4|webm|ogg)(\?|#|$)/i.test(src) ? 'video' as const : 'image' as const,
+    }));
+}
+
+const WEEKDAY_TO_DAY_KEY: Record<string, string> = {
+  Sun: 'sunday',
+  Mon: 'monday',
+  Tue: 'tuesday',
+  Wed: 'wednesday',
+  Thu: 'thursday',
+  Fri: 'friday',
+  Sat: 'saturday',
+};
+
+function timeToMinutes(value?: string | null): number | null {
+  if (!value) return null;
+  const [hour, minute] = value.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
+}
+
+function formatStoreTime(value?: string | null): string {
+  if (!value) return '';
+  const [hour = '00', minute = '00'] = value.split(':');
+  return `${hour.padStart(2, '0')}h${minute.padStart(2, '0')}`;
+}
+
+function getZonedNow(timezone?: string) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone || 'America/Sao_Paulo',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Sun';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0);
+  return {
+    dayKey: WEEKDAY_TO_DAY_KEY[weekday] ?? 'sunday',
+    minutes: (hour % 24) * 60 + minute,
+  };
+}
+
+function getStoreStatus(storefront: DeliveryStorefrontSettings | null) {
+  const timezone = storefront?.timezone || 'America/Sao_Paulo';
+  const zonedNow = getZonedNow(timezone);
+  const today = storefront?.schedules?.find((entry) => entry.dayKey === zonedNow.dayKey);
+  const branchIsOpen = storefront?.isOpen !== false;
+
+  if (!branchIsOpen) {
+    return {
+      isOpen: false,
+      headline: 'Loja fechada',
+      schedule: storefront?.closedMessage || 'Fechado no momento',
+    };
+  }
+
+  if (!today) {
+    return {
+      isOpen: true,
+      headline: 'Loja aberta',
+      schedule: 'Horário não informado',
+    };
+  }
+
+  if (!today.isOpen) {
+    return {
+      isOpen: false,
+      headline: 'Loja fechada',
+      schedule: 'Fechado hoje',
+    };
+  }
+
+  const openMinutes = timeToMinutes(today.openAt);
+  const closeMinutes = timeToMinutes(today.closeAt);
+  const todayWindow = `${today.label}, ${formatStoreTime(today.openAt)} às ${formatStoreTime(today.closeAt)}`;
+  if (openMinutes === null || closeMinutes === null) {
+    return {
+      isOpen: true,
+      headline: 'Loja aberta',
+      schedule: todayWindow,
+    };
+  }
+
+  const insideWindow = closeMinutes > openMinutes
+    ? zonedNow.minutes >= openMinutes && zonedNow.minutes < closeMinutes
+    : zonedNow.minutes >= openMinutes || zonedNow.minutes < closeMinutes;
+
+  if (insideWindow) {
+    return {
+      isOpen: true,
+      headline: `Aberto até às ${formatStoreTime(today.closeAt)}`,
+      schedule: todayWindow,
+    };
+  }
+
+  if (zonedNow.minutes < openMinutes) {
+    return {
+      isOpen: false,
+      headline: `Abre às ${formatStoreTime(today.openAt)}`,
+      schedule: todayWindow,
+    };
+  }
+
+  return {
+    isOpen: false,
+    headline: 'Loja fechada',
+    schedule: todayWindow,
+  };
 }
 
 function normalizePhone(value: string): string {
@@ -76,8 +203,40 @@ function validateGroups(product: MenuProduct, selectedOptionKeys: string[]): str
   return errors;
 }
 
+type CheckoutView = 'cart' | 'phone' | 'register' | 'fulfillment' | 'address' | 'payment' | 'confirmation';
+
+type StoredDeliveryCustomer = {
+  name: string;
+  phone: string;
+  birthDate: string;
+  whatsappOptIn: boolean;
+};
+
+const CUSTOMER_STORAGE_KEY = 'menuhub:delivery-customers';
+
+function phoneDigits(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 11);
+}
+
+function readStoredCustomers(): Record<string, StoredDeliveryCustomer> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(CUSTOMER_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, StoredDeliveryCustomer>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredCustomer(customer: StoredDeliveryCustomer): void {
+  if (typeof window === 'undefined') return;
+  const customers = readStoredCustomers();
+  customers[phoneDigits(customer.phone)] = customer;
+  window.localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify(customers));
+}
+
 export default function DeliveryPage() {
-  const { items, subtotal, addItem, removeItem, updateQuantity, clearCart } = useCart();
+  const { items, subtotal, addItem, replaceItem, removeItem, updateQuantity, clearCart } = useCart();
   const [products, setProducts] = useState<MenuProduct[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState<string | null>(null);
@@ -116,11 +275,20 @@ export default function DeliveryPage() {
   const [quote, setQuote] = useState<CheckoutQuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [cepLookupLoading, setCepLookupLoading] = useState(false);
+  const [cepLookupMessage, setCepLookupMessage] = useState<string | null>(null);
+  const lastCepLookupRef = useRef('');
 
   const [customizingProduct, setCustomizingProduct] = useState<MenuProduct | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [customizingQuantity, setCustomizingQuantity] = useState(1);
   const [cartOpen, setCartOpen] = useState(false);
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [editingCartIndex, setEditingCartIndex] = useState<number | null>(null);
+  const [checkoutView, setCheckoutView] = useState<CheckoutView>('cart');
+  const [phoneLookup, setPhoneLookup] = useState('');
+  const [customerBirthDate, setCustomerBirthDate] = useState('');
+  const [customerWhatsappOptIn, setCustomerWhatsappOptIn] = useState(true);
   const [menuSearch, setMenuSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [cardPayerEmail, setCardPayerEmail] = useState('');
@@ -142,6 +310,14 @@ export default function DeliveryPage() {
   const storefrontName = storefront?.publicTitle || process.env.NEXT_PUBLIC_STOREFRONT_NAME || 'MenuHub Demo';
   const storefrontLogoUrl = storefront?.logoUrl || process.env.NEXT_PUBLIC_STOREFRONT_LOGO_URL || '';
   const storefrontBannerUrl = storefront?.bannerUrl || process.env.NEXT_PUBLIC_STOREFRONT_BANNER_URL || '';
+  const storefrontMedia = parseStorefrontMedia(storefrontBannerUrl);
+  const storeStatus = getStoreStatus(storefront);
+  const locationLabel = [storefront?.city, storefront?.state].filter(Boolean).join(' - ') || 'Localização não informada';
+  const deliveryDetails = [
+    storefront?.delivery?.averagePrepMinutes ? `Preparo ${storefront.delivery.averagePrepMinutes} min` : null,
+    storefront?.delivery?.averageDeliveryMinutes ? `Entrega ${storefront.delivery.averageDeliveryMinutes} min` : null,
+    storefront?.delivery?.minimumOrder ? `Mínimo ${brl(storefront.delivery.minimumOrder)}` : null,
+  ].filter((detail): detail is string => Boolean(detail));
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const deliveryFee = quote?.deliveryFee ?? 0;
@@ -152,6 +328,7 @@ export default function DeliveryPage() {
     () => products.filter((product) => product.featured).sort((a, b) => (a.featuredSortOrder ?? 0) - (b.featuredSortOrder ?? 0)),
     [products],
   );
+  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const categories = useMemo(
     () => Array.from(new Set(products.map((product) => product.categoryName).filter((category): category is string => Boolean(category)))).sort((a, b) => String(a).localeCompare(String(b))),
     [products],
@@ -179,23 +356,8 @@ export default function DeliveryPage() {
     }
   }, [activeCategory, categories]);
   const recommendedProducts = useMemo(() => {
-    const productMap = new Map(products.map((product) => [product.id, product]));
-    const cartIds = new Set(items.map((item) => item.productId));
-    const configuredIds = items.flatMap((item) => {
-      const product = productMap.get(item.productId);
-      return product?.recommendations?.active ? product.recommendations.productIds : [];
-    });
-    const configured = configuredIds
-      .map((id) => productMap.get(id))
-      .filter((product): product is MenuProduct => Boolean(product && !cartIds.has(product.id)));
-    if (configured.length > 0) return configured.slice(0, 4);
-
-    const cartCategories = new Set(
-      items.map((item) => productMap.get(item.productId)?.categoryName).filter(Boolean),
-    );
-    return products
-      .filter((product) => !cartIds.has(product.id) && cartCategories.has(product.categoryName))
-      .slice(0, 4);
+    if (items.length === 0) return [];
+    return getSmartMenuRecommendations(products, { cartItems: items, limit: 4 });
   }, [items, products]);
 
   useEffect(() => {
@@ -264,6 +426,48 @@ export default function DeliveryPage() {
       active = false;
     };
   }, [hasAddress, fulfillmentType, headers, cep, number, items, couponCode]);
+
+  useEffect(() => {
+    const digits = cep.replace(/\D/g, '');
+
+    if (digits.length !== 8) {
+      lastCepLookupRef.current = '';
+      setCepLookupLoading(false);
+      setCepLookupMessage(null);
+      return;
+    }
+
+    if (lastCepLookupRef.current === digits) {
+      return;
+    }
+
+    let active = true;
+    const timeout = window.setTimeout(async () => {
+      setCepLookupLoading(true);
+      setCepLookupMessage(null);
+      try {
+        const address = await lookupDeliveryCep(digits);
+        if (!active) return;
+        lastCepLookupRef.current = digits;
+        setCep(formatCep(address.cep));
+        setStreet(address.street);
+        setNeighborhood(address.district);
+        setCity([address.city, address.state].filter(Boolean).join(' - '));
+        setCepLookupMessage('Endereco preenchido automaticamente pelo CEP.');
+      } catch (err) {
+        if (!active) return;
+        lastCepLookupRef.current = digits;
+        setCepLookupMessage(err instanceof Error ? err.message : 'Nao foi possivel buscar o CEP.');
+      } finally {
+        if (active) setCepLookupLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [cep]);
 
   useEffect(() => {
     if (!success?.providerPaymentId || success.paymentStatus !== 'PENDING') return;
@@ -382,9 +586,26 @@ export default function DeliveryPage() {
     success,
   ]);
 
-  const checkoutStep = success ? 4 : items.length === 0 ? 1 : checkoutIssues.length > 0 ? 2 : 3;
+  const checkoutStep = success || checkoutView === 'confirmation'
+    ? 4
+    : checkoutView === 'payment'
+      ? 4
+      : checkoutView === 'fulfillment' || checkoutView === 'address'
+        ? 3
+        : checkoutView === 'phone' || checkoutView === 'register'
+          ? 2
+          : 1;
   const checkoutBlocked = checkoutIssues.length > 0 || quoteLoading;
-  const checkoutSteps = ['1. Itens', '2. Dados', '3. Pagamento', '4. Confirmacao'];
+  const checkoutSteps = ['1. Sacola', '2. Cliente', '3. Entrega', '4. Pagamento'];
+
+  const handleCepChange = (value: string) => {
+    const formatted = formatCep(value);
+    const digits = formatted.replace(/\D/g, '');
+    setCep(formatted);
+    if (digits.length < 8) {
+      setCepLookupMessage(null);
+    }
+  };
 
   const validateCheckoutForm = (cardPaymentOverride?: OnlineCardPaymentInput): string | null => {
     if (!customerName.trim()) return 'Informe seu nome para continuar.';
@@ -449,7 +670,12 @@ export default function DeliveryPage() {
         storeId: 'store-demo',
         fulfillmentType,
         scheduledAt: scheduledAt.trim() || undefined,
-        customer: { name: customerName.trim(), phone: customerPhone.trim() },
+        customer: {
+          name: customerName.trim(),
+          phone: customerPhone.trim(),
+          birthDate: customerBirthDate.trim() || undefined,
+          whatsappOptIn: customerWhatsappOptIn,
+        },
         deliveryAddress: {
           cep: cep.trim(),
           street: street.trim(),
@@ -477,6 +703,8 @@ export default function DeliveryPage() {
         qrCodeText: response.payment.qrCodeText,
         expiresAt: response.payment.expiresAt,
       });
+      setCheckoutView('confirmation');
+      setCartOpen(true);
       setPaymentStatusMessage(response.payment.status === 'PENDING' ? 'Aguardando pagamento PIX...' : null);
       clearCart();
       setCouponCode('');
@@ -495,10 +723,77 @@ export default function DeliveryPage() {
     await handleCheckout(cardPayment, { rethrow: true });
   };
 
+  const startCheckout = () => {
+    if (!items.length) {
+      setError('Sua sacola está vazia.');
+      return;
+    }
+    setError(null);
+    setPhoneLookup(customerPhone || phoneLookup);
+    setCheckoutView('phone');
+  };
+
+  const confirmPhone = () => {
+    const digits = phoneDigits(phoneLookup);
+    if (digits.length < 10) {
+      setError('Informe um telefone válido para continuar.');
+      return;
+    }
+
+    const formattedPhone = normalizePhone(digits);
+    setCustomerPhone(formattedPhone);
+    const storedCustomer = readStoredCustomers()[digits];
+    if (storedCustomer) {
+      setCustomerName(storedCustomer.name);
+      setCustomerPhone(storedCustomer.phone);
+      setCustomerBirthDate(storedCustomer.birthDate);
+      setCustomerWhatsappOptIn(storedCustomer.whatsappOptIn);
+      setError(null);
+      setCheckoutView('fulfillment');
+      return;
+    }
+
+    setCustomerName('');
+    setCustomerBirthDate('');
+    setCustomerWhatsappOptIn(true);
+    setError(null);
+    setCheckoutView('register');
+  };
+
+  const saveCustomerRegistration = () => {
+    if (!customerName.trim()) {
+      setError('Informe seu nome para continuar.');
+      return;
+    }
+    if (phoneDigits(customerPhone).length < 10) {
+      setError('Informe um telefone válido.');
+      return;
+    }
+    saveStoredCustomer({
+      name: customerName.trim(),
+      phone: customerPhone,
+      birthDate: customerBirthDate,
+      whatsappOptIn: customerWhatsappOptIn,
+    });
+    setError(null);
+    setCheckoutView('fulfillment');
+  };
+
   const openCustomize = (product: MenuProduct) => {
+    setEditingCartIndex(null);
     setCustomizingProduct(product);
     setSelectedAddons([]);
     setCustomizingQuantity(1);
+  };
+
+  const openEditCartItem = (index: number) => {
+    const item = items[index];
+    const product = item ? productById.get(item.productId) : null;
+    if (!item || !product) return;
+    setEditingCartIndex(index);
+    setCustomizingProduct(product);
+    setSelectedAddons(item.addons.map((addon) => `${addon.groupId}:${addon.optionId}`));
+    setCustomizingQuantity(item.quantity);
   };
 
   const toggleAddon = (group: NonNullable<MenuProduct['addonGroups']>[number], optionId: string) => {
@@ -521,9 +816,15 @@ export default function DeliveryPage() {
         .map((option) => ({ groupId: group.id, optionId: option.id, name: option.name, price: option.price })),
     );
 
-    addItem({ ...customizingProduct, price: productDisplayPrice(customizingProduct) }, selectedAddonData, customizingQuantity);
+    const cartProduct = { ...customizingProduct, price: productDisplayPrice(customizingProduct) };
+    if (editingCartIndex !== null) {
+      replaceItem(editingCartIndex, cartProduct, selectedAddonData, customizingQuantity);
+    } else {
+      addItem(cartProduct, selectedAddonData, customizingQuantity);
+    }
     setCartOpen(true);
     setCustomizingProduct(null);
+    setEditingCartIndex(null);
     setSelectedAddons([]);
     setCustomizingQuantity(1);
   };
@@ -537,19 +838,45 @@ export default function DeliveryPage() {
 
         <section
           className={styles.storefrontHero}
-          style={
-            storefrontBannerUrl
-              ? { backgroundImage: 'linear-gradient(115deg, rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.04)), url(' + storefrontBannerUrl + ')' }
-              : undefined
-          }
         >
-          <div className={styles.storeIdentity}>
+          <div className={styles.storefrontMediaTrack} aria-hidden>
+            {storefrontMedia.length > 0 ? (
+              storefrontMedia.map((media, index) => (
+                <div
+                  key={`${media.src}-${index}`}
+                  className={styles.storefrontMediaSlide}
+                  style={{
+                    animationDelay: storefrontMedia.length > 1 ? `${index * 5}s` : '0s',
+                    animationDuration: storefrontMedia.length > 1 ? `${storefrontMedia.length * 5}s` : '0s',
+                  }}
+                >
+                  {media.type === 'video' ? (
+                    <video src={media.src} autoPlay muted loop playsInline />
+                  ) : (
+                    <img src={media.src} alt="" />
+                  )}
+                </div>
+              ))
+            ) : null}
+          </div>
+          <div className={styles.storeHeroFooter}>
             <div className={styles.storeLogo}>
               {storefrontLogoUrl ? <img src={storefrontLogoUrl} alt={'Logo ' + storefrontName} /> : <span>{storefrontName.slice(0, 2).toUpperCase()}</span>}
             </div>
             <div className={styles.storeNameBox}>
-              <small>Cardapio online</small>
+              <small>Cardápio online</small>
               <strong>{storefrontName}</strong>
+              <div className={styles.storeMetaRow}>
+                <span className={storeStatus.isOpen ? styles.storeOpenStatus : styles.storeClosedStatus}>{storeStatus.headline}</span>
+                <span>{storeStatus.schedule}</span>
+                <span>{locationLabel}</span>
+                <span>Mais informações</span>
+              </div>
+              {deliveryDetails.length > 0 ? (
+                <div className={styles.storeDetailRow}>
+                  {deliveryDetails.map((detail) => <span key={detail}>{detail}</span>)}
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
@@ -588,7 +915,7 @@ export default function DeliveryPage() {
               </Card>
             ) : null}
 
-            <Card className={styles.section}>
+            <Card className={`${styles.section} ${styles.menuSection}`}>
               <div className={styles.row}>
                 <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Cardápio</h2>
                 <Badge tone="default">{visibleProducts.length} itens</Badge>
@@ -599,7 +926,14 @@ export default function DeliveryPage() {
                   onChange={(event) => setMenuSearch(event.target.value)}
                   placeholder="Buscar burger, combo, bebida..."
                 />
-                <div className={styles.categoryScroller} aria-label="Categorias do cardapio">
+              </div>
+              {menuLoading ? <LoadingState label="Carregando cardápio..." /> : null}
+              {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
+              {!menuLoading && products.length === 0 ? (
+                <EmptyState title="Nenhum produto disponível" description="Verifique o menu no admin para liberar itens." />
+              ) : null}
+              <div className={styles.menuCatalogLayout}>
+                <aside className={styles.categoryRail} aria-label="Categorias do cardapio">
                   {categories.map((category) => (
                     <button
                       key={category}
@@ -607,171 +941,52 @@ export default function DeliveryPage() {
                       className={category === currentCategory ? styles.categoryPillActive : styles.categoryPill}
                       onClick={() => setActiveCategory(category)}
                     >
-                      {category}
+                      <span>{category}</span>
+                      <strong>{products.filter((product) => product.categoryName === category).length}</strong>
                     </button>
+                  ))}
+                </aside>
+                <div className={styles.productsGrid}>
+                  {visibleProducts.map((product) => (
+                    <article
+                      key={product.id}
+                      className={styles.productCard}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openCustomize(product)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
+                      }}
+                    >
+                      <div className={styles.productMedia} aria-hidden>
+                        {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(product.name)}</span>}
+                      </div>
+                      <div className={styles.badgeRow}>
+                        {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
+                        {product.promotionalPrice ? <Badge tone="success">Promo</Badge> : null}
+                        {product.available === false ? <Badge tone="danger">Indisponivel</Badge> : null}
+                      </div>
+                      <div className={styles.row}>
+                        <strong>{product.name}</strong>
+                        <strong>{brl(productDisplayPrice(product))}</strong>
+                      </div>
+                      <div className={styles.muted}>{product.description}</div>
+                      <Button
+                        variant="primary"
+                        disabled={product.available === false}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openCustomize(product);
+                        }}
+                      >
+                        Ver produto
+                      </Button>
+                    </article>
                   ))}
                 </div>
               </div>
-              {menuLoading ? <LoadingState label="Carregando cardápio..." /> : null}
-              {menuError ? <div className={styles.feedbackError}>{menuError}</div> : null}
-              {!menuLoading && products.length === 0 ? (
-                <EmptyState title="Nenhum produto disponível" description="Verifique o menu no admin para liberar itens." />
-              ) : null}
-              <div className={styles.productsGrid}>
-                {visibleProducts.map((product) => (
-                  <article
-                    key={product.id}
-                    className={styles.productCard}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openCustomize(product)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
-                    }}
-                  >
-                    <div className={styles.productMedia} aria-hidden>
-                      {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(product.name)}</span>}
-                    </div>
-                    <div className={styles.badgeRow}>
-                      {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
-                      {product.promotionalPrice ? <Badge tone="success">Promo</Badge> : null}
-                      {product.available === false ? <Badge tone="danger">Indisponivel</Badge> : null}
-                    </div>
-                    <div className={styles.row}>
-                      <strong>{product.name}</strong>
-                      <strong>{brl(productDisplayPrice(product))}</strong>
-                    </div>
-                    <div className={styles.muted}>{product.description}</div>
-                    <Button
-                      variant="primary"
-                      disabled={product.available === false}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openCustomize(product);
-                      }}
-                    >
-                      Ver produto
-                    </Button>
-                  </article>
-                ))}
-              </div>
             </Card>
 
-            <Card className={styles.section}>
-              <h2 className={styles.sectionTitle}>Endereço e cliente</h2>
-              <div className={styles.fulfillmentCards} aria-label="Tipo de atendimento">
-                <button
-                  type="button"
-                  className={fulfillmentType === 'DELIVERY' ? styles.fulfillmentCardActive : styles.fulfillmentCard}
-                  onClick={() => setFulfillmentType('DELIVERY')}
-                >
-                  <strong>Receber em casa</strong>
-                  <span>Calcule frete e acompanhe o pedido.</span>
-                </button>
-                <button
-                  type="button"
-                  className={fulfillmentType === 'TAKEOUT' ? styles.fulfillmentCardActive : styles.fulfillmentCard}
-                  onClick={() => setFulfillmentType('TAKEOUT')}
-                >
-                  <strong>Retirar no balcão</strong>
-                  <span>Sem frete e com retirada mais rápida.</span>
-                </button>
-              </div>
-              <div className={styles.inline}>
-                <div>
-                  <label className="ui-label">Tipo de atendimento</label>
-                  <Select value={fulfillmentType} onChange={(e) => setFulfillmentType(e.target.value as 'DELIVERY' | 'TAKEOUT')}>
-                    <option value="DELIVERY">Entrega</option>
-                    <option value="TAKEOUT">Retirada</option>
-                  </Select>
-                </div>
-                <div>
-                  <label className="ui-label">Agendamento (opcional)</label>
-                  <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
-                </div>
-              </div>
-              <div className={styles.inline}>
-                <div>
-                  <label className="ui-label">Nome</label>
-                  <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Seu nome" />
-                </div>
-                <div>
-                  <label className="ui-label">Telefone</label>
-                  <Input
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(normalizePhone(e.target.value))}
-                    placeholder="(11) 99999-0000"
-                  />
-                </div>
-              </div>
-
-              {fulfillmentType === 'DELIVERY' ? (
-                <>
-                  <div className={styles.addressHint}>
-                    <strong>{hasAddress ? 'CEP e numero informados' : 'Informe CEP e numero para cotar'}</strong>
-                    <span>{quoteLoading ? 'Calculando frete...' : quote ? `Frete ${brl(deliveryFee)}${quote.deliveryQuote.areaName ? ` - ${quote.deliveryQuote.areaName}` : ''}` : 'A cotacao e feita automaticamente.'}</span>
-                  </div>
-                  <div className={styles.inline}>
-                    <div>
-                      <label className="ui-label">CEP</label>
-                      <Input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="00000-000" />
-                    </div>
-                    <div>
-                      <label className="ui-label">Número</label>
-                      <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
-                    </div>
-                  </div>
-
-                  <div className={styles.inline}>
-                    <div>
-                      <label className="ui-label">Rua</label>
-                      <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" />
-                    </div>
-                    <div>
-                      <label className="ui-label">Bairro</label>
-                      <Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" />
-                    </div>
-                  </div>
-
-                  <div className={styles.inline}>
-                    <div>
-                      <label className="ui-label">Cidade (opcional)</label>
-                      <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
-                    </div>
-                    <div>
-                      <label className="ui-label">Referência (opcional)</label>
-                      <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ponto de referência" />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className={styles.takeoutBox}>
-                  <strong>Retirada selecionada</strong>
-                  <span>Voce nao precisa informar endereco. Avise seu nome e telefone para identificarmos o pedido no balcao.</span>
-                </div>
-              )}
-              {scheduledAt ? (
-                <div className={styles.scheduleBox}>
-                  <strong>Pedido agendado</strong>
-                  <span>{Number.isNaN(new Date(scheduledAt).getTime()) ? 'Data invalida' : new Date(scheduledAt).toLocaleString('pt-BR')}</span>
-                </div>
-              ) : null}
-              <div className={styles.checkoutReadiness}>
-                <div>
-                  <strong>{checkoutIssues.length === 0 ? 'Tudo pronto para finalizar' : 'Faltam alguns dados'}</strong>
-                  <span>
-                    {fulfillmentType === 'TAKEOUT'
-                      ? 'Retirada no balcao, sem frete.'
-                      : quote
-                        ? `Entrega ${quote.deliveryQuote.available ? 'disponivel' : 'indisponivel'}${quote.deliveryQuote.areaName ? ` em ${quote.deliveryQuote.areaName}` : ''}.`
-                        : 'A cotacao aparece automaticamente depois do CEP e numero.'}
-                  </span>
-                </div>
-                <Badge tone={checkoutIssues.length === 0 ? 'success' : 'warning'}>
-                  {checkoutIssues.length === 0 ? 'Pronto' : `${checkoutIssues.length} pendencia(s)`}
-                </Badge>
-              </div>
-            </Card>
           </section>
 
 
@@ -783,7 +998,9 @@ export default function DeliveryPage() {
               <div className={styles.cartModalHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Meu Carrinho</h2>
-                  <p className={styles.muted}>{totalItems} item(ns) selecionado(s)</p>
+                  <p className={styles.muted}>
+                    {totalItems === 1 ? '1 item selecionado' : `${totalItems} itens selecionados`}
+                  </p>
                 </div>
                 <Button onClick={() => setCartOpen(false)}>Fechar</Button>
               </div>
@@ -795,212 +1012,286 @@ export default function DeliveryPage() {
                 ))}
               </div>
             <Card className={styles.cartPanel}>
-              <div className={styles.row}>
-                <h2 className={`${styles.sectionTitle} ${styles.sectionTitleCompact}`}>Seu carrinho</h2>
-                <Badge tone="default">{totalItems} itens</Badge>
-              </div>
+              {checkoutView === 'cart' ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.deliveryCta}
+                    onClick={() => setCheckoutView('fulfillment')}
+                  >
+                    <span className={styles.deliveryIcon}>?</span>
+                    <span className={styles.deliveryCtaText}>
+                      <strong>Calcular taxa e tempo de entrega</strong>
+                      <small>
+                        {fulfillmentType === 'TAKEOUT'
+                          ? 'Retirada no balcão selecionada, sem taxa de entrega.'
+                          : quote
+                            ? `${brl(deliveryFee)}${quote.deliveryQuote.durationSeconds ? ` - ${Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min` : ''}`
+                            : 'Informe CEP e número para calcular antes de finalizar.'}
+                      </small>
+                    </span>
+                    <span className={styles.deliveryArrow}>&gt;</span>
+                  </button>
 
-              {items.length === 0 ? <EmptyState title="Carrinho vazio" description="Adicione itens no cardápio para continuar." /> : null}
-
-              {items.map((item, index) => {
-                const addonPrice = item.addons.reduce((sum, addon) => sum + addon.price, 0);
-                return (
-                  <div key={`${item.productId}-${index}`} className={styles.cartItem}>
-                    <div className={styles.row}>
-                      <strong>{item.name}</strong>
-                      <strong>{brl(item.quantity * (item.unitPrice + addonPrice))}</strong>
+                  <section className={styles.bagSection}>
+                    <div className={styles.bagHeader}>
+                      <h3>Sua sacola</h3>
+                      {items.length > 0 ? <button type="button" onClick={clearCart}>Limpar</button> : null}
                     </div>
-                    {item.addons.length > 0 ? (
-                      <div className={styles.muted}>
-                        + {item.addons.map((addon) => `${addon.name} (${brl(addon.price)})`).join(', ')}
+                    {items.length === 0 ? <EmptyState title="Sacola vazia" description="Adicione itens no cardápio para continuar." /> : null}
+                    <div className={styles.bagList}>
+                      {items.map((item, index) => {
+                        const addonPrice = item.addons.reduce((sum, addon) => sum + addon.price, 0);
+                        const product = productById.get(item.productId);
+                        return (
+                          <div key={`${item.productId}-${index}`} className={styles.cartItem}>
+                            <div className={styles.cartItemMain}>
+                              <div className={styles.cartItemText}>
+                                <div className={styles.cartItemTitleRow}>
+                                  <strong>{item.quantity}x {item.name}</strong>
+                                  <strong>{brl(item.quantity * (item.unitPrice + addonPrice))}</strong>
+                                </div>
+                                {item.addons.length > 0 ? <div className={styles.muted}>+ {item.addons.map((addon) => `${addon.name} (${brl(addon.price)})`).join(', ')}</div> : null}
+                                <span className={styles.cartAvailability}>Apenas para delivery e retirada</span>
+                              </div>
+                              <div className={styles.cartThumb}>
+                                {product?.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(item.name)}</span>}
+                              </div>
+                            </div>
+                            <div className={styles.cartItemActions}>
+                              <button type="button" onClick={() => openEditCartItem(index)}>Editar</button>
+                              <button type="button" onClick={() => removeItem(index)}>Remover</button>
+                              <div className={styles.quantityActions}>
+                                <Button onClick={() => updateQuantity(index, item.quantity - 1)}>-</Button>
+                                <Badge>{item.quantity}</Badge>
+                                <Button onClick={() => updateQuantity(index, item.quantity + 1)}>+</Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {recommendedProducts.length > 0 ? (
+                    <section className={styles.recommendations}>
+                      <div>
+                        <strong>Peça também</strong>
+                        <span>Sugestões inteligentes baseadas nos itens da sua sacola.</span>
                       </div>
-                    ) : null}
-                    <div className={styles.row}>
-                      <small className={styles.muted}>{brl(item.unitPrice + addonPrice)} cada</small>
-                      <div className={styles.quantityActions}>
-                        <Button onClick={() => updateQuantity(index, item.quantity - 1)}>-</Button>
-                        <Badge>{item.quantity}</Badge>
-                        <Button onClick={() => updateQuantity(index, item.quantity + 1)}>+</Button>
-                        <Button variant="danger" onClick={() => removeItem(index)}>Remover</Button>
+                      <div className={styles.recommendationScroller}>
+                        {recommendedProducts.map((product) => (
+                          <button key={product.id} type="button" className={styles.recommendationItem} onClick={() => openCustomize(product)}>
+                            <div className={styles.recommendationImage}>
+                              {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{productInitials(product.name)}</span>}
+                            </div>
+                            <span className={styles.recommendationName}>{product.name}</span>
+                            <strong className={styles.recommendationPrice}>{brl(productDisplayPrice(product))}</strong>
+                          </button>
+                        ))}
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {recommendedProducts.length > 0 ? (
-                <div className={styles.recommendations}>
-                  <strong>Peca tambem</strong>
-                  {recommendedProducts.map((product) => (
-                    <div key={product.id} className={styles.recommendationItem}>
-                      <span>{product.name}</span>
-                      <strong>{brl(productDisplayPrice(product))}</strong>
-                      <Button onClick={() => addItem({ ...product, price: productDisplayPrice(product) }, [])}>Adicionar</Button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <label className="ui-label">Cupom</label>
-              <Input
-                placeholder="Ex: BEMVINDO10"
-                value={couponCode}
-                onChange={(e) => setCouponCode(e.target.value)}
-              />
-
-              <label className="ui-label">Pagamento</label>
-              <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                <option value="PIX">PIX</option>
-                <option value="CREDIT_CARD">
-                  Cartao de credito online {cardMode === 'mercadopago' ? '(tokenizado)' : '(simulado)'}
-                </option>
-                <option value="CASH">Dinheiro na entrega</option>
-              </Select>
-              {paymentMethod === 'CREDIT_CARD' ? (
-                <div className={styles.cardPaymentBox}>
-                  <Badge tone={cardMode === 'mercadopago' ? 'success' : 'warning'}>
-                    {cardMode === 'mercadopago' ? 'Tokenizado no navegador' : 'Cartao online em modo simulado'}
-                  </Badge>
-                  <p className={styles.muted}>
-                    {cardMode === 'mercadopago'
-                      ? 'O backend recebe apenas cardToken, metodo, parcelas e dados do pagador. Numero, validade e CVV ficam dentro do Brick oficial do Mercado Pago.'
-                      : 'Modo local/HML: o backend nao recebe dados crus do cartao e usa intent simulada para validar o fluxo.'}
-                  </p>
-                  {cardMode === 'mock' ? (
-                    <>
-                      <Input
-                        value={cardPayerEmail}
-                        onChange={(e) => setCardPayerEmail(e.target.value)}
-                        placeholder="Email do pagador"
-                        inputMode="email"
-                      />
-                      <div className={styles.inline}>
-                        <Select value={cardPaymentMethodId} onChange={(e) => setCardPaymentMethodId(e.target.value)}>
-                          <option value="visa">Visa</option>
-                          <option value="master">Mastercard</option>
-                          <option value="elo">Elo</option>
-                        </Select>
-                        <Input
-                          value={cardInstallments}
-                          onChange={(e) => setCardInstallments(e.target.value.replace(/\D/g, '').slice(0, 2) || '1')}
-                          placeholder="Parcelas"
-                          inputMode="numeric"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <MercadoPagoCardBrick
-                      publicKey={mercadoPagoPublicKey}
-                      amount={estimatedTotal}
-                      disabled={loading || quoteLoading || (fulfillmentType === 'DELIVERY' && !quote?.deliveryQuote.available)}
-                      onSubmit={handleMercadoPagoSubmit}
-                    />
-                  )}
-                </div>
-              ) : null}
-              {paymentMethod === 'CASH' ? <div className={styles.muted}>Pagamento em dinheiro sera cobrado na entrega.</div> : null}
-
-              <div className={styles.row}><span>Subtotal</span><strong>{brl(subtotal)}</strong></div>
-              <div className={styles.row}>
-                <span>{fulfillmentType === 'TAKEOUT' ? 'Retirada' : `Frete ${quoteLoading ? '(cotando...)' : ''}`}</span>
-                <strong>{fulfillmentType === 'TAKEOUT' ? 'Sem frete' : brl(deliveryFee)}</strong>
-              </div>
-              {fulfillmentType === 'DELIVERY' && quote ? (
-                <div className={styles.muted}>
-                  Área: {quote.deliveryQuote.areaName ?? '-'} | Distância: {quote.deliveryQuote.distanceKm ?? 0} km | Tempo: {Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min
-                </div>
-              ) : null}
-              <div className={styles.row}><span>Total estimado</span><strong>{brl(estimatedTotal)}</strong></div>
-
-              {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
-              {checkoutIssues.length > 0 ? (
-                <div className={styles.checkoutIssues}>
-                  <strong>Antes de finalizar</strong>
-                  {checkoutIssues.map((issue) => (
-                    <span key={issue}>{issue}</span>
-                  ))}
-                </div>
-              ) : null}
-              {error ? <div className={styles.feedbackError}>{error}</div> : null}
-              {success ? (
-                <div className={styles.confirmationCard}>
-                  <div className={styles.confirmationHeader}>
-                    <div>
-                      <span>Pedido recebido</span>
-                      <strong>{success.orderNumber ?? success.orderId}</strong>
-                    </div>
-                    <Badge tone={success.paymentStatus === 'PAID' || success.paymentStatus === 'APPROVED' ? 'success' : 'warning'}>
-                      {success.paymentStatus}
-                    </Badge>
-                  </div>
-                  <div className={styles.confirmationGrid}>
-                    <div>
-                      <small>Total</small>
-                      <strong>{brl(success.total)}</strong>
-                    </div>
-                    <div>
-                      <small>Status do pedido</small>
-                      <strong>{tracking?.status ?? success.orderStatus}</strong>
-                    </div>
-                    <div>
-                      <small>Pagamento</small>
-                      <strong>{success.provider ?? paymentMethod}</strong>
-                    </div>
-                    <div>
-                      <small>Estimativa</small>
-                      <strong>{tracking?.estimatedMinutes ? `${tracking.estimatedMinutes} min` : 'Atualizando'}</strong>
-                    </div>
-                  </div>
-                  {paymentStatusMessage ? <div className={styles.confirmationNotice}>{paymentStatusMessage}</div> : null}
-                  {success.trackingToken ? (
-                    <div className={styles.trackingTokenBox}>
-                      <span>Token de acompanhamento</span>
-                      <strong>{success.trackingToken}</strong>
-                      <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.trackingToken ?? '')}>Copiar</Button>
-                    </div>
+                    </section>
                   ) : null}
 
+                  <section className={styles.cartTotals}>
+                    <div className={styles.row}><span>Subtotal</span><strong>{brl(subtotal)}</strong></div>
+                    <div className={styles.row}>
+                      <span>Taxa de entrega</span>
+                      <strong>{fulfillmentType === 'TAKEOUT' ? 'Sem taxa' : quote ? brl(deliveryFee) : 'A definir'}</strong>
+                    </div>
+                    {fulfillmentType === 'DELIVERY' && quote ? <div className={styles.muted}>Área: {quote.deliveryQuote.areaName ?? '-'} | Distância: {quote.deliveryQuote.distanceKm ?? 0} km | Tempo: {Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min</div> : null}
+                    <div className={`${styles.row} ${styles.totalRow}`}><span>Total</span><strong>{brl(estimatedTotal)}</strong></div>
+                  </section>
+
+                  <section className={styles.couponSection}>
+                    <button type="button" className={styles.couponCta} onClick={() => setCouponOpen((value) => !value)} aria-expanded={couponOpen}>
+                      <span className={styles.couponIcon}>%</span>
+                      <span>
+                        <strong>Tem um cupom?</strong>
+                        <small>{couponCode ? couponCode : 'Clique e insira o código'}</small>
+                      </span>
+                      <span className={styles.deliveryArrow}>&gt;</span>
+                    </button>
+                    {couponOpen ? <Input placeholder="Ex: BEMVINDO10" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} /> : null}
+                  </section>
+
+                  {error ? <div className={styles.feedbackError}>{error}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} disabled={!items.length} onClick={startCheckout}>
+                    Continuar pedido
+                  </Button>
+                </>
+              ) : null}
+
+              {checkoutView === 'phone' ? (
+                <section className={styles.checkoutScreen}>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setCheckoutView('cart')}>x</button>
+                  <h3>Informe seu número de telefone</h3>
+                  <p>Ele é importante para falarmos com você caso necessário.</p>
+                  <label className="ui-label">Telefone</label>
+                  <Input value={phoneLookup} onChange={(e) => setPhoneLookup(normalizePhone(e.target.value))} placeholder="(00) 90000-0000" inputMode="tel" autoFocus />
+                  {error ? <div className={styles.feedbackError}>{error}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} onClick={confirmPhone}>Confirmar</Button>
+                </section>
+              ) : null}
+
+              {checkoutView === 'register' ? (
+                <section className={styles.checkoutScreen}>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setCheckoutView('phone')}>x</button>
+                  <h3>Complete seu cadastro</h3>
+                  <p>Não encontramos esse telefone. Cadastre seus dados para continuar o pedido.</p>
+                  <div className={styles.inline}>
+                    <div>
+                      <label className="ui-label">Nome</label>
+                      <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Seu nome" />
+                    </div>
+                    <div>
+                      <label className="ui-label">Telefone</label>
+                      <Input value={customerPhone} onChange={(e) => setCustomerPhone(normalizePhone(e.target.value))} placeholder="(11) 99999-0000" inputMode="tel" />
+                    </div>
+                  </div>
+                  <div className={styles.inline}>
+                    <div>
+                      <label className="ui-label">Data de nascimento</label>
+                      <Input type="date" value={customerBirthDate} onChange={(e) => setCustomerBirthDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="ui-label">Aceita receber WhatsApp?</label>
+                      <Select value={customerWhatsappOptIn ? 'yes' : 'no'} onChange={(e) => setCustomerWhatsappOptIn(e.target.value === 'yes')}>
+                        <option value="yes">Sim</option>
+                        <option value="no">Não</option>
+                      </Select>
+                    </div>
+                  </div>
+                  {error ? <div className={styles.feedbackError}>{error}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} onClick={saveCustomerRegistration}>Salvar cadastro</Button>
+                </section>
+              ) : null}
+
+              {checkoutView === 'fulfillment' ? (
+                <section className={styles.checkoutScreen}>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setCheckoutView('cart')}>x</button>
+                  <h3>Checkout</h3>
+                  <p>Escolha como quer receber seu pedido.</p>
+                  <div className={styles.checkoutOptionList}>
+                    <button type="button" className={fulfillmentType === 'DELIVERY' ? styles.checkoutOptionActive : styles.checkoutOption} onClick={() => setFulfillmentType('DELIVERY')}>
+                      <span>Receber no seu endereço</span>
+                      <strong>{fulfillmentType === 'DELIVERY' ? 'Selecionado' : 'Selecionar'}</strong>
+                    </button>
+                    {fulfillmentType === 'DELIVERY' ? (
+                      <button type="button" className={styles.checkoutOption} onClick={() => setCheckoutView('address')}>
+                        <span>{hasAddress ? 'Endereço informado. Clique para alterar.' : 'Clique aqui e informe o endereço'}</span>
+                        <strong>&gt;</strong>
+                      </button>
+                    ) : null}
+                    <button type="button" className={fulfillmentType === 'TAKEOUT' ? styles.checkoutOptionActive : styles.checkoutOption} onClick={() => setFulfillmentType('TAKEOUT')}>
+                      <span>Retirar no estabelecimento</span>
+                      <strong>{fulfillmentType === 'TAKEOUT' ? 'Selecionado' : 'Selecionar'}</strong>
+                    </button>
+                  </div>
+                  {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} onClick={() => (fulfillmentType === 'DELIVERY' && !hasAddress ? setCheckoutView('address') : setCheckoutView('payment'))}>
+                    Continuar
+                  </Button>
+                </section>
+              ) : null}
+
+              {checkoutView === 'address' ? (
+                <section className={styles.checkoutScreen}>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setCheckoutView('fulfillment')}>x</button>
+                  <h3>Endereço de entrega</h3>
+                  <p>Informe o endereço para calcular a taxa e o tempo de entrega.</p>
+                  <div className={styles.inline}>
+                    <div><label className="ui-label">CEP</label><Input value={cep} onChange={(e) => handleCepChange(e.target.value)} placeholder="00000-000" /></div>
+                    <div><label className="ui-label">Número</label><Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" /></div>
+                  </div>
+                  <div className={styles.inline}>
+                    <div><label className="ui-label">Rua</label><Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua" /></div>
+                    <div><label className="ui-label">Bairro</label><Input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Centro" /></div>
+                  </div>
+                  <div className={styles.inline}>
+                    <div><label className="ui-label">Cidade (opcional)</label><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" /></div>
+                    <div><label className="ui-label">Referência (opcional)</label><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ponto de referência" /></div>
+                  </div>
+                  <div className={styles.addressHint}>
+                    <strong>{quoteLoading ? 'Calculando frete...' : quote ? `Frete ${brl(deliveryFee)}` : 'Preencha CEP e número'}</strong>
+                    {cepLookupLoading ? <span>Buscando endereco pelo CEP...</span> : null}
+                    {cepLookupMessage ? <span>{cepLookupMessage}</span> : null}
+                    <span>{quote ? `Tempo estimado: ${Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min` : 'A cotação será feita automaticamente.'}</span>
+                  </div>
+                  {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} onClick={() => setCheckoutView('fulfillment')} disabled={!hasAddress}>Salvar endereço</Button>
+                </section>
+              ) : null}
+
+              {checkoutView === 'payment' ? (
+                <section className={styles.checkoutScreen}>
+                  <button type="button" className={styles.modalCloseButton} onClick={() => setCheckoutView('fulfillment')}>x</button>
+                  <h3>Pagamento</h3>
+                  <p>Revise seus dados e escolha a forma de pagamento.</p>
+                  <div className={styles.paymentSummaryBox}>
+                    <span>Cliente: <strong>{customerName}</strong></span>
+                    <span>Telefone: <strong>{customerPhone}</strong></span>
+                    <span>Entrega: <strong>{fulfillmentType === 'TAKEOUT' ? 'Retirada' : quote ? `${brl(deliveryFee)} - ${Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min` : 'A definir'}</strong></span>
+                    <span>Total: <strong>{brl(estimatedTotal)}</strong></span>
+                  </div>
+                  <label className="ui-label">Pagamento</label>
+                  <Select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                    <option value="PIX">PIX</option>
+                    <option value="CREDIT_CARD">Cartão de crédito online {cardMode === 'mercadopago' ? '(tokenizado)' : '(simulado)'}</option>
+                    <option value="CASH">Dinheiro na entrega</option>
+                  </Select>
+                  {paymentMethod === 'CREDIT_CARD' ? (
+                    <div className={styles.cardPaymentBox}>
+                      <Badge tone={cardMode === 'mercadopago' ? 'success' : 'warning'}>{cardMode === 'mercadopago' ? 'Tokenizado no navegador' : 'Cartão online em modo simulado'}</Badge>
+                      {cardMode === 'mock' ? (
+                        <>
+                          <Input value={cardPayerEmail} onChange={(e) => setCardPayerEmail(e.target.value)} placeholder="Email do pagador" inputMode="email" />
+                          <div className={styles.inline}>
+                            <Select value={cardPaymentMethodId} onChange={(e) => setCardPaymentMethodId(e.target.value)}>
+                              <option value="visa">Visa</option>
+                              <option value="master">Mastercard</option>
+                              <option value="elo">Elo</option>
+                            </Select>
+                            <Input value={cardInstallments} onChange={(e) => setCardInstallments(e.target.value.replace(/\D/g, '').slice(0, 2) || '1')} placeholder="Parcelas" inputMode="numeric" />
+                          </div>
+                        </>
+                      ) : (
+                        <MercadoPagoCardBrick publicKey={mercadoPagoPublicKey} amount={estimatedTotal} disabled={loading || quoteLoading || (fulfillmentType === 'DELIVERY' && !quote?.deliveryQuote.available)} onSubmit={handleMercadoPagoSubmit} />
+                      )}
+                    </div>
+                  ) : null}
+                  {checkoutIssues.length > 0 ? <div className={styles.checkoutIssues}><strong>Antes de finalizar</strong>{checkoutIssues.map((issue) => <span key={issue}>{issue}</span>)}</div> : null}
+                  {error ? <div className={styles.feedbackError}>{error}</div> : null}
+                  <Button variant="primary" className={styles.continueButton} disabled={loading || checkoutBlocked || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')} onClick={() => void handleCheckout()}>
+                    {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulário do Mercado Pago' : 'Finalizar pedido'}
+                  </Button>
+                </section>
+              ) : null}
+
+              {checkoutView === 'confirmation' && success ? (
+                <div className={styles.confirmationCard}>
+                  <div className={styles.confirmationHeader}>
+                    <div><span>Pedido recebido</span><strong>{success.orderNumber ?? success.orderId}</strong></div>
+                    <Badge tone={success.paymentStatus === 'PAID' || success.paymentStatus === 'APPROVED' ? 'success' : 'warning'}>{success.paymentStatus}</Badge>
+                  </div>
+                  <div className={styles.confirmationGrid}>
+                    <div><small>Total</small><strong>{brl(success.total)}</strong></div>
+                    <div><small>Status do pedido</small><strong>{tracking?.status ?? success.orderStatus}</strong></div>
+                    <div><small>Pagamento</small><strong>{success.provider ?? paymentMethod}</strong></div>
+                    <div><small>Estimativa</small><strong>{tracking?.estimatedMinutes ? `${tracking.estimatedMinutes} min` : 'Atualizando'}</strong></div>
+                  </div>
+                  {paymentStatusMessage ? <div className={styles.confirmationNotice}>{paymentStatusMessage}</div> : null}
+                  {success.trackingToken ? <div className={styles.trackingTokenBox}><span>Token de acompanhamento</span><strong>{success.trackingToken}</strong><Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.trackingToken ?? '')}>Copiar</Button></div> : null}
                   {success.paymentStatus === 'PENDING' && success.qrCodeText ? (
                     <div className={styles.pixBox}>
                       <strong>Aguardando pagamento PIX</strong>
                       <div className={styles.muted}>Expira em: {success.expiresAt ? new Date(success.expiresAt).toLocaleString('pt-BR') : '-'}</div>
                       {success.qrCode ? <img src={success.qrCode} alt="QR Code PIX" className={styles.qrImage} /> : null}
                       <div className={styles.breakText}>{success.qrCodeText}</div>
-                      <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.qrCodeText ?? '')}>Copiar codigo PIX</Button>
+                      <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.qrCodeText ?? '')}>Copiar código PIX</Button>
                     </div>
                   ) : null}
-
-                  <div className={styles.trackingBox}>
-                    <div className={styles.row}>
-                      <strong>Acompanhamento em tempo real</strong>
-                      <Badge tone="success">Atualiza automaticamente</Badge>
-                    </div>
-                    {trackingError ? <div className={styles.feedbackError}>{trackingError}</div> : null}
-                    {(tracking?.timeline ?? []).length > 0 ? (
-                      (tracking?.timeline ?? []).map((event) => (
-                        <div key={`${event.status}-${event.createdAt}`} className={styles.trackingStep}>
-                          <span />
-                          <div>
-                            <strong>{event.message}</strong>
-                            <small>{new Date(event.createdAt).toLocaleString('pt-BR')}</small>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className={styles.muted}>Buscando os primeiros eventos do pedido...</div>
-                    )}
-                  </div>
                 </div>
-              ) : null}
-
-              {!success ? (
-                <Button
-                  variant="primary"
-                  disabled={loading || checkoutBlocked || (paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago')}
-                  onClick={() => void handleCheckout()}
-                >
-                  {loading ? 'Finalizando...' : paymentMethod === 'CREDIT_CARD' && cardMode === 'mercadopago' ? 'Finalize pelo formulario do Mercado Pago' : 'Finalizar pedido'}
-                </Button>
               ) : null}
             </Card>
             </Card>
@@ -1103,7 +1394,3 @@ export default function DeliveryPage() {
       </main>
   );
 }
-
-
-
-

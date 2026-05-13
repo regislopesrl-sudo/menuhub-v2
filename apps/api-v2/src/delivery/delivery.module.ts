@@ -9,9 +9,10 @@ import { DeliveryAreaRepository } from './delivery-area.repository';
 import { PrismaService } from '../database/prisma.service';
 import { InMemoryRouteDistanceProvider, RouteDistanceService } from './route-distance.service';
 import { BranchLocationService } from './branch-location.service';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [ModulesModule],
+  imports: [ModulesModule, SettingsModule],
   controllers: [DeliveryController],
   providers: [
     DeliveryService,

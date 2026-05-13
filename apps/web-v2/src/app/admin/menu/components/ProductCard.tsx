@@ -119,7 +119,7 @@ export function ProductCard({
           </Button>
           <Button onClick={onVariations}>Variacoes</Button>
           <Button onClick={onAddons}>Editar adicionais</Button>
-          <Button onClick={onRecommendations}>Peca tambem</Button>
+          <Button onClick={onRecommendations}>IA Peca tambem</Button>
         </div>
       </div>
     </Card>

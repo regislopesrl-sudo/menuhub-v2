@@ -28,6 +28,17 @@ export interface CheckoutQuoteResponse {
   }>;
 }
 
+export interface DeliveryCepLookupResponse {
+  cep: string;
+  street: string;
+  complement: string;
+  district: string;
+  city: string;
+  state: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 export async function postCheckoutQuote(input: {
   companyId: string;
   branchId?: string;
@@ -69,6 +80,22 @@ export async function postCheckoutQuote(input: {
   }
 
   return (await res.json()) as CheckoutQuoteResponse;
+}
+
+export async function lookupDeliveryCep(cep: string): Promise<DeliveryCepLookupResponse> {
+  const digits = cep.replace(/\D/g, '').slice(0, 8);
+  const res = await fetch(`${API_BASE}/v2/delivery/cep/${digits}`, {
+    headers: {
+      Accept: 'application/json',
+      'x-channel': 'delivery',
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error((await safeReadError(res)) ?? 'CEP nao encontrado.');
+  }
+
+  return (await res.json()) as DeliveryCepLookupResponse;
 }
 
 async function safeReadError(res: Response): Promise<string | null> {
