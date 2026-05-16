@@ -11,10 +11,28 @@ import { ProcurementService } from './procurement.service';
 export class ProcurementController {
   constructor(private readonly procurementService: ProcurementService) {}
 
+  @Get('dashboard')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getDashboard(@CurrentContext() ctx: RequestContext) {
+    return this.procurementService.getDashboard(ctx);
+  }
+
+  @Get('fiscal-lookup/status')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getFiscalLookupStatus() {
+    return this.procurementService.getFiscalLookupStatus();
+  }
+
   @Get('suppliers')
   @RequirePermissions(TENANT_PERMISSIONS.SUPPLIERS_READ, TENANT_PERMISSIONS.SUPPLIERS_MANAGE)
   listSuppliers(@CurrentContext() ctx: RequestContext) {
     return this.procurementService.listSuppliers(ctx);
+  }
+
+  @Get('suppliers/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.SUPPLIERS_READ, TENANT_PERMISSIONS.SUPPLIERS_MANAGE)
+  getSupplier(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.getSupplier(ctx, id);
   }
 
   @Post('suppliers')
@@ -32,10 +50,22 @@ export class ProcurementController {
     return this.procurementService.updateSupplier(ctx, id, body);
   }
 
+  @Patch('suppliers/:id/status')
+  @RequirePermissions(TENANT_PERMISSIONS.SUPPLIERS_MANAGE)
+  updateSupplierStatus(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: { active: boolean }) {
+    return this.procurementService.updateSupplierStatus(ctx, id, body);
+  }
+
   @Get('purchase-orders')
   @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
   listPurchaseOrders(@CurrentContext() ctx: RequestContext) {
     return this.procurementService.listPurchaseOrders(ctx);
+  }
+
+  @Get('purchase-orders/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getPurchaseOrder(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.getPurchaseOrder(ctx, id);
   }
 
   @Post('purchase-orders')
@@ -94,6 +124,12 @@ export class ProcurementController {
     return this.procurementService.listReceipts(ctx);
   }
 
+  @Get('receipts/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getReceipt(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.procurementService.getReceipt(ctx, id);
+  }
+
   @Post('receipts/:id/conference')
   @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
   conferenceReceipt(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
@@ -110,6 +146,12 @@ export class ProcurementController {
   @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
   listPurchaseHistory(@CurrentContext() ctx: RequestContext, @Query('stockItemId') stockItemId: string) {
     return this.procurementService.listPurchaseHistory(ctx, stockItemId);
+  }
+
+  @Get('history/summary')
+  @RequirePermissions(TENANT_PERMISSIONS.PROCUREMENT_READ, TENANT_PERMISSIONS.PROCUREMENT_MANAGE)
+  getPurchaseHistorySummary(@CurrentContext() ctx: RequestContext, @Query('stockItemId') stockItemId: string) {
+    return this.procurementService.getPurchaseHistorySummary(ctx, stockItemId);
   }
 
   @Get('average-cost')
@@ -168,4 +210,3 @@ export class ProcurementController {
     return this.procurementService.confirmPurchaseDocumentStockEntry(ctx, id);
   }
 }
-
