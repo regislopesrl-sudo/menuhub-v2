@@ -1,5 +1,6 @@
 import type { MenuProduct } from '@/features/menu/menu.mock';
-import { fetchDeliveryMenu } from '@/features/menu/menu.api';
+import { fetchAdminMenu } from '@/features/menu/menu.api';
+import { listStockProductAvailability } from '@/features/stock/stock.api';
 import { apiFetch } from '@/lib/api-fetch';
 
 export type PdvPaymentMethod = 'CASH' | 'PIX' | 'CREDIT_CARD';
@@ -18,7 +19,7 @@ export interface PdvCheckoutPayload {
       price: number;
     }>;
   }>;
-  paymentMethod: PdvPaymentMethod;
+  paymentMethod?: PdvPaymentMethod;
   customer?: {
     name: string;
     phone: string;
@@ -128,7 +129,44 @@ export interface PdvSessionDivergence {
 }
 
 export async function fetchPdvMenu(input: { companyId: string; branchId?: string }): Promise<MenuProduct[]> {
-  return fetchDeliveryMenu(input);
+  const [menu, availability] = await Promise.all([
+    fetchAdminMenu(input),
+    listStockProductAvailability().catch(() => []),
+  ]);
+  const availabilityByProductId = new Map(availability.map((item) => [item.productId, item]));
+  return menu.map((product) => {
+    const stock = availabilityByProductId.get(product.id);
+    if (!stock) return product;
+    return {
+      ...product,
+      stockAvailabilityStatus: stock.availabilityStatus,
+      availableToSell: stock.availableToSell,
+      stockStatusLabel: pdvStockLabel(stock.availabilityStatus),
+      stockStatusMessage: pdvStockMessage(stock.availabilityStatus, stock.availableToSell),
+    };
+  });
+}
+
+function pdvStockLabel(status: NonNullable<MenuProduct['stockAvailabilityStatus']>) {
+  const labels: Record<NonNullable<MenuProduct['stockAvailabilityStatus']>, string> = {
+    available: 'Ativo',
+    low_stock: 'Baixo estoque',
+    out_of_stock: 'Sem estoque',
+    missing_recipe: 'Sem ficha',
+    recipe_without_stock_items: 'Ficha sem insumos',
+    not_controlled: 'Sem controle',
+  };
+  return labels[status] ?? 'Estoque';
+}
+
+function pdvStockMessage(status: NonNullable<MenuProduct['stockAvailabilityStatus']>, availableToSell?: number | null) {
+  if (status === 'available' || status === 'low_stock') {
+    return typeof availableToSell === 'number' ? `${availableToSell} disponiveis` : 'Disponivel';
+  }
+  if (status === 'out_of_stock') return 'Produto sem saldo tecnico.';
+  if (status === 'missing_recipe') return 'Configure a ficha tecnica.';
+  if (status === 'recipe_without_stock_items') return 'Ficha sem insumos de baixa.';
+  return 'Sem controle tecnico.';
 }
 
 export async function createPdvOrder(input: {

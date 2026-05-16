@@ -22,6 +22,13 @@ export interface FindManyOrdersFilters {
   createdTo?: Date;
 }
 
+type ProductCostSnapshot = {
+  theoreticalUnitCost: number;
+  source: 'RECIPE' | 'PRODUCT_COST_PRICE' | 'MISSING';
+  hasRecipe: boolean;
+  itemsWithoutCost: number;
+};
+
 @Injectable()
 export class OrderPrismaRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -36,14 +43,16 @@ export class OrderPrismaRepository {
       commandReference?: string;
       orderTypeOverride?: 'DELIVERY' | 'PICKUP';
       checkoutMetadata?: Record<string, unknown>;
+      customerAddressId?: string | null;
     },
   ) {
     const branchId = await this.resolveBranchId(ctx);
     const paymentReason = result.payment.reason ? String(result.payment.reason) : undefined;
-    const productStations = await this.readProductKitchenStations(
-      ctx.companyId,
-      result.order.items.map((item) => item.productId),
-    );
+    const productIds = result.order.items.map((item) => item.productId);
+    const [productStations, productCostSnapshots] = await Promise.all([
+      this.readProductKitchenStations(ctx.companyId, productIds),
+      this.readProductCostSnapshots(ctx.companyId, productIds),
+    ]);
     const customerSnapshot = result.order.customer
       ? {
           customer: {
@@ -61,6 +70,8 @@ export class OrderPrismaRepository {
           data: {
             companyId: ctx.companyId,
             branchId,
+            customerId: result.order.customerId ?? null,
+            customerAddressId: options?.customerAddressId ?? null,
             createdById: ctx.userId ?? null,
             orderNumber: this.buildOrderNumber(),
             publicTrackingToken: this.buildPublicTrackingToken(),
@@ -100,6 +111,7 @@ export class OrderPrismaRepository {
                 station: productStations.get(item.productId) ?? undefined,
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
+                theoreticalCostSnapshot: this.resolveTheoreticalCostSnapshot(productCostSnapshots.get(item.productId)),
                 totalPrice: calculateOrderItemTotal({
                   quantity: item.quantity,
                   unitPrice: item.unitPrice,
@@ -755,6 +767,89 @@ export class OrderPrismaRepository {
         .filter((product: { id: string; kitchenStation?: string | null }) => product.kitchenStation)
         .map((product: { id: string; kitchenStation: KitchenStation }) => [product.id, product.kitchenStation]),
     );
+  }
+
+  private async readProductCostSnapshots(
+    companyId: string,
+    productIds: Array<string | null | undefined>,
+  ): Promise<Map<string, ProductCostSnapshot>> {
+    const uniqueIds = Array.from(new Set(productIds.filter(Boolean) as string[]));
+    const productDelegate = (this.prisma as any).product;
+    if (uniqueIds.length === 0 || !productDelegate?.findMany) return new Map();
+
+    const products = await productDelegate.findMany({
+      where: {
+        companyId,
+        id: { in: uniqueIds },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        costPrice: true,
+        recipe: {
+          select: {
+            yieldQuantity: true,
+            lossPercent: true,
+            items: {
+              where: { affectsCost: true },
+              select: {
+                quantity: true,
+                stockItem: {
+                  select: {
+                    averageCost: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return new Map(
+      products.map((product: any) => {
+        const recipe = product.recipe;
+        const yieldQuantity = Number(recipe?.yieldQuantity ?? 1);
+        const lossPercent = Number(recipe?.lossPercent ?? 0);
+        let itemsWithoutCost = 0;
+        const grossCost = (recipe?.items ?? []).reduce((sum: number, item: any) => {
+          const averageCost = Number(item.stockItem?.averageCost ?? 0);
+          const quantity = Number(item.quantity ?? 0);
+          if (quantity > 0 && averageCost <= 0) itemsWithoutCost += 1;
+          return sum + quantity * averageCost;
+        }, 0);
+        const recipeCost = grossCost * (1 + lossPercent / 100);
+        const recipeUnitCost = yieldQuantity > 0 ? recipeCost / yieldQuantity : recipeCost;
+        const fallbackCost = Number(product.costPrice ?? 0);
+        const theoreticalUnitCost = recipeUnitCost > 0 ? recipeUnitCost : fallbackCost;
+        const source = recipeUnitCost > 0
+          ? 'RECIPE'
+          : fallbackCost > 0
+            ? 'PRODUCT_COST_PRICE'
+            : 'MISSING';
+
+        return [
+          product.id,
+          {
+            theoreticalUnitCost: this.money(theoreticalUnitCost),
+            source,
+            hasRecipe: Boolean(recipe),
+            itemsWithoutCost,
+          },
+        ] as const;
+      }),
+    );
+  }
+
+  private resolveTheoreticalCostSnapshot(snapshot?: ProductCostSnapshot): number | undefined {
+    if (!snapshot || snapshot.theoreticalUnitCost <= 0) return undefined;
+    return snapshot.theoreticalUnitCost;
+  }
+
+  private money(value: number): number {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) return 0;
+    return Number(parsed.toFixed(2));
   }
 
   private buildOrderNumber(): string {

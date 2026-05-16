@@ -85,6 +85,8 @@ export interface DeliveryCheckoutInput {
   customer: {
     name: string;
     phone: string;
+    birthDate?: string;
+    whatsappOptIn?: boolean;
   };
   deliveryAddress: {
     cep?: string;
@@ -130,7 +132,7 @@ export interface PdvCheckoutInput {
     }>;
   }>;
   couponCode?: string;
-  paymentMethod: string;
+  paymentMethod?: string;
   startInPreparation?: boolean;
 }
 

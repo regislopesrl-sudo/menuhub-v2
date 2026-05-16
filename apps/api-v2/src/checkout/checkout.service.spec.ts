@@ -30,7 +30,19 @@ describe('CheckoutService', () => {
     };
   }
 
-  function build(menuPort: MenuPort, quoteService: any, repo?: any, paymentsService?: any) {
+  function build(menuPort: MenuPort, quoteService: any, repo?: any, paymentsService?: any, stockService?: any) {
+    const prisma = {
+      customer: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cust_1' }),
+        update: jest.fn().mockResolvedValue({ id: 'cust_1' }),
+      },
+      customerAddress: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'addr_1' }),
+        update: jest.fn().mockResolvedValue({ id: 'addr_1' }),
+      },
+    };
     return new CheckoutService(
       menuPort,
       { authorizePayment: jest.fn().mockResolvedValue({ status: 'APPROVED', transactionId: 'txn_1' }) } as any,
@@ -40,6 +52,7 @@ describe('CheckoutService', () => {
           id: 'pix_1', provider: 'mock', providerPaymentId: 'mock_pix_1', method: 'PIX', status: 'PENDING', qrCode: 'data:image/png;base64,AAA', qrCodeText: '000201PIX', expiresAt: new Date().toISOString(),
         }),
       },
+      prisma as any,
       repo ?? {
         createOrder: jest.fn().mockResolvedValue({
           id: 'order_db',
@@ -51,6 +64,7 @@ describe('CheckoutService', () => {
       },
       { emitOrderCreated: jest.fn() } as any,
       { getOpenSessionOrThrow: jest.fn().mockResolvedValue({ id: 'session_1', branchId: 'branch_1' }) } as any,
+      stockService ?? { assertProductsAvailableForCheckout: jest.fn().mockResolvedValue({ available: true, blocked: [] }) } as any,
     );
   }
 
@@ -82,6 +96,18 @@ describe('CheckoutService', () => {
       { quoteByAddress: jest.fn().mockResolvedValue(quoteOk()) } as any,
       { createPixPayment: jest.fn() } as any,
       {
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'cust_1' }),
+          update: jest.fn().mockResolvedValue({ id: 'cust_1' }),
+        },
+        customerAddress: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'addr_1' }),
+          update: jest.fn().mockResolvedValue({ id: 'addr_1' }),
+        },
+      } as any,
+      {
         createOrder: jest.fn().mockResolvedValue({
           id: 'order_db',
           orderNumber: 'V2-1',
@@ -92,6 +118,7 @@ describe('CheckoutService', () => {
       } as any,
       { emitOrderCreated: jest.fn() } as any,
       { getOpenSessionOrThrow: jest.fn().mockResolvedValue({ id: 'session_1', branchId: 'branch_1' }) } as any,
+      { assertProductsAvailableForCheckout: jest.fn().mockResolvedValue({ available: true, blocked: [] }) } as any,
     );
 
     const result = await service.runDeliveryCheckout({ companyId: 'company_a', storeId: 'store_1', channel: 'delivery', customer: { name: 'Maria', phone: '1199' }, deliveryAddress: { cep: '01001000', street: 'Rua', number: '10', neighborhood: 'Centro' }, items: [{ productId: 'p1', quantity: 1 }], paymentMethod: 'DENY' }, ctx);
@@ -106,6 +133,21 @@ describe('CheckoutService', () => {
     const service = build(menuPort, { quoteByAddress: jest.fn().mockResolvedValue(quoteOk({ available: false, message: 'Endereco fora da area de entrega' })) });
 
     await expect(service.quoteDeliveryCheckout({ storeId: 'store_1', items: [{ productId: 'p1', quantity: 1 }], deliveryAddress: { cep: '01001000', number: '10' } }, ctx)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('bloqueia quote quando estoque tecnico nao atende o carrinho', async () => {
+    const menuPort: MenuPort = {
+      validateItems: jest.fn().mockResolvedValue({ storeId: 'store_1', items: [{ productId: 'p1', name: 'Pizza', quantity: 2, unitPrice: 40, selectedOptions: [] }] }),
+    };
+    const stockService = {
+      assertProductsAvailableForCheckout: jest.fn().mockRejectedValue(new BadRequestException('Estoque insuficiente para Pizza: solicitado 2, disponivel 1.')),
+    };
+    const service = build(menuPort, { quoteByAddress: jest.fn().mockResolvedValue(quoteOk()) }, undefined, undefined, stockService);
+
+    await expect(service.quoteDeliveryCheckout({ storeId: 'store_1', items: [{ productId: 'p1', quantity: 2 }], deliveryAddress: { cep: '01001000', number: '10' } }, ctx)).rejects.toBeInstanceOf(BadRequestException);
+    expect(stockService.assertProductsAvailableForCheckout).toHaveBeenCalledWith(ctx, [
+      expect.objectContaining({ productId: 'p1', quantity: 2 }),
+    ]);
   });
 
   it('PDV cria pedido com pagamento imediato aprovado', async () => {
@@ -142,6 +184,36 @@ describe('CheckoutService', () => {
       undefined,
       expect.objectContaining({ pdvSessionId: 'session_1' }),
     );
+  });
+
+  it('PDV nao persiste pedido quando produto controlado nao tem saldo disponivel', async () => {
+    const menuPort: MenuPort = {
+      validateItems: jest.fn().mockResolvedValue({
+        storeId: 'pdv_store',
+        items: [{ productId: 'p1', name: 'X-Burger', quantity: 3, unitPrice: 25, selectedOptions: [] }],
+      }),
+    };
+    const repo = {
+      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-1', status: 'CONFIRMED' }),
+      attachPaymentIntent: jest.fn(),
+    };
+    const stockService = {
+      assertProductsAvailableForCheckout: jest.fn().mockRejectedValue(new BadRequestException('Estoque insuficiente para X-Burger: solicitado 3, disponivel 1.')),
+    };
+    const service = build(menuPort, { quoteByAddress: jest.fn() }, repo, undefined, stockService);
+
+    await expect(service.runPdvCheckout(
+      {
+        companyId: 'company_a',
+        channel: 'pdv',
+        storeId: 'pdv_store',
+        items: [{ productId: 'p1', quantity: 3 }],
+        paymentMethod: 'CASH',
+      },
+      ctx,
+    )).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(repo.createOrder).not.toHaveBeenCalled();
   });
 
   it('PDV pode iniciar direto em preparo para aparecer no KDS', async () => {

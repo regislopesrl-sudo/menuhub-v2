@@ -9,9 +9,12 @@ import { OrdersEventsService } from '../orders/orders-events.service';
 import { DeliveryQuoteService } from '../delivery/delivery-quote.service';
 import { PaymentsService } from '../payments/payments.service';
 import { PdvService } from '../pdv/pdv.service';
+import { PrismaService } from '../database/prisma.service';
+import { StockService } from '../stock/stock.service';
 
-type PdvCheckoutInputExtended = Omit<PdvCheckoutInput, 'channel'> & {
+type PdvCheckoutInputExtended = Omit<PdvCheckoutInput, 'channel' | 'paymentMethod'> & {
   channel: 'pdv' | 'waiter_app';
+  paymentMethod?: string;
   saleType?: 'COUNTER' | 'TABLE' | 'COMMAND';
   commandReference?: string;
 };
@@ -43,6 +46,15 @@ export interface CheckoutQuoteOutput {
   }>;
 }
 
+type DeliveryCheckoutCustomerInput = DeliveryCheckoutInput['customer'] & {
+  birthDate?: string;
+  whatsappOptIn?: boolean;
+};
+
+type DeliveryCheckoutInputWithCustomer = Omit<DeliveryCheckoutInput, 'customer'> & {
+  customer: DeliveryCheckoutCustomerInput;
+};
+
 @Injectable()
 export class CheckoutService {
   constructor(
@@ -50,9 +62,11 @@ export class CheckoutService {
     private readonly paymentPort: PaymentPortMock,
     private readonly deliveryQuoteService: DeliveryQuoteService,
     private readonly paymentsService: PaymentsService,
+    private readonly prisma: PrismaService,
     private readonly orderRepository: OrderPrismaRepository,
     private readonly ordersEvents: OrdersEventsService,
     private readonly pdvService: PdvService,
+    private readonly stockService: StockService,
   ) {}
 
   async quoteDeliveryCheckout(input: CheckoutQuoteInput, ctx: RequestContext): Promise<CheckoutQuoteOutput> {
@@ -64,6 +78,7 @@ export class CheckoutService {
       channel: input.channel ?? 'delivery',
       items: input.items,
     });
+    await this.stockService.assertProductsAvailableForCheckout(ctx, validated.items);
 
     const subtotal = validated.items.reduce((sum, item) => {
       const optionsTotal = (item.selectedOptions ?? []).reduce((acc, option) => acc + option.price, 0);
@@ -122,10 +137,11 @@ export class CheckoutService {
     };
   }
 
-  async runDeliveryCheckout(input: DeliveryCheckoutInput, ctx: RequestContext): Promise<CheckoutResult> {
+  async runDeliveryCheckout(input: DeliveryCheckoutInputWithCustomer, ctx: RequestContext): Promise<CheckoutResult> {
     const fulfillmentType = input.fulfillmentType === 'TAKEOUT' ? 'TAKEOUT' : 'DELIVERY';
     this.validateCustomerAndAddress(input, fulfillmentType);
     this.validateScheduledAt(input.scheduledAt);
+    const customerId = await this.upsertDeliveryCustomer(input, ctx);
 
     const preview =
       fulfillmentType === 'TAKEOUT'
@@ -142,11 +158,16 @@ export class CheckoutService {
             },
             ctx,
           );
+    const customerAddressId =
+      fulfillmentType === 'DELIVERY' && customerId
+        ? await this.upsertDeliveryCustomerAddress(input, customerId, preview?.deliveryQuote?.areaId ?? null)
+        : null;
 
     const checkoutResult = await orderCore.checkout(
       {
         ...input,
         companyId: ctx.companyId,
+        customerId,
         deliveryFee: preview?.deliveryFee ?? 0,
       },
       {
@@ -154,13 +175,17 @@ export class CheckoutService {
         paymentPort: this.paymentPort as PaymentPort,
       },
     );
+    await this.stockService.assertProductsAvailableForCheckout(ctx, checkoutResult.order.items);
 
     const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, preview?.deliveryQuote, {
       orderTypeOverride: fulfillmentType === 'TAKEOUT' ? 'PICKUP' : 'DELIVERY',
       checkoutMetadata: {
         fulfillmentType,
         scheduledAt: input.scheduledAt ?? null,
+        customerBirthDate: input.customer.birthDate ?? null,
+        customerWhatsappOptIn: input.customer.whatsappOptIn ?? null,
       },
+      customerAddressId,
     });
     try {
       await this.ordersEvents.emitOrderCreated(
@@ -174,6 +199,7 @@ export class CheckoutService {
     } catch {
       // emitter non-blocking by design
     }
+    await this.consumeStockIfCreatedInOperationalStatus(persisted, ctx);
 
     if (input.paymentMethod.toUpperCase() === 'PIX') {
       const pix = await this.paymentsService.createPixPayment(
@@ -228,6 +254,7 @@ export class CheckoutService {
       channel: input.channel,
       items: input.items,
     });
+    await this.stockService.assertProductsAvailableForCheckout(ctx, validated.items);
 
     const draft = orderCore.createOrder({
       channel: input.channel,
@@ -245,7 +272,11 @@ export class CheckoutService {
       couponCode: input.couponCode,
     });
 
-    const payment = this.buildImmediatePdvPayment(input.paymentMethod, discounted.id);
+    const pdvOrderType = input.saleType === 'TABLE' ? 'TABLE' : input.saleType === 'COMMAND' ? 'COMMAND' : 'COUNTER';
+    const isDeferredPdvPayment = pdvOrderType === 'TABLE' || pdvOrderType === 'COMMAND';
+    const payment = isDeferredPdvPayment
+      ? this.buildDeferredPdvPayment(pdvOrderType)
+      : this.buildImmediatePdvPayment(input.paymentMethod ?? 'CASH', discounted.id);
     const targetStatus = input.startInPreparation ? 'PREPARING' : 'CONFIRMED';
     const finalOrder = orderCore.updateStatus(
       discounted,
@@ -257,7 +288,6 @@ export class CheckoutService {
     };
 
     const session = await this.pdvService.getOpenSessionOrThrow(ctx);
-    const pdvOrderType = input.saleType === 'TABLE' ? 'TABLE' : input.saleType === 'COMMAND' ? 'COMMAND' : 'COUNTER';
     const persisted = await this.orderRepository.createOrder(checkoutResult, ctx, undefined, {
       pdvSessionId: session.id,
       pdvOrderType,
@@ -275,6 +305,7 @@ export class CheckoutService {
     } catch {
       // emitter non-blocking by design
     }
+    await this.consumeStockIfCreatedInOperationalStatus(persisted, ctx);
 
     let response: CheckoutResult = {
       ...checkoutResult,
@@ -284,7 +315,7 @@ export class CheckoutService {
       },
     };
 
-    if (input.paymentMethod.toUpperCase() === 'PIX') {
+    if (!isDeferredPdvPayment && input.paymentMethod?.toUpperCase() === 'PIX') {
       const pix = await this.paymentsService.createPixPayment(
         {
           id: persisted.id,
@@ -311,6 +342,38 @@ export class CheckoutService {
     }
 
     return response;
+  }
+
+  private async consumeStockIfCreatedInOperationalStatus(
+    order: { id: string; status?: string | null },
+    ctx: RequestContext,
+  ) {
+    if (!this.shouldConsumeStockOnCreatedStatus(order.status)) return;
+    const consumeByOrder = (this.stockService as any).consumeByOrder;
+    if (typeof consumeByOrder !== 'function') return;
+
+    try {
+      await consumeByOrder.call(this.stockService, ctx, order.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha desconhecida na baixa automatica de estoque.';
+      const addInternalNote = (this.orderRepository as any).addInternalNote;
+      if (typeof addInternalNote !== 'function') return;
+      try {
+        await addInternalNote.call(this.orderRepository, order.id, ctx, `Falha na baixa automatica de estoque: ${message}`);
+      } catch {
+        // best effort; checkout must not fail because of the audit note
+      }
+    }
+  }
+
+  private shouldConsumeStockOnCreatedStatus(status?: string | null): boolean {
+    return (
+      status === 'IN_PREPARATION' ||
+      status === 'READY' ||
+      status === 'OUT_FOR_DELIVERY' ||
+      status === 'DELIVERED' ||
+      status === 'FINALIZED'
+    );
   }
 
   private validateQuoteInput(input: CheckoutQuoteInput): void {
@@ -363,16 +426,148 @@ export class CheckoutService {
     }
   }
 
-  private validatePdvInput(input: PdvCheckoutInput): void {
+  private async upsertDeliveryCustomer(input: DeliveryCheckoutInputWithCustomer, ctx: RequestContext): Promise<string | undefined> {
+    const phone = this.normalizePhone(input.customer.phone);
+    const name = input.customer.name.trim();
+    const birthDate = this.parseOptionalDate(input.customer.birthDate, 'Data de nascimento invalida.');
+    const whatsapp = input.customer.whatsappOptIn === false ? null : phone;
+
+    const existing = input.customerId
+      ? await this.prisma.customer.findFirst({
+          where: {
+            id: input.customerId,
+            companyId: ctx.companyId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        })
+      : await this.prisma.customer.findFirst({
+          where: {
+            companyId: ctx.companyId,
+            deletedAt: null,
+            OR: [{ phone }, { whatsapp: phone }],
+          },
+          select: { id: true },
+        });
+
+    if (existing) {
+      const updated = await this.prisma.customer.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          phone,
+          whatsapp,
+          ...(birthDate ? { birthDate } : {}),
+        },
+        select: { id: true },
+      });
+      return updated.id;
+    }
+
+    const created = await this.prisma.customer.create({
+      data: {
+        companyId: ctx.companyId,
+        name,
+        phone,
+        whatsapp,
+        ...(birthDate ? { birthDate } : {}),
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  private async upsertDeliveryCustomerAddress(
+    input: DeliveryCheckoutInputWithCustomer,
+    customerId: string,
+    deliveryAreaId: string | null,
+  ): Promise<string | null> {
+    const address = input.deliveryAddress;
+    const zipCode = address.cep?.trim() ?? null;
+    const street = address.street.trim();
+    const number = address.number.trim();
+    const district = address.neighborhood.trim();
+    const { city, state } = this.parseCityState(address.city);
+
+    const existing = await this.prisma.customerAddress.findFirst({
+      where: {
+        customerId,
+        zipCode,
+        street,
+        number,
+      },
+      select: { id: true },
+    });
+
+    const data = {
+      deliveryAreaId,
+      label: 'Entrega',
+      zipCode,
+      street,
+      number,
+      district,
+      city,
+      state,
+      reference: address.reference?.trim() || null,
+      isDefault: true,
+    };
+
+    if (existing) {
+      const updated = await this.prisma.customerAddress.update({
+        where: { id: existing.id },
+        data,
+        select: { id: true },
+      });
+      return updated.id;
+    }
+
+    const created = await this.prisma.customerAddress.create({
+      data: {
+        customerId,
+        ...data,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  private validatePdvInput(input: PdvCheckoutInputExtended): void {
     if (!input.storeId?.trim()) {
       throw new BadRequestException('storeId e obrigatorio.');
     }
     if (!input.items?.length) {
       throw new BadRequestException('Carrinho vazio: informe ao menos um item.');
     }
-    if (!input.paymentMethod?.trim()) {
+    const saleType = input.saleType === 'TABLE' || input.saleType === 'COMMAND' ? input.saleType : 'COUNTER';
+    if (saleType === 'COUNTER' && !input.paymentMethod?.trim()) {
       throw new BadRequestException('paymentMethod e obrigatorio.');
     }
+    if ((saleType === 'TABLE' || saleType === 'COMMAND') && !input.commandReference?.trim()) {
+      throw new BadRequestException(saleType === 'TABLE' ? 'Informe a mesa.' : 'Informe a comanda.');
+    }
+  }
+
+  private normalizePhone(value: string): string {
+    return value.replace(/\D/g, '');
+  }
+
+  private parseOptionalDate(value: string | undefined, message: string): Date | undefined {
+    if (!value?.trim()) return undefined;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(message);
+    }
+    return parsed;
+  }
+
+  private parseCityState(value: string | undefined): { city: string; state: string } {
+    const raw = value?.trim();
+    if (!raw) return { city: 'Nao informado', state: 'NA' };
+    const [cityPart, statePart] = raw.split('/').map((part) => part.trim()).filter(Boolean);
+    return {
+      city: cityPart || raw,
+      state: (statePart || 'NA').slice(0, 2).toUpperCase(),
+    };
   }
 
   private buildImmediatePdvPayment(method: string, orderId: string): CheckoutResult['payment'] {
@@ -387,6 +582,15 @@ export class CheckoutService {
       status: 'APPROVED',
       transactionId: `pdv_txn_${orderId}`,
       method: this.mapPdvPaymentMethod(method),
+    };
+  }
+
+  private buildDeferredPdvPayment(saleType: 'TABLE' | 'COMMAND'): CheckoutResult['payment'] {
+    return {
+      status: 'PENDING',
+      reason: saleType === 'TABLE'
+        ? 'Pagamento sera realizado no fechamento da mesa.'
+        : 'Pagamento sera realizado no fechamento da comanda.',
     };
   }
 

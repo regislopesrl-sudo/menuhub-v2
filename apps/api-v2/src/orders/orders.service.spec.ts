@@ -31,7 +31,7 @@ describe('OrdersService', () => {
     return new OrdersService(
       repository,
       eventsMock ?? { emitOrderStatusUpdated: jest.fn() },
-      stockMock ?? { consumeByOrder: jest.fn() },
+      stockMock ?? { consumeByOrder: jest.fn(), releaseOrderConsumption: jest.fn() },
     );
   }
 
@@ -364,9 +364,15 @@ describe('OrdersService', () => {
         items: [],
       }),
     } as any;
-    const service = createService(repoMock);
+    const stockMock = { consumeByOrder: jest.fn(), releaseOrderConsumption: jest.fn() };
+    const service = createService(repoMock, undefined, stockMock);
     const result = await service.cancelOrder('order_1', { reasonCode: 'customer_request' }, ctxBase);
     expect(result.status).toBe('CANCELED');
+    expect(stockMock.releaseOrderConsumption).toHaveBeenCalledWith(
+      ctxBase,
+      'order_1',
+      expect.objectContaining({ reasonCode: 'order_canceled' }),
+    );
   });
 
   it('adiciona observacao interna', async () => {
