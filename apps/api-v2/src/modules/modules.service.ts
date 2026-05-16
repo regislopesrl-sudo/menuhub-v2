@@ -230,7 +230,7 @@ export class ModulesService {
         return {
           companyId,
           moduleKey: moduleDef.key,
-          enabled: fromPlan ? override : false,
+          enabled: override,
           adminOnly: moduleDef.adminOnly,
           enabledByDefault: moduleDef.enabledByDefault,
           source: 'company_override',
@@ -322,19 +322,6 @@ export class ModulesService {
     const subscription = await this.resolveActiveSubscription(input.companyId);
     if (!subscription) {
       throw new BadRequestException('Empresa sem assinatura ativa para aplicar override.');
-    }
-
-    const planHasModule = await this.prisma.planModule.findFirst({
-      where: {
-        planId: subscription.planId,
-        moduleKey: input.moduleKey,
-        enabled: true,
-      },
-      select: { id: true },
-    });
-
-    if (input.enabled && !planHasModule) {
-      throw new BadRequestException(`Modulo '${input.moduleKey}' nao esta disponivel no plano atual da empresa.`);
     }
 
     await this.prisma.companyModuleOverride.upsert({

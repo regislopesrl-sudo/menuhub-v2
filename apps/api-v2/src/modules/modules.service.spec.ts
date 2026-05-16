@@ -2,7 +2,7 @@
 import { ModulesService } from './modules.service';
 
 describe('ModulesService', () => {
-  it('plano controla modulos e bloqueia modulo fora do plano', async () => {
+  it('plano controla modulos e permite override developer fora do plano', async () => {
     const prismaMock = {
       plan: { findMany: jest.fn() },
       companySubscription: {
@@ -11,7 +11,10 @@ describe('ModulesService', () => {
           plan: { key: 'basic' },
         }),
       },
-      companyModuleOverride: { findMany: jest.fn().mockResolvedValue([]) },
+      companyModuleOverride: {
+        findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValue([{ moduleKey: 'whatsapp', enabled: true }]),
+        upsert: jest.fn().mockResolvedValue({ companyId: 'c1', moduleKey: 'whatsapp', enabled: true }),
+      },
       planModule: {
         findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -22,9 +25,13 @@ describe('ModulesService', () => {
     const result = await service.checkAccess({ companyId: 'c1', moduleKey: 'orders', isAdmin: false });
     expect(result.allowed).toBe(true);
 
-    await expect(
-      service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'whatsapp', enabled: true }),
-    ).rejects.toThrow(BadRequestException);
+    const override = await service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'whatsapp', enabled: true });
+    expect(override.enabled).toBe(true);
+    expect(prismaMock.companyModuleOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { companyId_moduleKey: { companyId: 'c1', moduleKey: 'whatsapp' } },
+      }),
+    );
   });
 
   it('override developer funciona para desabilitar modulo do plano', async () => {
