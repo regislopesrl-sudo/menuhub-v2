@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrdersModule } from '../orders/orders.module';
+import { ModulesModule } from '../modules/modules.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { MercadoPagoPixProvider } from './providers/mercado-pago-pix.provider';
@@ -13,7 +14,7 @@ export function resolvePaymentProviderFromEnv(): 'mock' | 'mercadopago' {
 }
 
 @Module({
-  imports: [OrdersModule],
+  imports: [OrdersModule, ModulesModule],
   controllers: [PaymentsController],
   providers: [
     PaymentsService,

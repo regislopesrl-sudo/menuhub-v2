@@ -21,7 +21,7 @@ export interface PdvCheckoutRequestBody {
     }>;
   }>;
   couponCode?: string;
-  paymentMethod: string;
+  paymentMethod?: string;
   startInPreparation?: boolean;
 }
 

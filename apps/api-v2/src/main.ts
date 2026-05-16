@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 function loadEnvFile(path: string) {
@@ -36,7 +37,10 @@ function loadLocalEnv() {
 
 async function bootstrap() {
   loadLocalEnv();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const bodyLimit = process.env.REQUEST_BODY_LIMIT ?? '20mb';
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { extended: true, limit: bodyLimit });
   const corsOrigin = (process.env.CORS_ORIGIN ?? '*')
     .split(',')
     .map((item) => item.trim())

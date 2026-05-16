@@ -64,6 +64,18 @@ export const TENANT_PERMISSIONS = {
   SUPPLIERS_MANAGE: 'suppliers.manage',
   FINANCE_READ: 'finance.read',
   FINANCE_MANAGE: 'finance.manage',
+  FINANCE_REPORTS: 'finance.reports',
+  FINANCE_RECONCILE: 'finance.reconcile',
+  ACCOUNTS_PAYABLE_READ: 'accounts_payable.read',
+  ACCOUNTS_PAYABLE_MANAGE: 'accounts_payable.manage',
+  ACCOUNTS_RECEIVABLE_READ: 'accounts_receivable.read',
+  ACCOUNTS_RECEIVABLE_MANAGE: 'accounts_receivable.manage',
+  CASH_FLOW_READ: 'cash_flow.read',
+  DRE_READ: 'dre.read',
+  CMV_READ: 'cmv.read',
+  CMV_MANAGE: 'cmv.manage',
+  FINANCIAL_CATEGORIES_MANAGE: 'financial_categories.manage',
+  COST_CENTERS_MANAGE: 'cost_centers.manage',
 } as const;
 
 export type TenantPermission = (typeof TENANT_PERMISSIONS)[keyof typeof TENANT_PERMISSIONS];

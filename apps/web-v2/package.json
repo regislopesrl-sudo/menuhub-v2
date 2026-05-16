@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3112",
-    "build": "next build",
+    "build": "node scripts/next-build.mjs",
     "start": "next start --port 3111",
     "start:pwa": "next start --port 3112",
     "typecheck": "tsc -p tsconfig.json --noEmit",
