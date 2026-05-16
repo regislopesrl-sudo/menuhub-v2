@@ -147,6 +147,92 @@
   margin-top: 14px;
 }
 
+.salesHistoryPanel {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #eff6ff, #ffffff 58%, #ecfeff);
+  display: grid;
+  gap: 14px;
+}
+
+.salesHistoryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.salesHistoryHeader span {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.salesHistoryHeader h3 {
+  margin: 3px 0 4px;
+  color: var(--text);
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+
+.salesHistoryHeader p,
+.salesHistoryMessage {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.salesHistoryActions {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.salesHistoryMessage {
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.salesHistoryList {
+  display: grid;
+  gap: 8px;
+}
+
+.salesHistoryList > span {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.salesHistoryRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.salesHistoryRow strong,
+.salesHistoryRow small {
+  display: block;
+}
+
+.salesHistoryRow small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.salesHistoryRow > div:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
 .toggle,
 .inlineToggle {
   display: inline-flex;
@@ -311,6 +397,20 @@
 
   .cepLookupRow {
     grid-template-columns: 1fr;
+  }
+
+  .salesHistoryHeader,
+  .salesHistoryRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .salesHistoryActions {
+    grid-template-columns: 1fr;
+  }
+
+  .salesHistoryRow > div:last-child {
+    text-align: left;
   }
 }
 

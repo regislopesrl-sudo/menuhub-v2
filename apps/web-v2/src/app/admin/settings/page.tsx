@@ -17,11 +17,15 @@ import {
   getCompanySettings,
   getOperationSettings,
   getPaymentSettings,
+  downloadBranchSalesHistoryTemplate,
+  listBranchSalesHistoryImports,
   lookupBranchAddressByCep,
   patchBranchSettings,
   patchCompanySettings,
   patchOperationSettings,
   patchPaymentSettings,
+  uploadBranchSalesHistory,
+  type BranchSalesHistoryImport,
   type BranchCepLookupResponse,
   type BranchSettingsResponse,
   type CompanySettingsResponse,
@@ -87,6 +91,11 @@ export default function AdminSettingsPage() {
   const [cepLookupStatus, setCepLookupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [cepLookupMessage, setCepLookupMessage] = useState<string | null>(null);
   const [lastCepLookup, setLastCepLookup] = useState('');
+  const [salesHistoryImports, setSalesHistoryImports] = useState<BranchSalesHistoryImport[]>([]);
+  const [salesHistoryFile, setSalesHistoryFile] = useState<File | null>(null);
+  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [salesHistoryAction, setSalesHistoryAction] = useState<'template' | 'templateReal' | 'validate' | 'import' | 'validateReal' | 'importReal' | null>(null);
+  const [salesHistoryMessage, setSalesHistoryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -126,6 +135,11 @@ export default function AdminSettingsPage() {
       void lookupBranchCep(digits);
     }
   }, [activeTab, branch?.zipCode]);
+
+  useEffect(() => {
+    if (!branch?.branchId) return;
+    void loadSalesHistoryImports(branch.branchId);
+  }, [branch?.branchId]);
 
   const kpis = useMemo(() => {
     const openDays = operation?.schedules.filter((item) => item.isOpen).length ?? 0;
@@ -268,6 +282,83 @@ export default function AdminSettingsPage() {
     } catch (err) {
       setCepLookupStatus('error');
       setCepLookupMessage(err instanceof Error ? err.message : 'Nao foi possivel consultar o CEP.');
+    }
+  }
+
+  async function loadSalesHistoryImports(branchId: string) {
+    setSalesHistoryLoading(true);
+    try {
+      const response = await listBranchSalesHistoryImports(undefined, branchId);
+      setSalesHistoryImports(response.items);
+      setSalesHistoryMessage(null);
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Nao foi possivel carregar historico de importacoes.');
+    } finally {
+      setSalesHistoryLoading(false);
+    }
+  }
+
+  async function handleSalesHistoryTemplateDownload(target: 'history' | 'real' = 'history') {
+    if (!branch) return;
+    setSalesHistoryAction(target === 'real' ? 'templateReal' : 'template');
+    setSalesHistoryMessage(null);
+    try {
+      const blob = await downloadBranchSalesHistoryTemplate(undefined, branch.branchId, target);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = target === 'real' ? 'vendas-reais-operacionais.csv' : 'vendas-historicas-24-meses.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 250);
+      setSalesHistoryMessage(target === 'real' ? 'Modelo de importacao real gerado.' : 'Modelo CSV gerado.');
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Falha ao gerar modelo CSV.');
+    } finally {
+      setSalesHistoryAction(null);
+    }
+  }
+
+  async function handleSalesHistoryUpload(mode: 'validate' | 'import' | 'validateReal' | 'importReal') {
+    if (!branch) return;
+    if (!salesHistoryFile) {
+      setSalesHistoryMessage('Selecione um arquivo CSV de vendas.');
+      return;
+    }
+    if (mode === 'importReal') {
+      const confirmed = window.confirm(
+        'Importar no real cria pedidos, pagamentos e pode baixar estoque dos produtos vinculados por product_id ou product_sku. Deseja continuar?',
+      );
+      if (!confirmed) return;
+    }
+    setSalesHistoryAction(mode);
+    setSalesHistoryMessage(null);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const apiMode = mode === 'validateReal' ? 'validate-real' : mode === 'importReal' ? 'import-real' : mode;
+      const result = await uploadBranchSalesHistory(undefined, branch.branchId, salesHistoryFile, apiMode);
+      setSalesHistoryImports((current) => [result, ...current.filter((item) => item.id !== result.id)].slice(0, 30));
+      setSuccessMessage(
+        mode === 'validate'
+          ? 'Arquivo validado e registrado como pre-visualizacao.'
+          : mode === 'validateReal'
+            ? 'Arquivo validado para importacao real de pedidos.'
+            : mode === 'importReal'
+              ? 'Vendas importadas como pedidos reais.'
+              : 'Vendas historicas importadas para o BI.',
+      );
+      setSalesHistoryMessage(
+        `${result.validRows} linha(s) valida(s), ${result.invalidRows} invalida(s). Status: ${salesHistoryStatusLabel(result.status)}.`,
+      );
+      if (mode === 'import' || mode === 'importReal') {
+        setSalesHistoryFile(null);
+      }
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Falha ao processar vendas historicas.');
+    } finally {
+      setSalesHistoryAction(null);
     }
   }
 
@@ -611,6 +702,97 @@ export default function AdminSettingsPage() {
             <Toggle checked={branch.isOpen} label="Loja aberta" onChange={(checked) => setBranch({ ...branch, isOpen: checked })} />
             <Toggle checked={branch.isActive} label="Filial ativa" onChange={(checked) => setBranch({ ...branch, isActive: checked })} />
           </div>
+          <section className={styles.salesHistoryPanel}>
+            <div className={styles.salesHistoryHeader}>
+              <div>
+                <span>Vendas historicas da filial</span>
+                <h3>Upload dos ultimos 24 meses</h3>
+                <p>
+                  Importe vendas antigas para alimentar os relatorios BI sem criar pedidos reais, estoque, financeiro,
+                  KDS ou notificacoes.
+                </p>
+                <p>
+                  Para importar no real, use product_id ou product_sku nas linhas dos itens. Assim o sistema cria pedidos,
+                  registra pagamento e baixa estoque pela ficha tecnica quando houver produto vinculado.
+                </p>
+              </div>
+              <Badge tone={salesHistoryImports.some((item) => item.status === 'COMPLETED') ? 'success' : 'warning'}>
+                {salesHistoryImports.length} importacao(oes)
+              </Badge>
+            </div>
+            <div className={styles.salesHistoryActions}>
+              <Button type="button" onClick={() => void handleSalesHistoryTemplateDownload()} disabled={salesHistoryAction === 'template'}>
+                {salesHistoryAction === 'template' ? 'Gerando...' : 'Baixar modelo CSV'}
+              </Button>
+              <Button type="button" onClick={() => void handleSalesHistoryTemplateDownload('real')} disabled={salesHistoryAction === 'templateReal'}>
+                {salesHistoryAction === 'templateReal' ? 'Gerando...' : 'Modelo real'}
+              </Button>
+              <input
+                className={styles.fileInput}
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(event) => setSalesHistoryFile(event.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button"
+                onClick={() => void handleSalesHistoryUpload('validate')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'validate' ? 'Validando...' : 'Validar arquivo'}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void handleSalesHistoryUpload('import')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'import' ? 'Importando...' : 'Importar vendas'}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleSalesHistoryUpload('validateReal')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'validateReal' ? 'Validando...' : 'Validar real'}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void handleSalesHistoryUpload('importReal')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'importReal' ? 'Importando...' : 'Importar no real'}
+              </Button>
+            </div>
+            {salesHistoryMessage ? <p className={styles.salesHistoryMessage}>{salesHistoryMessage}</p> : null}
+            <div className={styles.salesHistoryList}>
+              {salesHistoryLoading ? (
+                <span>Carregando importacoes...</span>
+              ) : salesHistoryImports.length === 0 ? (
+                <span>Nenhuma importacao historica registrada para esta filial.</span>
+              ) : (
+                salesHistoryImports.slice(0, 4).map((item) => (
+                  <div key={item.id} className={styles.salesHistoryRow}>
+                    <div>
+                      <strong>{item.fileName}</strong>
+                      <small>
+                        {item.summary?.source === 'IMPORTED_REAL_ORDERS' ? 'Real' : 'BI'} | {salesHistoryStatusLabel(item.status)} | {item.validRows} validas | {item.invalidRows} com erro
+                      </small>
+                      {item.summary?.source === 'IMPORTED_REAL_ORDERS' ? (
+                        <small>
+                          {item.summary.orderGroups ?? item.createdCount} pedido(s) | {item.summary.stockConsumedOrders ?? 0} baixa(s) | {item.summary.stockWarnings ?? item.summary.warningCount ?? 0} alerta(s)
+                        </small>
+                      ) : null}
+                    </div>
+                    <div>
+                      <strong>{money(item.summary?.netAmount ?? 0)}</strong>
+                      <small>{formatShortDate(item.createdAt)}</small>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </Card>
       ) : null}
 
@@ -1110,6 +1292,25 @@ function isScheduleValid(entry: OperationSettingsResponse['schedules'][number]) 
 function timeToMinutes(value: string) {
   const [hour, minute] = value.split(':').map(Number);
   return hour * 60 + minute;
+}
+
+function salesHistoryStatusLabel(status: BranchSalesHistoryImport['status']) {
+  const labels: Record<BranchSalesHistoryImport['status'], string> = {
+    PREVIEWED: 'Validado',
+    PROCESSING: 'Processando',
+    COMPLETED: 'Importado',
+    COMPLETED_WITH_ERRORS: 'Importado com alertas',
+    FAILED: 'Falhou',
+  };
+  return labels[status] ?? status;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function money(value: number) {
