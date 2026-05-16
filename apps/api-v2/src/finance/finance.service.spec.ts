@@ -5,6 +5,27 @@ describe('FinanceService', () => {
   const ctx = { companyId: 'company_1', branchId: 'branch_1', userId: 'user_1', userRole: 'finance', requestId: 'req_1' } as any;
 
   function build() {
+    const categories = [
+      { id: 'compras', parentId: null, companyId: 'company_1', type: 'EXPENSE', name: 'Compras', description: null, status: 'ACTIVE', sortOrder: 10 },
+      { id: 'vendas', parentId: null, companyId: 'company_1', type: 'REVENUE', name: 'Vendas', description: null, status: 'ACTIVE', sortOrder: 20 },
+    ];
+    const costCenters = [
+      { id: 'salao', branchId: null, companyId: 'company_1', name: 'Salao', description: null, status: 'ACTIVE' },
+      { id: 'cozinha', branchId: null, companyId: 'company_1', name: 'Cozinha', description: null, status: 'ACTIVE' },
+    ];
+    const financialAccounts = [
+      {
+        id: 'bank_1',
+        branchId: null,
+        companyId: 'company_1',
+        type: 'BANK',
+        name: 'Conta banco',
+        description: null,
+        openingBalance: 0,
+        currentBalance: 0,
+        status: 'ACTIVE',
+      },
+    ];
     const prisma = {
       branch: {
         findFirst: jest.fn().mockResolvedValue({ id: 'branch_1' }),
@@ -21,6 +42,25 @@ describe('FinanceService', () => {
           },
         ]),
       },
+      orderItem: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'item_1',
+            orderId: 'order_1',
+            productId: 'prod_1',
+            productNameSnapshot: 'Pastel demo',
+            quantity: 1,
+            totalPrice: 100,
+            costSnapshot: 0,
+            theoreticalCostSnapshot: 0,
+            product: {
+              recipeId: null,
+              costPrice: 0,
+              category: { name: 'Pasteis' },
+            },
+          },
+        ]),
+      },
       financialLedgerEntry: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -28,13 +68,16 @@ describe('FinanceService', () => {
             branchId: 'branch_1',
             entryType: 'EXPENSE',
             originType: 'MANUAL',
-            amount: 20,
-            reasonCode: 'marketing',
-            reasonText: 'Campanha local',
-            externalReference: null,
-            createdAt: new Date('2026-05-02T12:00:00.000Z'),
-            metadata: null,
-          },
+          amount: 20,
+          reasonCode: 'marketing',
+          reasonText: 'Campanha local',
+          externalReference: null,
+          createdAt: new Date('2026-05-02T12:00:00.000Z'),
+          category: null,
+          costCenter: null,
+          financialAccount: null,
+          metadata: null,
+        },
         ]),
         create: jest.fn().mockImplementation(async ({ data }: any) => ({
           id: 'ledger_new',
@@ -61,7 +104,11 @@ describe('FinanceService', () => {
           status: 'PENDING',
           settledAt: null,
           reasonCode: 'compras',
+          reasonText: 'cozinha',
           supplier: { id: 'sup_1', name: 'Fornecedor A' },
+          category: null,
+          costCenter: null,
+          financialAccount: null,
         }),
         findMany: jest.fn().mockResolvedValue([
           {
@@ -75,6 +122,9 @@ describe('FinanceService', () => {
             reasonCode: 'compras',
             reasonText: 'cozinha',
             supplier: { id: 'sup_1', name: 'Fornecedor A' },
+            category: null,
+            costCenter: null,
+            financialAccount: null,
           },
         ]),
         update: jest.fn().mockImplementation(async ({ data }: any) => ({
@@ -88,6 +138,9 @@ describe('FinanceService', () => {
           reasonCode: 'compras',
           reasonText: 'cozinha',
           supplier: { id: 'sup_1', name: 'Fornecedor A' },
+          category: null,
+          costCenter: null,
+          financialAccount: null,
         })),
       },
       accountsReceivable: {
@@ -109,8 +162,12 @@ describe('FinanceService', () => {
           status: 'PENDING',
           settledAt: null,
           reasonCode: 'vendas',
+          reasonText: 'salao',
           orderId: null,
           paymentId: null,
+          category: null,
+          costCenter: null,
+          financialAccount: null,
         }),
         findMany: jest.fn().mockResolvedValue([
           {
@@ -125,6 +182,9 @@ describe('FinanceService', () => {
             reasonText: 'salao',
             orderId: null,
             paymentId: null,
+            category: null,
+            costCenter: null,
+            financialAccount: null,
           },
         ]),
         update: jest.fn().mockImplementation(async ({ data }: any) => ({
@@ -139,7 +199,63 @@ describe('FinanceService', () => {
           reasonText: 'salao',
           orderId: null,
           paymentId: null,
+          category: null,
+          costCenter: null,
+          financialAccount: null,
         })),
+      },
+      financialCategory: {
+        upsert: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockImplementation(async ({ where }: any) => {
+          const lookup = where?.id ?? where?.OR?.[0]?.id ?? where?.OR?.[1]?.name;
+          return categories.find((item) => item.id === lookup || item.name === lookup) ?? null;
+        }),
+        findMany: jest.fn().mockResolvedValue(categories),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({
+          id: 'category_new',
+          parentId: null,
+          description: null,
+          status: 'ACTIVE',
+          sortOrder: 0,
+          ...data,
+        })),
+        update: jest.fn().mockImplementation(async ({ data }: any) => ({ ...categories[0], ...data })),
+      },
+      costCenter: {
+        findFirst: jest.fn().mockImplementation(async ({ where }: any) => {
+          const lookup = where?.id ?? where?.name ?? where?.OR?.[0]?.id ?? where?.OR?.[1]?.name;
+          return costCenters.find((item) => item.id === lookup || item.name === lookup) ?? null;
+        }),
+        findMany: jest.fn().mockResolvedValue(costCenters),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({
+          id: 'cost_center_new',
+          branchId: null,
+          description: null,
+          status: 'ACTIVE',
+          ...data,
+        })),
+        update: jest.fn().mockImplementation(async ({ data }: any) => ({ ...costCenters[0], ...data })),
+      },
+      financialAccount: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue(financialAccounts),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({
+          id: 'financial_account_new',
+          branchId: null,
+          description: null,
+          openingBalance: 0,
+          currentBalance: 0,
+          status: 'ACTIVE',
+          ...data,
+        })),
+        update: jest.fn().mockImplementation(async ({ data }: any) => ({ ...financialAccounts[0], ...data })),
+      },
+      paymentFee: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      receivableSchedule: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       payableSettlement: {
         create: jest.fn().mockResolvedValue({ id: 'pay_settlement_1' }),
@@ -181,6 +297,9 @@ describe('FinanceService', () => {
         expect.objectContaining({ key: 'salao', pendingReceivable: 100 }),
       ]),
     );
+    expect(result.cmv.summary.dataStatus).toBe('PARTIAL_DATA');
+    expect(result.executiveAlerts.length).toBeGreaterThan(0);
+    expect(result.financeHealth.score).toBeLessThan(100);
     expect(result.totals).toEqual({
       ledgerEntries: 1,
       payables: 1,
@@ -211,8 +330,49 @@ describe('FinanceService', () => {
 
     expect(result.netRevenue).toBe(100);
     expect(result.cogs).toBe(0);
-    expect(result.cogsSource).toBe('pending_recipe_stock_integration');
+    expect(result.cogsSource).toBe('missing_recipe_stock_cost');
+    expect(result.cogsStatus).toBe('PARTIAL_DATA');
     expect(result.operatingProfit).toBe(80);
+  });
+
+  it('calcula CMV por produto usando snapshot de custo quando existir', async () => {
+    const { service, prisma } = build();
+    prisma.orderItem.findMany.mockResolvedValueOnce([
+      {
+        id: 'item_1',
+        orderId: 'order_1',
+        productId: 'prod_1',
+        productNameSnapshot: 'Pastel queijo',
+        quantity: 2,
+        totalPrice: 40,
+        costSnapshot: 6,
+        theoreticalCostSnapshot: 0,
+        product: {
+          recipeId: 'recipe_1',
+          costPrice: 0,
+          category: { name: 'Pasteis' },
+        },
+      },
+    ]);
+
+    const result = await service.getCmv(ctx, {
+      from: '2026-05-01T00:00:00.000Z',
+      to: '2026-05-31T23:59:59.999Z',
+    });
+
+    expect(result.summary.totalCogs).toBe(12);
+    expect(result.summary.grossMargin).toBe(28);
+    expect(result.summary.dataStatus).toBe('COMPLETE');
+    expect(result.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productName: 'Pastel queijo',
+          cogs: 12,
+          hasRecipe: true,
+          dataStatus: 'COMPLETE',
+        }),
+      ]),
+    );
   });
 
   it('cria lancamento manual com branch da company atual', async () => {

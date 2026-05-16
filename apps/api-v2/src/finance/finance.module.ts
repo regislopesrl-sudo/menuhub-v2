@@ -8,5 +8,6 @@ import { FinanceService } from './finance.service';
   imports: [ModulesModule],
   controllers: [FinanceController],
   providers: [FinanceService, PrismaService],
+  exports: [FinanceService],
 })
 export class FinanceModule {}
