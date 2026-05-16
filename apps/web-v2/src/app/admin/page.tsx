@@ -1,7 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
@@ -12,104 +11,6 @@ import { useModules } from '@/features/modules/use-modules';
 import { connectOrdersSocket, type SocketConnectionStatus } from '@/features/orders/orders.socket';
 import { apiFetch, getApiBase } from '@/lib/api-fetch';
 import type { OrderListItem, OrdersHeaders, OrdersListResponse } from '@/features/orders/orders.api';
-
-const MODULE_CARDS: Array<{
-  key: string;
-  title: string;
-  href: string;
-  description: string;
-  status?: string;
-}> = [
-  {
-    key: 'admin_panel',
-    title: 'Painel Admin',
-    href: '/admin',
-    description: 'Acesso administrativo central da empresa, indicadores e atalhos operacionais.',
-  },
-  {
-    key: 'orders',
-    title: 'Pedidos',
-    href: '/admin/orders',
-    description: 'Acompanhe volume, status e fluxo dos pedidos em tempo real.',
-  },
-  {
-    key: 'kds',
-    title: 'Cozinha / KDS',
-    href: '/admin/kds',
-    description: 'Controle da fila de preparo, priorizacao e finalizacao.',
-  },
-  {
-    key: 'pdv',
-    title: 'PDV / Balcao',
-    href: '/admin/pdv',
-    description: 'Operacao de caixa e venda rapida no balcao.',
-  },
-  {
-    key: 'payments',
-    title: 'Pagamentos',
-    href: '/admin/payments',
-    description: 'Pagamentos locais, status, conciliacao mock e lancamentos financeiros.',
-  },
-  {
-    key: 'menu',
-    title: 'Cardapio / Catalogo',
-    href: '/admin/menu',
-    description: 'Gerencie produtos, categorias, canais e opcionais do restaurante.',
-  },
-  {
-    key: 'delivery',
-    title: 'Delivery / Cardapio',
-    href: '/delivery',
-    description: 'Canal online do cliente para pedidos digitais.',
-  },
-  {
-    key: 'stock',
-    title: 'Estoque',
-    href: '/admin/stock',
-    description: 'Itens, movimentacoes, inventario, lotes e alertas de ruptura.',
-  },
-  {
-    key: 'financial',
-    title: 'Financeiro',
-    href: '/admin/finance',
-    description: 'Fluxo de caixa, contas, DRE simplificada e conciliacao operacional.',
-  },
-  {
-    key: 'reports',
-    title: 'Relatorios',
-    href: '/admin/reports',
-    description: 'Indicadores consolidados e visoes gerenciais da operacao.',
-    status: 'Premium',
-  },
-  {
-    key: 'fiscal',
-    title: 'Fiscal',
-    href: '/admin/settings',
-    description: 'Dados fiscais e preparacao para rotinas de nota futura.',
-    status: 'Preparado',
-  },
-  {
-    key: 'whatsapp',
-    title: 'WhatsApp',
-    href: '/admin/settings',
-    description: 'Canal futuro de atendimento e notificacoes operacionais.',
-    status: 'Futuro',
-  },
-  {
-    key: 'kiosk',
-    title: 'Totem / Kiosk',
-    href: '/delivery',
-    description: 'Autoatendimento preparado para fluxo dedicado de totem.',
-    status: 'Futuro',
-  },
-  {
-    key: 'waiter_app',
-    title: 'App Garcom',
-    href: '/admin/orders',
-    description: 'Fluxo de garcom digital integrado a pedidos, mesas e comandas.',
-    status: 'Futuro',
-  },
-];
 
 type DashboardKpis = {
   ordersToday: number;
@@ -159,8 +60,8 @@ export default function AdminDashboardPage() {
   const [cashStatus, setCashStatus] = useState<'ABERTO' | 'FECHADO' | 'INDISPONIVEL'>('INDISPONIVEL');
   const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>('connecting');
   const [ordersError, setOrdersError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdateAt, setLastUpdateAt] = useState<string>('');
+  const refreshInFlightRef = useRef(false);
 
   const headers = useMemo<OrdersHeaders>(
     () => ({
@@ -172,7 +73,8 @@ export default function AdminDashboardPage() {
   );
 
   const refreshDashboard = useCallback(async () => {
-    setIsRefreshing(true);
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     const requestHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-company-id': headers.companyId,
@@ -201,12 +103,17 @@ export default function AdminDashboardPage() {
       setCashStatus('INDISPONIVEL');
       setOrdersError(err instanceof Error ? err.message : 'Falha ao carregar indicadores.');
     } finally {
-      setIsRefreshing(false);
+      refreshInFlightRef.current = false;
     }
   }, [headers]);
 
   useEffect(() => {
     void refreshDashboard();
+    const intervalId = window.setInterval(() => {
+      void refreshDashboard();
+    }, 2000);
+
+    return () => window.clearInterval(intervalId);
   }, [refreshDashboard]);
 
   useEffect(() => {
@@ -239,7 +146,6 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const cards = MODULE_CARDS.filter((item) => modules.isEnabled(item.key));
   const canPdv = modules.isEnabled('pdv');
   const canKds = modules.isEnabled('kds');
   const canOrders = modules.isEnabled('orders');
@@ -268,9 +174,6 @@ export default function AdminDashboardPage() {
               Caixa {cashStatus === 'ABERTO' ? 'Aberto' : cashStatus === 'FECHADO' ? 'Fechado' : 'Indisponivel'}
             </StatusPill>
           </div>
-          <button type="button" className={styles.refreshButton} onClick={() => void refreshDashboard()} disabled={isRefreshing}>
-            {isRefreshing ? 'Atualizando...' : 'Atualizar'}
-          </button>
         </div>
       </section>
 
@@ -301,6 +204,13 @@ export default function AdminDashboardPage() {
         </Card>
       </section>
 
+      <section className={styles.dashboardWorkspace}>
+        <aside className={styles.categoryPanel}>
+          <div className={styles.categoryHeader}>
+            <span>Operacao</span>
+            <strong>Categorias</strong>
+          </div>
+
         <section className={styles.quickActions}>
           {canPdv ? <ActionTile href="/admin/pdv" title="Novo Pedido PDV" description="Venda rapida no balcao" tone="blue" /> : null}
           {canKds ? <ActionTile href="/admin/kds" title="Ver Cozinha" description="Fila de preparo ao vivo" tone="orange" /> : null}
@@ -319,66 +229,13 @@ export default function AdminDashboardPage() {
           <ActionTile href="/admin/reports" title="Relatorios" description="Vendas, canais, financeiro e indicadores gerenciais" tone="violet" />
           {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
         </section>
-
-      {ordersError ? (
-        <Card className={styles.warningCard}>
-          <Badge tone="warning">Falha de dados</Badge>
-          <p className={styles.warningText}>Nao foi possivel atualizar indicadores agora. Exibindo fallback seguro com zero.</p>
-        </Card>
-      ) : null}
-
-      <section className={styles.grid}>
-        {cards.map((card) => (
-          <Link key={card.key} href={card.href} className={styles.cardLink}>
-            <Card className={styles.card}>
-              <Badge>{card.status ?? 'Modulo ativo'}</Badge>
-              <h2 className={styles.cardTitle}>{card.title}</h2>
-              <p className={styles.cardText}>{card.description}</p>
+          {ordersError ? (
+            <Card className={styles.warningCard}>
+              <Badge tone="warning">Falha de dados</Badge>
+              <p className={styles.warningText}>Nao foi possivel atualizar indicadores agora. Exibindo fallback seguro com zero.</p>
             </Card>
-          </Link>
-        ))}
-        <Link href="/admin/settings" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Configuracoes</Badge>
-            <h2 className={styles.cardTitle}>Configuracoes</h2>
-            <p className={styles.cardText}>Empresa, loja, horarios, canais, delivery, pagamentos e aparencia.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/billing" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Billing</Badge>
-            <h2 className={styles.cardTitle}>Assinatura e cobranca</h2>
-            <p className={styles.cardText}>Plano atual, limites, modulos, cobrancas e historico de faturas.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/users" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Usuarios</Badge>
-            <h2 className={styles.cardTitle}>Usuarios e Permissoes</h2>
-            <p className={styles.cardText}>Cadastre acessos, roles efetivas e filiais permitidas por operador.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/production" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Producao</Badge>
-            <h2 className={styles.cardTitle}>Producao Interna</h2>
-            <p className={styles.cardText}>Planejamento e execucao de ordens de preparo com rastreabilidade por filial.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/procurement" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Compras</Badge>
-            <h2 className={styles.cardTitle}>Compras e Fornecedores</h2>
-            <p className={styles.cardText}>Pedidos de compra, recebimento, cotacao e contas a pagar geradas por compra.</p>
-          </Card>
-        </Link>
-        <Link href="/admin/tables" className={styles.cardLink}>
-          <Card className={styles.card}>
-            <Badge>Salao</Badge>
-            <h2 className={styles.cardTitle}>Mesas e Comandas</h2>
-            <p className={styles.cardText}>Abertura de mesa, consumo local, transferencia e fechamento de comanda.</p>
-          </Card>
-        </Link>
+          ) : null}
+        </aside>
       </section>
     </main>
   );
@@ -414,5 +271,3 @@ function computeKpis(orders: OrderListItem[]): DashboardKpis {
     averageTicket,
   };
 }
-
-

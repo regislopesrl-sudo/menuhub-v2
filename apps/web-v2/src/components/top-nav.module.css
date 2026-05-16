@@ -40,6 +40,21 @@
   letter-spacing: -0.05em;
 }
 
+.brand span {
+  white-space: nowrap;
+}
+
+.brand small {
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .brand::before {
   content: '';
   width: 34px;
@@ -64,6 +79,23 @@
   font-size: 13px;
   border: 1px solid transparent;
   transition: background 160ms var(--ease), color 160ms var(--ease), border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.userBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  max-width: 240px;
+  overflow: hidden;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link:hover {
@@ -92,5 +124,22 @@
 
   .links {
     justify-content: flex-start;
+  }
+}
+
+.nav,
+.contextBar {
+  width: min(1500px, 100% - 24px);
+}
+
+.link {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+@media (max-width: 720px) {
+  .nav,
+  .contextBar {
+    width: min(1200px, 100% - 16px);
   }
 }
