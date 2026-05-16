@@ -1,0 +1,69 @@
+services:
+  postgres-v2-dev:
+    image: postgres:16-alpine
+    container_name: menuhub-postgres-v2-dev
+    restart: unless-stopped
+    env_file:
+      - ./apps/api-v2/.env.dev
+    volumes:
+      - postgres_v2_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  api-v2-dev:
+    image: node:20-alpine
+    container_name: menuhub-api-v2-dev
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm ci &&
+      npm run prisma:generate --workspace @delivery-futuro/api-v2 &&
+      npm run prisma:db:push:local --workspace @delivery-futuro/api-v2 &&
+      npm run seed:local --workspace @delivery-futuro/api-v2 &&
+      npm run seed:technical-admin --workspace @delivery-futuro/api-v2 &&
+      npm run build --workspace @delivery-futuro/shared-types &&
+      npm run build --workspace @delivery-futuro/order-core &&
+      npm run build --workspace @delivery-futuro/api-v2 &&
+      npm run start --workspace @delivery-futuro/api-v2"
+    env_file:
+      - ./apps/api-v2/.env.dev
+    ports:
+      - "127.0.0.1:3203:3202"
+    volumes:
+      - ./:/app
+      - node_modules_dev:/app/node_modules
+    depends_on:
+      postgres-v2-dev:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3202/v2/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+
+  web-v2-dev:
+    image: node:20-alpine
+    container_name: menuhub-web-v2-dev
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "rm -rf apps/web-v2/.next &&
+      npm run dev --workspace @delivery-futuro/web-v2"
+    env_file:
+      - ./apps/web-v2/.env.dev
+    volumes:
+      - ./:/app
+      - node_modules_dev:/app/node_modules
+    ports:
+      - "127.0.0.1:3115:3112"
+    depends_on:
+      api-v2-dev:
+        condition: service_healthy
+
+volumes:
+  postgres_v2_dev_data:
+  node_modules_dev:
