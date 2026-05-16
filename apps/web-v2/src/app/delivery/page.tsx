@@ -45,6 +45,25 @@ function productInitials(name: string): string {
     .toUpperCase();
 }
 
+function isProductOutOfStock(product: MenuProduct) {
+  return product.stockAvailabilityStatus === 'out_of_stock';
+}
+
+function isProductOrderable(product: MenuProduct) {
+  return product.available !== false && !isProductOutOfStock(product);
+}
+
+function isDeliveryStockLimited(product?: MenuProduct | null) {
+  return product?.stockAvailabilityStatus === 'available' || product?.stockAvailabilityStatus === 'low_stock';
+}
+
+function stockBadgeTone(product: MenuProduct): 'default' | 'success' | 'warning' | 'danger' {
+  if (product.stockAvailabilityStatus === 'out_of_stock') return 'danger';
+  if (product.stockAvailabilityStatus === 'low_stock') return 'warning';
+  if (product.stockAvailabilityStatus === 'available') return 'success';
+  return 'default';
+}
+
 function parseStorefrontMedia(value: string): Array<{ type: 'image' | 'video'; src: string }> {
   return value
     .split(/\n+/)
@@ -320,6 +339,13 @@ export default function DeliveryPage() {
   ].filter((detail): detail is string => Boolean(detail));
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+  const quantityByProductId = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const item of items) {
+      totals.set(item.productId, (totals.get(item.productId) ?? 0) + item.quantity);
+    }
+    return totals;
+  }, [items]);
   const deliveryFee = quote?.deliveryFee ?? 0;
   const estimatedTotal = quote?.total ?? Math.max(0, subtotal + deliveryFee);
   const hasAddress = fulfillmentType === 'TAKEOUT' || (cep.replace(/\D/g, '').length === 8 && !!number.trim());
@@ -750,6 +776,15 @@ export default function DeliveryPage() {
     setCheckoutView(nextView);
   };
 
+  const prepareNewOrderFlow = () => {
+    setSuccess(null);
+    setTracking(null);
+    setTrackingError(null);
+    setPaymentStatusMessage(null);
+    setError(null);
+    setCheckoutView('cart');
+  };
+
   useEffect(() => {
     const protectedViews: CheckoutView[] = ['fulfillment', 'address', 'payment'];
     if (!cartOpen || hasCustomer || !protectedViews.includes(checkoutView)) return;
@@ -804,6 +839,10 @@ export default function DeliveryPage() {
   };
 
   const openCustomize = (product: MenuProduct) => {
+    if (!isProductOrderable(product)) {
+      setError(product.stockStatusMessage ?? 'Produto indisponivel para venda.');
+      return;
+    }
     setEditingCartIndex(null);
     setCustomizingProduct(product);
     setSelectedAddons([]);
@@ -831,8 +870,25 @@ export default function DeliveryPage() {
 
   const confirmCustomize = () => {
     if (!customizingProduct) return;
+    if (!isProductOrderable(customizingProduct)) {
+      setError(customizingProduct.stockStatusMessage ?? 'Produto indisponivel para venda.');
+      return;
+    }
+    const alreadyInCart = quantityByProductId.get(customizingProduct.id) ?? 0;
+    const nextQuantity = editingCartIndex !== null
+      ? alreadyInCart - (items[editingCartIndex]?.quantity ?? 0) + customizingQuantity
+      : alreadyInCart + customizingQuantity;
+    if (
+      isDeliveryStockLimited(customizingProduct) &&
+      typeof customizingProduct.availableToSell === 'number' &&
+      nextQuantity > customizingProduct.availableToSell
+    ) {
+      setError(`Limite de estoque disponivel para ${customizingProduct.name}: ${customizingProduct.availableToSell}.`);
+      return;
+    }
     const validationErrors = validateGroups(customizingProduct, selectedAddons);
     if (validationErrors.length > 0) return;
+    setError(null);
 
     const selectedAddonData = (customizingProduct.addonGroups ?? []).flatMap((group) =>
       group.options
@@ -841,6 +897,9 @@ export default function DeliveryPage() {
     );
 
     const cartProduct = { ...customizingProduct, price: productDisplayPrice(customizingProduct) };
+    if (success) {
+      prepareNewOrderFlow();
+    }
     if (editingCartIndex !== null) {
       replaceItem(editingCartIndex, cartProduct, selectedAddonData, customizingQuantity);
     } else {
@@ -916,9 +975,9 @@ export default function DeliveryPage() {
                   {featuredProducts.map((product) => (
                     <article
                       key={product.id}
-                      className={styles.productCard}
+                      className={`${styles.productCard} ${!isProductOrderable(product) ? styles.productCardUnavailable : ''}`}
                       role="button"
-                      tabIndex={0}
+                      tabIndex={isProductOrderable(product) ? 0 : -1}
                       onClick={() => openCustomize(product)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
@@ -931,8 +990,13 @@ export default function DeliveryPage() {
                         <strong>{product.name}</strong>
                         <strong>{brl(productDisplayPrice(product))}</strong>
                       </div>
+                      <div className={styles.badgeRow}>
+                        {product.stockAvailabilityStatus ? <Badge tone={stockBadgeTone(product)}>{product.stockStatusLabel ?? 'Estoque'}</Badge> : null}
+                      </div>
                       <div className={styles.muted}>{product.description}</div>
-                      <Button variant="primary" onClick={(event) => { event.stopPropagation(); openCustomize(product); }}>Ver produto</Button>
+                      <Button variant="primary" disabled={!isProductOrderable(product)} onClick={(event) => { event.stopPropagation(); openCustomize(product); }}>
+                        {isProductOrderable(product) ? 'Ver produto' : 'Indisponivel'}
+                      </Button>
                     </article>
                   ))}
                 </div>
@@ -974,9 +1038,9 @@ export default function DeliveryPage() {
                   {visibleProducts.map((product) => (
                     <article
                       key={product.id}
-                      className={styles.productCard}
+                      className={`${styles.productCard} ${!isProductOrderable(product) ? styles.productCardUnavailable : ''}`}
                       role="button"
-                      tabIndex={0}
+                      tabIndex={isProductOrderable(product) ? 0 : -1}
                       onClick={() => openCustomize(product)}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') openCustomize(product);
@@ -988,6 +1052,7 @@ export default function DeliveryPage() {
                       <div className={styles.badgeRow}>
                         {product.featured ? <Badge tone="warning">Destaque</Badge> : null}
                         {product.promotionalPrice ? <Badge tone="success">Promo</Badge> : null}
+                        {product.stockAvailabilityStatus ? <Badge tone={stockBadgeTone(product)}>{product.stockStatusLabel ?? 'Estoque'}</Badge> : null}
                         {product.available === false ? <Badge tone="danger">Indisponivel</Badge> : null}
                       </div>
                       <div className={styles.row}>
@@ -997,13 +1062,13 @@ export default function DeliveryPage() {
                       <div className={styles.muted}>{product.description}</div>
                       <Button
                         variant="primary"
-                        disabled={product.available === false}
+                        disabled={!isProductOrderable(product)}
                         onClick={(event) => {
                           event.stopPropagation();
                           openCustomize(product);
                         }}
                       >
-                        Ver produto
+                        {isProductOrderable(product) ? 'Ver produto' : 'Indisponivel'}
                       </Button>
                     </article>
                   ))}
@@ -1315,6 +1380,12 @@ export default function DeliveryPage() {
                       <Button type="button" onClick={() => void navigator?.clipboard?.writeText(success.qrCodeText ?? '')}>Copiar código PIX</Button>
                     </div>
                   ) : null}
+                  <div className={styles.confirmationActions}>
+                    <Button type="button" variant="primary" onClick={prepareNewOrderFlow}>
+                      {items.length > 0 ? 'Continuar novo pedido' : 'Fazer novo pedido'}
+                    </Button>
+                    <Button type="button" onClick={() => setCartOpen(false)}>Fechar</Button>
+                  </div>
                 </div>
               ) : null}
             </Card>
@@ -1341,6 +1412,9 @@ export default function DeliveryPage() {
                       <div className={styles.productDetailSummary}>
                         <div className={styles.badgeRow}>
                           {customizingProduct.categoryName ? <Badge tone="default">{customizingProduct.categoryName}</Badge> : null}
+                          {customizingProduct.stockAvailabilityStatus ? (
+                            <Badge tone={stockBadgeTone(customizingProduct)}>{customizingProduct.stockStatusLabel ?? 'Estoque'}</Badge>
+                          ) : null}
                           {customizingProduct.prepTimeMinutes ? <Badge tone="warning">{customizingProduct.prepTimeMinutes} min</Badge> : null}
                           {(customizingProduct.addonGroups ?? []).length > 0 ? <Badge tone="success">Com opcionais</Badge> : null}
                         </div>
@@ -1359,9 +1433,24 @@ export default function DeliveryPage() {
                       <div className={styles.quantityActions}>
                         <Button onClick={() => setCustomizingQuantity((value) => Math.max(1, value - 1))}>-</Button>
                         <Badge>{customizingQuantity}</Badge>
-                        <Button onClick={() => setCustomizingQuantity((value) => value + 1)}>+</Button>
+                        <Button
+                          disabled={
+                            isDeliveryStockLimited(customizingProduct) &&
+                            typeof customizingProduct.availableToSell === 'number' &&
+                            customizingQuantity >= customizingProduct.availableToSell
+                          }
+                          onClick={() => setCustomizingQuantity((value) => value + 1)}
+                        >
+                          +
+                        </Button>
                       </div>
                     </div>
+
+                    {customizingProduct.stockStatusMessage ? (
+                      <div className={isProductOrderable(customizingProduct) ? styles.stockNotice : styles.stockNoticeDanger}>
+                        {customizingProduct.stockStatusMessage}
+                      </div>
+                    ) : null}
 
                     {(customizingProduct.addonGroups ?? []).length === 0 ? (
                       <p className={styles.muted}>Sem opcionais para este produto.</p>
@@ -1404,8 +1493,8 @@ export default function DeliveryPage() {
                       <strong>Total: {brl(customizingQuantity * (basePrice + addonTotal(customizingProduct, selectedAddons)))}</strong>
                       <div className={styles.modalActions}>
                         <Button onClick={() => setCustomizingProduct(null)}>Cancelar</Button>
-                        <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0}>
-                          Adicionar ao carrinho
+                        <Button variant="primary" onClick={confirmCustomize} disabled={localErrors.length > 0 || !isProductOrderable(customizingProduct)}>
+                          {isProductOrderable(customizingProduct) ? 'Adicionar ao carrinho' : 'Indisponivel'}
                         </Button>
                       </div>
                     </div>

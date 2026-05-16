@@ -52,6 +52,8 @@ export async function submitDeliveryCheckout(input: {
   customer: {
     name: string;
     phone: string;
+    birthDate?: string;
+    whatsappOptIn?: boolean;
   };
   deliveryAddress: {
     cep?: string;

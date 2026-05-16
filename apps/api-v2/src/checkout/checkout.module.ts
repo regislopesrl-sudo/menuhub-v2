@@ -12,6 +12,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { PdvModule } from '../pdv/pdv.module';
 import { OrdersModule } from '../orders/orders.module';
 import { ModulesModule } from '../modules/modules.module';
+import { StockModule } from '../stock/stock.module';
 
 export function selectMenuProvider(menuMock: MenuPortMock, menuPrisma: MenuPrismaPort): MenuPort {
   const provider = (process.env.MENU_PROVIDER ?? 'mock').toLowerCase();
@@ -19,7 +20,7 @@ export function selectMenuProvider(menuMock: MenuPortMock, menuPrisma: MenuPrism
 }
 
 @Module({
-  imports: [DeliveryModule, PaymentsModule, PdvModule, OrdersModule, ModulesModule],
+  imports: [DeliveryModule, PaymentsModule, PdvModule, OrdersModule, ModulesModule, StockModule],
   controllers: [CheckoutController],
   providers: [
     CheckoutService,
