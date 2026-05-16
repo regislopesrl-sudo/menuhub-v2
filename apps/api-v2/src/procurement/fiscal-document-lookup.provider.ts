@@ -1,3 +1,4 @@
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import type { FiscalAccessKeyMetadata } from './fiscal-access-key';
 
 export type FiscalDocumentLookupInput = {
@@ -28,6 +29,105 @@ export type FiscalDocumentLookupResult = {
 
 export interface FiscalDocumentLookupProvider {
   lookupByAccessKey(input: FiscalDocumentLookupInput): Promise<FiscalDocumentLookupResult>;
+}
+
+export type HttpFiscalDocumentLookupProviderOptions = {
+  endpoint?: string;
+  token?: string;
+  timeoutMs?: number;
+};
+
+export class HttpFiscalDocumentLookupProvider implements FiscalDocumentLookupProvider {
+  constructor(private readonly options: HttpFiscalDocumentLookupProviderOptions) {}
+
+  async lookupByAccessKey(input: FiscalDocumentLookupInput): Promise<FiscalDocumentLookupResult> {
+    const endpoint = String(this.options.endpoint ?? '').trim();
+    if (!endpoint) {
+      throw new BadRequestException('Provider fiscal real nao configurado. Configure FISCAL_LOOKUP_HTTP_URL.');
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 20000);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          ...(this.options.token ? { authorization: `Bearer ${this.options.token}` } : {}),
+        },
+        body: JSON.stringify({
+          accessKey: input.metadata.accessKey,
+          documentType: input.metadata.documentType,
+          stateCode: input.metadata.stateCode,
+          issuerCnpj: input.metadata.issuerCnpj,
+          series: input.metadata.series,
+          number: input.metadata.number,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new BadRequestException(`Provider fiscal retornou HTTP ${response.status}.`);
+      }
+
+      const payload = await response.json();
+      return this.normalizeResponse(payload, input.metadata);
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new ServiceUnavailableException(error instanceof Error ? error.message : 'Falha ao consultar provider fiscal real.');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private normalizeResponse(payload: any, metadata: FiscalAccessKeyMetadata): FiscalDocumentLookupResult {
+    const data = payload?.document ?? payload;
+    const items = Array.isArray(data?.items) ? data.items : [];
+    if (items.length === 0) {
+      throw new BadRequestException('Provider fiscal nao retornou itens do cupom.');
+    }
+
+    const normalizedItems = items.map((item: any, index: number) => {
+      const quantity = Number(item.quantity ?? item.qtd ?? 0);
+      const totalAmount = Number(item.totalAmount ?? item.total ?? 0);
+      const unitPrice = Number(item.unitPrice ?? item.price ?? (quantity > 0 ? totalAmount / quantity : 0));
+      const description = String(item.description ?? item.name ?? '').trim();
+      if (!description || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new BadRequestException('Provider fiscal retornou item invalido.');
+      }
+      return {
+        lineNumber: Number(item.lineNumber ?? item.nItem ?? index + 1),
+        fiscalCode: this.clean(item.fiscalCode ?? item.cProd),
+        ean: this.clean(item.ean ?? item.cEAN),
+        description,
+        quantity,
+        unit: this.clean(item.unit ?? item.uCom),
+        unitPrice,
+        totalAmount: Number((Number.isFinite(totalAmount) && totalAmount > 0 ? totalAmount : quantity * unitPrice).toFixed(2)),
+        batchNumber: this.clean(item.batchNumber),
+        expirationDate: item.expirationDate ? new Date(item.expirationDate) : null,
+      };
+    });
+
+    const totalAmount = Number(data?.totalAmount ?? data?.total ?? normalizedItems.reduce((acc: number, item: FiscalDocumentLookupItem) => acc + item.totalAmount, 0));
+    const emittedAt = data?.emittedAt ? new Date(data.emittedAt) : new Date(Date.UTC(metadata.year, metadata.month - 1, 1, 12, 0, 0));
+    if (Number.isNaN(emittedAt.getTime())) throw new BadRequestException('Provider fiscal retornou data de emissao invalida.');
+
+    return {
+      providerName: String(data?.providerName ?? payload?.providerName ?? 'external-http'),
+      issuerCnpj: this.clean(data?.issuerCnpj) ?? metadata.issuerCnpj,
+      issuerName: String(data?.issuerName ?? data?.supplierName ?? `Fornecedor fiscal ${metadata.issuerCnpj.slice(-4)}`),
+      emittedAt,
+      totalAmount: Number(totalAmount.toFixed(2)),
+      items: normalizedItems,
+    };
+  }
+
+  private clean(value: unknown) {
+    const text = String(value ?? '').trim();
+    return text.length > 0 ? text : null;
+  }
 }
 
 export class LocalMockFiscalDocumentLookupProvider implements FiscalDocumentLookupProvider {

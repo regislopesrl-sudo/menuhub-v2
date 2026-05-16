@@ -5,7 +5,7 @@ import { ProcurementService } from './procurement.service';
 describe('ProcurementService', () => {
   const auditSpy = jest.spyOn(auditRecorder, 'recordAuditFromContext').mockImplementation(() => undefined);
   const prisma = {
-    supplier: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    supplier: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     purchaseOrder: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     goodsReceipt: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn() },
     goodsReceiptItem: { create: jest.fn(), findMany: jest.fn() },
@@ -47,6 +47,7 @@ describe('ProcurementService', () => {
   });
 
   it('cria fornecedor com nome obrigatorio', async () => {
+    prisma.supplier.findFirst.mockResolvedValue(null);
     prisma.supplier.create.mockResolvedValue({ id: 's1' });
     const created = await service.createSupplier(ctx, { name: 'Fornecedor A' });
     expect(created.id).toBe('s1');
@@ -58,6 +59,7 @@ describe('ProcurementService', () => {
 
   it('cria pedido de compra', async () => {
     prisma.supplier.findUnique.mockResolvedValue({ id: 'sup1', companyId: 'company-demo' });
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 'st1', companyId: 'company-demo', stockType: 'RAW_MATERIAL', isActive: true, purchaseUnit: 'UN', stockUnit: 'UN' });
     prisma.purchaseOrder.create.mockResolvedValue({ id: 'po1' });
     const created = await service.createPurchaseOrder(ctx, {
       supplierId: 'sup1',
@@ -125,7 +127,10 @@ describe('ProcurementService', () => {
     prisma.stockItem.findUnique.mockResolvedValue({
       id: 'st1',
       companyId: 'company-demo',
+      stockType: 'RAW_MATERIAL',
+      isActive: true,
       currentQuantity: 2,
+      averageCost: 5,
       controlsExpiry: false,
     });
     prisma.stockBatch.findFirst.mockResolvedValue(null);
@@ -226,7 +231,7 @@ describe('ProcurementService', () => {
       status: 'PENDING_REVIEW',
       items: [{ id: 'pdi1', fiscalCode: 'F1', ean: null, description: 'QUEIJO', unit: 'kg' }],
     });
-    prisma.stockItem.findUnique.mockResolvedValue({ id: 'st1', companyId: 'company-demo' });
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 'st1', companyId: 'company-demo', stockType: 'RAW_MATERIAL', isActive: true });
     prisma.purchaseDocumentItem.update.mockResolvedValue({ id: 'pdi1', status: 'MAPPED' });
     prisma.purchaseDocumentItem.findMany.mockResolvedValue([{ status: 'MAPPED' }]);
     prisma.purchaseDocument.update.mockResolvedValue({ id: 'pd1', status: 'READY_TO_CONFIRM' });
@@ -262,7 +267,7 @@ describe('ProcurementService', () => {
       }],
     });
     prisma.stockMovement.findFirst = jest.fn().mockResolvedValue(null);
-    prisma.stockItem.findUnique.mockResolvedValue({ id: 'st1', companyId: 'company-demo', currentQuantity: 3, controlsExpiry: false });
+    prisma.stockItem.findUnique.mockResolvedValue({ id: 'st1', companyId: 'company-demo', stockType: 'RAW_MATERIAL', isActive: true, currentQuantity: 3, averageCost: 8, controlsExpiry: false });
     prisma.stockBatch.findFirst.mockResolvedValue(null);
     prisma.stockBatch.create.mockResolvedValue({ id: 'b1' });
     prisma.stockItem.update.mockResolvedValue({ id: 'st1', currentQuantity: 5 });

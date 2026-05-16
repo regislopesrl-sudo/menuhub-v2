@@ -8,6 +8,11 @@ export type Supplier = {
   phone: string | null;
   notes: string | null;
   active: boolean;
+  _count?: {
+    purchaseOrders: number;
+    goodsReceipts: number;
+    accountsPayable: number;
+  };
 };
 
 export type PurchaseOrder = {
@@ -18,7 +23,15 @@ export type PurchaseOrder = {
   totalAmount: number;
   createdAt: string;
   supplier?: { id: string; name: string };
-  items?: Array<{ id: string; stockItemId: string; quantity: number; unitCost: number; totalCost: number; unit: string }>;
+  items?: Array<{
+    id: string;
+    stockItemId: string;
+    quantity: number;
+    unitCost: number;
+    totalCost: number;
+    unit: string;
+    stockItem?: { id: string; name: string; code: string | null; stockType: string; stockUnit: string | null; purchaseUnit: string | null };
+  }>;
 };
 
 export type PurchaseDocumentItem = {
@@ -51,8 +64,49 @@ export type PurchaseDocument = {
   items: PurchaseDocumentItem[];
 };
 
+export type ProcurementDashboard = {
+  suppliers: { total: number; active: number; inactive: number };
+  purchaseOrders: { open: number; received: number; canceled: number; totalLast30Days: number };
+  fiscalDocuments: { pendingReview: number; readyToConfirm: number; confirmed: number; totalImported: number };
+  accountsPayable: { pending: number; overdue: number; pendingAmount: number };
+  generatedAt: string;
+};
+
+export type PurchaseHistorySummary = {
+  stockItemId: string;
+  stockItemName: string;
+  stockUnit: string | null;
+  samples: number;
+  totalQuantity: number;
+  totalCost: number;
+  weightedAverageCost: number;
+  lastUnitCost: number;
+  lastSupplierName: string | null;
+  lastReceivedAt: string;
+};
+
+export type FiscalLookupStatus = {
+  providerName: string;
+  mode: string;
+  realLookupEnabled: boolean;
+  configured: boolean;
+  requirements: string[];
+};
+
+export function getProcurementDashboard() {
+  return apiFetch<ProcurementDashboard>('/v2/admin/procurement/dashboard', { method: 'GET' });
+}
+
+export function getFiscalLookupStatus() {
+  return apiFetch<FiscalLookupStatus>('/v2/admin/procurement/fiscal-lookup/status', { method: 'GET' });
+}
+
 export function listSuppliers() {
   return apiFetch<Supplier[]>('/v2/admin/procurement/suppliers', { method: 'GET' });
+}
+
+export function getSupplier(supplierId: string) {
+  return apiFetch<Supplier>(`/v2/admin/procurement/suppliers/${supplierId}`, { method: 'GET' });
 }
 
 export function createSupplier(input: { name: string; document?: string; email?: string; phone?: string; notes?: string }) {
@@ -63,8 +117,16 @@ export function updateSupplier(supplierId: string, input: Partial<Pick<Supplier,
   return apiFetch<Supplier>(`/v2/admin/procurement/suppliers/${supplierId}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
+export function updateSupplierStatus(supplierId: string, input: { active: boolean }) {
+  return apiFetch<Supplier>(`/v2/admin/procurement/suppliers/${supplierId}/status`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
 export function listPurchaseOrders() {
   return apiFetch<PurchaseOrder[]>('/v2/admin/procurement/purchase-orders', { method: 'GET' });
+}
+
+export function getPurchaseOrder(purchaseOrderId: string) {
+  return apiFetch<PurchaseOrder>(`/v2/admin/procurement/purchase-orders/${purchaseOrderId}`, { method: 'GET' });
 }
 
 export function createPurchaseOrder(input: {
@@ -106,6 +168,11 @@ export function listAccountsPayable() {
   );
 }
 
+export function listPurchaseHistorySummary(stockItemId?: string) {
+  const query = stockItemId ? `?stockItemId=${encodeURIComponent(stockItemId)}` : '';
+  return apiFetch<PurchaseHistorySummary[]>(`/v2/admin/procurement/history/summary${query}`, { method: 'GET' });
+}
+
 export function listPurchaseDocuments() {
   return apiFetch<PurchaseDocument[]>('/v2/admin/procurement/fiscal-documents', { method: 'GET' });
 }
@@ -136,4 +203,3 @@ export function confirmPurchaseFiscalDocumentStockEntry(documentId: string) {
     { method: 'POST' },
   );
 }
-
