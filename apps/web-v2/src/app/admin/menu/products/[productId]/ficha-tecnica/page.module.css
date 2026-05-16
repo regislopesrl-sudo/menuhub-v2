@@ -1,0 +1,327 @@
+.page {
+  min-height: 100vh;
+  padding: 24px 0 42px;
+  display: grid;
+  gap: 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  padding: 16px;
+  border-radius: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.summaryCard span,
+.formGrid span,
+.itemRow span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summaryCard strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.summaryCard small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.panel {
+  padding: 18px;
+  border-radius: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.panelHeader,
+.itemsHeader,
+.actions,
+.inlineForm,
+.warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panelHeader h2,
+.itemsHeader h3,
+.panelHeader p,
+.itemsHeader p {
+  margin: 0;
+}
+
+.panelHeader p,
+.itemsHeader p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.formGrid label,
+.itemRow label {
+  display: grid;
+  gap: 6px;
+}
+
+.fieldWide {
+  grid-column: span 2;
+}
+
+.checkField {
+  min-height: 46px;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.itemsList {
+  display: grid;
+  gap: 10px;
+}
+
+.itemRow {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(110px, 0.7fr) minmax(100px, 0.7fr) minmax(250px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.itemChecks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.itemChecks label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.assistantPanel {
+  border: 1px solid rgba(59, 130, 246, 0.26);
+  border-radius: 16px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(180px, 0.85fr) minmax(0, 1.2fr) auto;
+  gap: 12px;
+  align-items: center;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 38%),
+    rgba(239, 246, 255, 0.72);
+}
+
+.assistantPanel > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.assistantPanel span,
+.liveCostPanel span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.assistantPanel > div:first-child > span,
+.liveCostPanel span {
+  text-transform: uppercase;
+}
+
+.assistantPanel strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.assistantPanel small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.suggestionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.suggestionChips span {
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #1e3a8a;
+}
+
+.liveCostPanel {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.liveCostPanel div {
+  border: 1px solid rgba(203, 213, 225, 0.75);
+  border-radius: 12px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.liveCostPanel strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.costPanel {
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  background: #eff6ff;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.costPanel div {
+  display: grid;
+  gap: 4px;
+}
+
+.costPanel span {
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.costPanel strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.inlineForm {
+  align-items: stretch;
+}
+
+.inlineForm select {
+  flex: 1;
+}
+
+.warning,
+.error,
+.success,
+.emptyItems {
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.warning a {
+  color: #1d4ed8;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.error {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.emptyItems {
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid,
+  .costPanel,
+  .liveCostPanel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assistantPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .formGrid,
+  .itemRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fieldWide,
+  .itemProduct,
+  .itemChecks {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .summaryGrid,
+  .costPanel,
+  .liveCostPanel,
+  .formGrid,
+  .itemRow {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHeader,
+  .itemsHeader,
+  .actions,
+  .inlineForm,
+  .warning {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

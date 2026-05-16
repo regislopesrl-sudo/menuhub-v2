@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input, Select } from '@/components/ui/Input';
@@ -8,6 +9,7 @@ import type { MenuProduct, MenuProductVariation, MenuRecommendationConfig } from
 import { CHANNEL_LABELS, type ModalMode } from '../menu-view-model';
 import styles from '../page.module.css';
 import { AddonGroupsPanel } from './AddonGroupsPanel';
+import { ChannelBadges } from './ChannelBadges';
 
 type ProductChannelsState = {
   delivery: boolean;
@@ -17,13 +19,21 @@ type ProductChannelsState = {
 };
 
 const PRODUCT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const PRODUCT_IMAGE_MAX_BYTES = 1.5 * 1024 * 1024;
+const PRODUCT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 export function ProductModal({
   mode,
   product,
   onClose,
   onSave,
+  onDelete,
+  onToggleAvailability,
+  onDuplicate,
+  onToggleFeatured,
+  onOpenAddons,
+  onOpenVariations,
+  onOpenRecommendations,
+  onOpenTechnicalSheet,
   onSaveRecommendations,
   companyId,
   branchId,
@@ -34,11 +44,21 @@ export function ProductModal({
   recommendationConfig,
   products,
   saving,
+  deleting = false,
+  actionLoading,
 }: {
   mode: ModalMode;
   product?: MenuProduct;
   onClose: () => void;
   onSave: (payload: AdminMenuProductPayload) => void;
+  onDelete?: () => void;
+  onToggleAvailability?: () => void;
+  onDuplicate?: () => void;
+  onToggleFeatured?: () => void;
+  onOpenAddons?: () => void;
+  onOpenVariations?: () => void;
+  onOpenRecommendations?: () => void;
+  onOpenTechnicalSheet?: () => void;
   onSaveRecommendations: (payload: MenuRecommendationConfig) => void;
   companyId: string;
   branchId?: string;
@@ -54,6 +74,8 @@ export function ProductModal({
   recommendationConfig: MenuRecommendationConfig | null;
   products: MenuProduct[];
   saving: boolean;
+  deleting?: boolean;
+  actionLoading?: string | null;
 }) {
   const title =
     mode === 'create'
@@ -91,6 +113,30 @@ export function ProductModal({
   const [recommendationLimit, setRecommendationLimit] = useState(String(recommendationConfig?.limit ?? 4));
   const [recommendationActive, setRecommendationActive] = useState(recommendationConfig?.active !== false);
   const [recommendationIds, setRecommendationIds] = useState<string[]>(recommendationConfig?.productIds ?? []);
+
+  useEffect(() => {
+    setName(product?.name ?? '');
+    setDescription(product?.description ?? '');
+    setSku(product?.sku ?? '');
+    setCategoryName(product?.categoryName ?? '');
+    setSalePrice(String(product?.salePrice ?? product?.price ?? ''));
+    setLocalPrice(String(product?.localPrice ?? product?.salePrice ?? product?.price ?? ''));
+    setCostPrice(String(product?.costPrice ?? ''));
+    setDeliveryPrice(String(product?.deliveryPrice ?? product?.price ?? ''));
+    setPromotionalPrice(String(product?.promotionalPrice ?? ''));
+    setPrepTimeMinutes(String(product?.prepTimeMinutes ?? ''));
+    setKitchenStation(product?.kitchenStation ?? '');
+    setSortOrder(String(product?.sortOrder ?? product?.featuredSortOrder ?? '0'));
+    setImageUrl(product?.imageUrl ?? '');
+    setAvailable(product?.available !== false);
+    setFeatured(product?.featured === true);
+    setChannels({
+      delivery: product?.channels?.delivery ?? true,
+      pdv: product?.channels?.pdv ?? true,
+      kiosk: product?.channels?.kiosk ?? true,
+      waiter: product?.channels?.waiter ?? true,
+    });
+  }, [product]);
 
   useEffect(() => {
     if (!recommendationConfig) return;
@@ -132,6 +178,29 @@ export function ProductModal({
           </div>
           <Button onClick={onClose}>Fechar</Button>
         </div>
+
+        {mode === 'edit' && product ? (
+          <ProductConfigPanel
+            product={product}
+            categoryName={categoryName}
+            sku={sku}
+            prepTimeMinutes={prepTimeMinutes}
+            channels={channels}
+            available={available}
+            featured={featured}
+            saving={saving}
+            deleting={deleting}
+            actionLoading={actionLoading}
+            onToggleAvailability={onToggleAvailability}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+            onToggleFeatured={onToggleFeatured}
+            onOpenAddons={onOpenAddons}
+            onOpenVariations={onOpenVariations}
+            onOpenRecommendations={onOpenRecommendations}
+            onOpenTechnicalSheet={onOpenTechnicalSheet}
+          />
+        ) : null}
 
         {mode === 'recommendations' ? (
           <RecommendationsForm
@@ -257,6 +326,102 @@ export function ProductModal({
   );
 }
 
+function ProductConfigPanel({
+  product,
+  categoryName,
+  sku,
+  prepTimeMinutes,
+  channels,
+  available,
+  featured,
+  saving,
+  deleting,
+  actionLoading,
+  onToggleAvailability,
+  onDuplicate,
+  onDelete,
+  onToggleFeatured,
+  onOpenAddons,
+  onOpenVariations,
+  onOpenRecommendations,
+  onOpenTechnicalSheet,
+}: {
+  product: MenuProduct;
+  categoryName: string;
+  sku: string;
+  prepTimeMinutes: string;
+  channels: ProductChannelsState;
+  available: boolean;
+  featured: boolean;
+  saving: boolean;
+  deleting: boolean;
+  actionLoading?: string | null;
+  onToggleAvailability?: () => void;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
+  onToggleFeatured?: () => void;
+  onOpenAddons?: () => void;
+  onOpenVariations?: () => void;
+  onOpenRecommendations?: () => void;
+  onOpenTechnicalSheet?: () => void;
+}) {
+  const prepTime = Number(prepTimeMinutes || product.prepTimeMinutes || 0);
+  const actionBusy = Boolean(actionLoading) || saving || deleting;
+  const toggleLoading = actionLoading === `toggle-${product.id}`;
+  const duplicateLoading = actionLoading === `duplicate-${product.id}`;
+  const featuredLoading = actionLoading === `featured-${product.id}`;
+  const recommendationsLoading = actionLoading === `recommendations-${product.id}`;
+
+  return (
+    <section className={styles.productConfigPanel}>
+      <div className={styles.productConfigHeader}>
+        <div>
+          <strong>Configuracao do produto</strong>
+          <span>Dados operacionais e atalhos deste item.</span>
+        </div>
+        <Badge tone={available ? 'success' : 'danger'}>{available ? 'Disponivel' : 'Inativo'}</Badge>
+      </div>
+
+      <div className={styles.compactMeta}>
+        <span>{categoryName.trim() || product.categoryName || 'Sem categoria'}</span>
+        <span>{sku.trim() || product.sku || 'Sem codigo'}</span>
+        <span>{prepTime > 0 ? `${prepTime} min` : 'Sem tempo'}</span>
+        <span>{product.variations?.length ?? 0} variacoes</span>
+        <span>{product.addonGroups?.length ?? 0} grupos</span>
+      </div>
+
+      <ChannelBadges channels={channels} />
+
+      <div className={styles.productConfigActions}>
+        <Button onClick={onToggleAvailability} disabled={!onToggleAvailability || actionBusy}>
+          {toggleLoading ? 'Salvando...' : available ? 'Desativar' : 'Ativar'}
+        </Button>
+        <Button onClick={onDuplicate} disabled={!onDuplicate || actionBusy}>
+          {duplicateLoading ? 'Duplicando...' : 'Duplicar'}
+        </Button>
+        <Button variant="danger" onClick={onDelete} disabled={!onDelete || actionBusy}>
+          {deleting ? 'Excluindo...' : 'Excluir'}
+        </Button>
+        <Button onClick={onToggleFeatured} disabled={!onToggleFeatured || actionBusy}>
+          {featuredLoading ? 'Salvando...' : featured ? 'Remover destaque' : 'Destacar'}
+        </Button>
+        <Button onClick={onOpenVariations} disabled={!onOpenVariations || actionBusy}>
+          Variacoes
+        </Button>
+        <Button onClick={onOpenAddons} disabled={!onOpenAddons || actionBusy}>
+          Editar adicionais
+        </Button>
+        <Button onClick={onOpenTechnicalSheet} disabled={!onOpenTechnicalSheet || actionBusy}>
+          Ficha tecnica
+        </Button>
+        <Button onClick={onOpenRecommendations} disabled={!onOpenRecommendations || actionBusy}>
+          {recommendationsLoading ? 'Carregando...' : 'IA Peca tambem'}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 function ProductForm({
   name,
   description,
@@ -337,7 +502,7 @@ function ProductForm({
     }
 
     if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
-      setImageUploadError('A imagem deve ter no maximo 1.5 MB.');
+      setImageUploadError('A imagem deve ter no maximo 5 MB.');
       event.target.value = '';
       return;
     }
@@ -432,7 +597,7 @@ function ProductForm({
           <Button type="button" onClick={() => onImageUrlChange('')} disabled={!imageUrl}>
             Remover imagem
           </Button>
-          <small>JPG, PNG ou WebP ate 1.5 MB. A imagem importada fica salva no produto.</small>
+          <small>JPG, PNG ou WebP ate 5 MB. A imagem importada fica salva no produto.</small>
           {imageUploadError ? <strong>{imageUploadError}</strong> : null}
         </div>
       </div>

@@ -388,6 +388,19 @@ describe('AdminMenuService', () => {
     }));
   });
 
+  it('edita controle de estoque do produto', async () => {
+    const prisma = prismaMock();
+    const service = new AdminMenuService(prisma);
+
+    const result = await service.updateProduct('prod_1', ctx, { controlsStock: true } as any);
+
+    expect(prisma.product.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'prod_1' },
+      data: expect.objectContaining({ controlsStock: true }),
+    }));
+    expect(result.controlsStock).toBe(true);
+  });
+
   it('bloqueia produto de outra empresa', async () => {
     const prisma = prismaMock();
     prisma.product.findFirst.mockResolvedValue(null);
