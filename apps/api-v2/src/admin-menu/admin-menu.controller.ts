@@ -77,6 +77,12 @@ export class AdminMenuController {
     return this.adminMenuService.duplicateProduct(id, ctx);
   }
 
+  @Delete(':id')
+  @RequirePermissions(TENANT_PERMISSIONS.CATALOG_MANAGE)
+  async delete(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.adminMenuService.deleteProduct(id, ctx);
+  }
+
   @Get(':id/addon-groups')
   @RequirePermissions(TENANT_PERMISSIONS.CATALOG_READ, TENANT_PERMISSIONS.CATALOG_MANAGE)
   async listAddonGroups(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {

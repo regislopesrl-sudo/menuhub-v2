@@ -96,6 +96,10 @@ export class CreateProductDto {
   featured?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  controlsStock?: boolean;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => ProductChannelsDto)
   channels?: ProductChannelsDto;

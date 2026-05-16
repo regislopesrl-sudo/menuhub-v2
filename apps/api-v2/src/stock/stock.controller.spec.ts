@@ -2,9 +2,16 @@
 
 describe('StockController', () => {
   const service = {
+    getDashboard: jest.fn(),
+    listCategories: jest.fn(),
+    createCategory: jest.fn(),
+    updateCategory: jest.fn(),
+    updateCategoryStatus: jest.fn(),
     listItems: jest.fn(),
     createItem: jest.fn(),
+    getItem: jest.fn(),
     updateItem: jest.fn(),
+    updateItemStatus: jest.fn(),
     listMovements: jest.fn(),
     manualEntry: jest.fn(),
     manualExit: jest.fn(),
@@ -27,7 +34,28 @@ describe('StockController', () => {
     service.listItems.mockResolvedValueOnce([{ id: 's1' }]);
     const result = await controller.listItems(ctx);
     expect(result).toEqual([{ id: 's1' }]);
-    expect(service.listItems).toHaveBeenCalledWith(ctx);
+    expect(service.listItems).toHaveBeenCalledWith(ctx, { includeInactive: false });
+  });
+
+  it('lista categorias de estoque', async () => {
+    service.listCategories.mockResolvedValueOnce([{ id: 'cat-1' }]);
+    const result = await controller.listCategories(ctx);
+    expect(result).toEqual([{ id: 'cat-1' }]);
+    expect(service.listCategories).toHaveBeenCalledWith(ctx, { includeInactive: false });
+  });
+
+  it('cria categoria de estoque', async () => {
+    const payload = { name: 'Hortifruti', sortOrder: 1 };
+    service.createCategory.mockResolvedValueOnce({ id: 'cat-1' });
+    const result = await controller.createCategory(ctx, payload);
+    expect(result).toEqual({ id: 'cat-1' });
+    expect(service.createCategory).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('retorna dashboard de estoque', async () => {
+    service.getDashboard.mockResolvedValueOnce({ totalItems: 1 });
+    const result = await controller.getDashboard(ctx);
+    expect(result).toEqual({ totalItems: 1 });
   });
 
   it('registra entrada manual', async () => {
@@ -36,6 +64,20 @@ describe('StockController', () => {
     const result = await controller.manualEntry(ctx, payload);
     expect(result).toEqual({ movement: { id: 'm1' } });
     expect(service.manualEntry).toHaveBeenCalledWith(ctx, payload);
+  });
+
+  it('busca detalhe do item', async () => {
+    service.getItem.mockResolvedValueOnce({ id: 's1' });
+    const result = await controller.getItem(ctx, 's1');
+    expect(result).toEqual({ id: 's1' });
+    expect(service.getItem).toHaveBeenCalledWith(ctx, 's1');
+  });
+
+  it('altera status do item', async () => {
+    service.updateItemStatus.mockResolvedValueOnce({ id: 's1', isActive: false });
+    const result = await controller.updateItemStatus(ctx, 's1', { isActive: false });
+    expect(result).toEqual({ id: 's1', isActive: false });
+    expect(service.updateItemStatus).toHaveBeenCalledWith(ctx, 's1', { isActive: false });
   });
 
   it('aplica inventario', async () => {

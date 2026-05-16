@@ -14,10 +14,63 @@ import { StockService } from './stock.service';
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 
+  @Get('dashboard')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  getDashboard(@CurrentContext() ctx: RequestContext) {
+    return this.stockService.getDashboard(ctx);
+  }
+
+  @Get('availability')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listAvailability(@CurrentContext() ctx: RequestContext) {
+    return this.stockService.listAvailability(ctx);
+  }
+
+  @Get('product-availability')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listProductAvailability(@CurrentContext() ctx: RequestContext) {
+    return this.stockService.listProductAvailability(ctx);
+  }
+
+  @Get('categories')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listCategories(@CurrentContext() ctx: RequestContext, @Query('includeInactive') includeInactive?: string) {
+    return this.stockService.listCategories(ctx, { includeInactive: includeInactive === 'true' });
+  }
+
+  @Post('categories')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  createCategory(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { name: string; sortOrder?: number; isActive?: boolean },
+  ) {
+    return this.stockService.createCategory(ctx, body);
+  }
+
+  @Patch('categories/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  updateCategory(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Body() body: { name?: string; sortOrder?: number; isActive?: boolean },
+  ) {
+    return this.stockService.updateCategory(ctx, id, body);
+  }
+
+  @Patch('categories/:id/status')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  updateCategoryStatus(
+    @CurrentContext() ctx: RequestContext,
+    @Param('id') id: string,
+    @Body() body: { isActive: boolean },
+  ) {
+    return this.stockService.updateCategoryStatus(ctx, id, body);
+  }
+
   @Get('items')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
-  listItems(@CurrentContext() ctx: RequestContext) {
-    return this.stockService.listItems(ctx);
+  listItems(@CurrentContext() ctx: RequestContext, @Query('includeInactive') includeInactive?: string) {
+    return this.stockService.listItems(ctx, { includeInactive: includeInactive === 'true' });
   }
 
   @Post('items')
@@ -28,6 +81,8 @@ export class StockController {
     body: {
       name: string;
       code?: string;
+      categoryId?: string | null;
+      stockType?: 'PRODUCT' | 'RAW_MATERIAL' | 'ADDON';
       purchaseUnit?: string;
       stockUnit?: string;
       productionUnit?: string;
@@ -50,10 +105,22 @@ export class StockController {
     return this.stockService.createItem(ctx, body);
   }
 
+  @Get('items/:id')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  getItem(@CurrentContext() ctx: RequestContext, @Param('id') id: string) {
+    return this.stockService.getItem(ctx, id);
+  }
+
   @Patch('items/:id')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
   updateItem(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: Record<string, unknown>) {
     return this.stockService.updateItem(ctx, id, body as any);
+  }
+
+  @Patch('items/:id/status')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  updateItemStatus(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: { isActive: boolean }) {
+    return this.stockService.updateItemStatus(ctx, id, body);
   }
 
   @Get('items/:id/batches')
@@ -145,6 +212,12 @@ export class StockController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
   listBreakageAlerts(@CurrentContext() ctx: RequestContext) {
     return this.stockService.listBreakageAlerts(ctx);
+  }
+
+  @Get('alerts/operational')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  listOperationalAlerts(@CurrentContext() ctx: RequestContext) {
+    return this.stockService.listOperationalAlerts(ctx);
   }
 
   @Post('movements/loss')

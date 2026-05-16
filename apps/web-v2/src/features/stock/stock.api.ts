@@ -1,14 +1,30 @@
-﻿import { apiFetch } from '@/lib/api-fetch';
+import { apiFetch } from '@/lib/api-fetch';
+
+export type StockItemType = 'PRODUCT' | 'RAW_MATERIAL' | 'ADDON';
+
+export type StockCategory = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  _count?: { items: number };
+};
 
 export type StockItem = {
   id: string;
+  categoryId?: string | null;
+  category?: StockCategory | null;
   name: string;
   code: string | null;
+  stockType: StockItemType;
   stockUnit: string | null;
   purchaseUnit: string | null;
   productionUnit?: string | null;
   conversionFactor?: number;
   currentQuantity: number;
+  committedQuantity?: number;
+  availableQuantity?: number;
+  committedOrderCount?: number;
   minimumQuantity: number;
   reorderPoint: number;
   averageCost: number;
@@ -23,7 +39,25 @@ export type StockItem = {
   isCritical?: boolean;
   isHighTurnover?: boolean;
   allowNegativeStock: boolean;
+  isActive?: boolean;
   updatedAt: string;
+};
+
+export type StockDashboard = {
+  totalItems: number;
+  byType: Record<StockItemType, number>;
+  totalValue: number;
+  availableValue?: number;
+  committedValue?: number;
+  committedQuantity?: number;
+  belowMinimum: number;
+  belowAvailableMinimum?: number;
+  reorderAttention: number;
+  perishable: number;
+  batchControlled: number;
+  blockedBatches: number;
+  expiringBatches: number;
+  generatedAt: string;
 };
 
 export type StockMovement = {
@@ -48,13 +82,63 @@ export type StockBreakageAlert = {
   name: string;
   stockUnit: string | null;
   currentQuantity: number;
+  committedQuantity?: number;
+  availableQuantity?: number;
   minimumQuantity: number;
   reorderPoint: number;
   severity: 'medium' | 'high' | 'critical';
-  type: 'stockout' | 'below_minimum' | 'below_reorder' | 'batch_expired' | 'batch_expiring';
+  type: 'stockout' | 'below_minimum' | 'below_reorder' | 'committed_stockout' | 'available_below_minimum' | 'available_below_reorder' | 'batch_expired' | 'batch_expiring';
   batchId?: string;
   batchNumber?: string | null;
   expirationDate?: string;
+};
+
+export type StockProductAvailabilityIngredient = {
+  stockItemId: string;
+  name: string;
+  code: string | null;
+  stockType: StockItemType | null;
+  stockUnit: string | null;
+  recipeUnit: string | null;
+  requiredPerUnit: number;
+  currentQuantity: number;
+  committedQuantity: number;
+  availableQuantity: number;
+  availableToSell: number;
+  averageCost: number;
+  costPerProductUnit: number;
+  minimumQuantity: number;
+  reorderPoint: number;
+  controlsStock: boolean;
+  isActive: boolean;
+  optional: boolean;
+};
+
+export type StockProductAvailability = {
+  productId: string;
+  name: string;
+  sku: string | null;
+  categoryId: string | null;
+  category: { id: string; name: string; sortOrder: number } | null;
+  salePrice: number;
+  costPrice: number;
+  controlsStock: boolean;
+  recipeId: string | null;
+  recipe?: {
+    id: string;
+    name: string;
+    yieldQuantity: number;
+    yieldUnit: string | null;
+    lossPercent: number;
+    active: boolean;
+  };
+  availabilityStatus: 'available' | 'low_stock' | 'out_of_stock' | 'missing_recipe' | 'recipe_without_stock_items' | 'not_controlled';
+  availableToSell: number | null;
+  technicalCost: number;
+  grossMargin: number | null;
+  grossMarginPercent?: number | null;
+  ingredients: StockProductAvailabilityIngredient[];
+  limitingIngredients: StockProductAvailabilityIngredient[];
 };
 
 export type StockBatch = {
@@ -75,9 +159,75 @@ export function listStockItems() {
   return apiFetch<StockItem[]>('/v2/admin/stock/items', { method: 'GET' });
 }
 
+export function listStockCategories(includeInactive = false) {
+  const query = includeInactive ? '?includeInactive=true' : '';
+  return apiFetch<StockCategory[]>(`/v2/admin/stock/categories${query}`, { method: 'GET' });
+}
+
+export function createStockCategory(input: { name: string; sortOrder?: number; isActive?: boolean }) {
+  return apiFetch<StockCategory>('/v2/admin/stock/categories', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateStockCategory(id: string, input: Partial<{ name: string; sortOrder: number; isActive: boolean }>) {
+  return apiFetch<StockCategory>(`/v2/admin/stock/categories/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateStockCategoryStatus(id: string, input: { isActive: boolean }) {
+  return apiFetch<StockCategory>(`/v2/admin/stock/categories/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getStockDashboard() {
+  return apiFetch<StockDashboard>('/v2/admin/stock/dashboard', { method: 'GET' });
+}
+
+export function listStockAvailability() {
+  return apiFetch<Array<{
+    stockItemId: string;
+    name: string;
+    code: string | null;
+    stockType: StockItemType;
+    stockUnit: string | null;
+    currentQuantity: number;
+    committedQuantity: number;
+    availableQuantity: number;
+    committedOrderCount: number;
+    minimumQuantity: number;
+    reorderPoint: number;
+    averageCost: number;
+    availableValue: number;
+    committedValue: number;
+  }>>('/v2/admin/stock/availability', { method: 'GET' });
+}
+
+export function listStockProductAvailability() {
+  return apiFetch<StockProductAvailability[]>('/v2/admin/stock/product-availability', { method: 'GET' });
+}
+
+export function updateProductStockControl(productId: string, controlsStock: boolean) {
+  return apiFetch<{ id: string; controlsStock?: boolean }>(`/v2/admin/menu/products/${productId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ controlsStock }),
+  });
+}
+
+export function getStockItem(id: string) {
+  return apiFetch<StockItem>(`/v2/admin/stock/items/${id}`, { method: 'GET' });
+}
+
 export function createStockItem(input: {
   name: string;
   code?: string;
+  categoryId?: string | null;
+  stockType?: StockItemType;
   stockUnit?: string;
   purchaseUnit?: string;
   productionUnit?: string;
@@ -107,6 +257,8 @@ export function updateStockItem(
   input: Partial<{
     name: string;
     code: string;
+    categoryId: string | null;
+    stockType: StockItemType;
     stockUnit: string;
     purchaseUnit: string;
     productionUnit: string;
@@ -127,6 +279,13 @@ export function updateStockItem(
   }>,
 ) {
   return apiFetch<StockItem>(`/v2/admin/stock/items/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateStockItemStatus(id: string, input: { isActive: boolean }) {
+  return apiFetch<StockItem>(`/v2/admin/stock/items/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
