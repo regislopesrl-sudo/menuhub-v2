@@ -1,0 +1,25 @@
+// audit log
+
+model AuditLog {
+  id          String   @id @default(cuid()) @map("id")
+  companyId   String?  @map("company_id")
+  branchId    String?  @map("branch_id")
+  actorUserId String?  @map("actor_user_id")
+  actorType   String   @map("actor_type")
+  action      String   @map("action")
+  outcome     String   @map("outcome")
+  severity    String   @map("severity")
+  targetType  String?  @map("target_type")
+  targetId    String?  @map("target_id")
+  metadata    Json?    @map("metadata")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
