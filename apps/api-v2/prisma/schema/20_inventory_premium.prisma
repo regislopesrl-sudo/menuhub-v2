@@ -1,0 +1,160 @@
+// inventory premium
+
+model InventoryItemCategory {
+  id        String   @id @default(cuid()) @map("id")
+  companyId String   @map("company_id")
+  branchId  String?  @map("branch_id")
+  name      String   @map("name")
+  status    String   @default("ACTIVE") @map("status")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items InventoryItem[]
+
+  @@unique([companyId, branchId, name])
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, status])
+  @@map("inventory_item_categories")
+}
+
+model InventoryItem {
+  id                 String   @id @default(cuid()) @map("id")
+  companyId          String   @map("company_id")
+  categoryId         String?  @map("category_id")
+  name               String   @map("name")
+  sku                String?  @map("sku")
+  unitOfMeasure      String   @map("unit_of_measure")
+  status             String   @default("ACTIVE") @map("status")
+  averageCost        Decimal? @map("average_cost") @db.Decimal(14, 4)
+  minimumStock       Decimal? @map("minimum_stock") @db.Decimal(14, 4)
+  maximumStock       Decimal? @map("maximum_stock") @db.Decimal(14, 4)
+  metadata           Json?    @map("metadata")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  category           InventoryItemCategory? @relation(fields: [categoryId], references: [id])
+  stockBalances      InventoryStockBalance[]
+  movements          InventoryMovement[]
+  countItems         InventoryCountItem[]
+  averageCostHistory AverageCostHistory[]
+
+  @@unique([companyId, sku])
+  @@index([companyId])
+  @@index([companyId, categoryId])
+  @@index([companyId, status])
+  @@map("inventory_items")
+}
+
+model InventoryStockBalance {
+  id               String   @id @default(cuid()) @map("id")
+  companyId        String   @map("company_id")
+  branchId         String   @map("branch_id")
+  stockItemId      String   @map("stock_item_id")
+  quantity         Decimal  @default(0) @map("quantity") @db.Decimal(14, 4)
+  reservedQuantity Decimal  @default(0) @map("reserved_quantity") @db.Decimal(14, 4)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  stockItem InventoryItem @relation(fields: [stockItemId], references: [id])
+
+  @@unique([companyId, branchId, stockItemId])
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, stockItemId])
+  @@map("inventory_stock_balances")
+}
+
+model InventoryMovement {
+  id              String   @id @default(cuid()) @map("id")
+  companyId       String   @map("company_id")
+  branchId        String   @map("branch_id")
+  stockItemId     String   @map("stock_item_id")
+  type            String   @map("type")
+  quantity        Decimal  @map("quantity") @db.Decimal(14, 4)
+  unitCost        Decimal? @map("unit_cost") @db.Decimal(14, 4)
+  totalCost       Decimal? @map("total_cost") @db.Decimal(14, 2)
+  sourceType      String?  @map("source_type")
+  sourceId        String?  @map("source_id")
+  notes           String?  @map("notes")
+  metadata        Json?    @map("metadata")
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  stockItem InventoryItem @relation(fields: [stockItemId], references: [id])
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, stockItemId])
+  @@index([companyId, branchId, createdAt])
+  @@index([sourceType, sourceId])
+  @@map("inventory_movements")
+}
+
+model InventoryCount {
+  id                String    @id @default(cuid()) @map("id")
+  companyId         String    @map("company_id")
+  branchId          String    @map("branch_id")
+  status            String    @default("DRAFT") @map("status")
+  notes             String?   @map("notes")
+  startedByUserId   String?   @map("started_by_user_id")
+  confirmedByUserId String?   @map("confirmed_by_user_id")
+  confirmedAt       DateTime? @map("confirmed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  items InventoryCountItem[]
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, status])
+  @@index([companyId, branchId, createdAt])
+  @@map("inventory_counts")
+}
+
+model InventoryCountItem {
+  id                 String   @id @default(cuid()) @map("id")
+  companyId          String   @map("company_id")
+  branchId           String   @map("branch_id")
+  countId            String   @map("count_id")
+  stockItemId        String   @map("stock_item_id")
+  expectedQuantity   Decimal? @map("expected_quantity") @db.Decimal(14, 4)
+  countedQuantity    Decimal  @map("counted_quantity") @db.Decimal(14, 4)
+  differenceQuantity Decimal? @map("difference_quantity") @db.Decimal(14, 4)
+  notes              String?  @map("notes")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  count     InventoryCount @relation(fields: [countId], references: [id])
+  stockItem InventoryItem  @relation(fields: [stockItemId], references: [id])
+
+  @@unique([countId, stockItemId])
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([countId])
+  @@index([stockItemId])
+  @@map("inventory_count_items")
+}
+
+model AverageCostHistory {
+  id           String   @id @default(cuid()) @map("id")
+  companyId    String   @map("company_id")
+  branchId     String?  @map("branch_id")
+  stockItemId  String   @map("stock_item_id")
+  previousCost Decimal? @map("previous_cost") @db.Decimal(14, 4)
+  newCost      Decimal  @map("new_cost") @db.Decimal(14, 4)
+  sourceType   String?  @map("source_type")
+  sourceId     String?  @map("source_id")
+  metadata     Json?    @map("metadata")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  stockItem InventoryItem @relation(fields: [stockItemId], references: [id])
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, stockItemId])
+  @@index([sourceType, sourceId])
+  @@index([createdAt])
+  @@map("average_cost_history")
+}
