@@ -46,8 +46,17 @@ describe('DeliveryController quote endpoint', () => {
       }),
     } as any;
 
+    const settingsService = {
+      lookupAddressByCep: jest.fn(),
+    } as any;
+
     return {
-      controller: new DeliveryController(deliveryService, cepGeocodingService, deliveryQuoteService),
+      controller: new DeliveryController(
+        deliveryService,
+        cepGeocodingService,
+        deliveryQuoteService,
+        settingsService,
+      ),
       cepGeocodingService,
       deliveryQuoteService,
     };
