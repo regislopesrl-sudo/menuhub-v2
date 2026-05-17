@@ -209,6 +209,7 @@ model Supplier {
   accountsPayable AccountsPayable[]
 
   @@index([companyId])
+  @@unique([companyId, document])
   @@map("suppliers")
 }
 

@@ -59,6 +59,7 @@ model CashMovement {
   @@index([orderId])
   @@index([paymentId])
   @@index([idempotencyKey])
+  @@unique([branchId, idempotencyKey])
   @@map("cash_movements")
 }
 
@@ -260,6 +261,7 @@ model ReceivableSettlement {
   @@index([paymentId])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("receivable_settlements")
 }
 
@@ -290,6 +292,7 @@ model PayableSettlement {
   @@index([branchId, settledAt])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("payable_settlements")
 }
 
@@ -351,6 +354,7 @@ model FinancialLedgerEntry {
   @@index([orderId])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("financial_ledger_entries")
 }
 
@@ -572,4 +576,3 @@ model DailyFinancialClosure {
   @@index([branchId, status, closureDate])
   @@map("daily_financial_closures")
 }
-
