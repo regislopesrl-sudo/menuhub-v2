@@ -212,6 +212,19 @@ export class AdminMenuService {
     return this.mapProduct(duplicated);
   }
 
+  async deleteProduct(id: string, ctx: RequestContext) {
+    await this.findProductOrThrow(id, ctx);
+    await this.prisma.product.update({
+      where: { id },
+      data: {
+        isActive: false,
+        isFeatured: false,
+        deletedAt: new Date(),
+      },
+    });
+    return { deleted: true, id };
+  }
+
   async previewImport(ctx: RequestContext, input: AdminMenuImportInput) {
     await this.assertBranchBelongsToCompany(ctx);
     return this.parseImportCsv(input.csv ?? '');
@@ -584,6 +597,7 @@ export class AdminMenuService {
       ...(normalizedImageUrl !== undefined ? { imageUrl: normalizedImageUrl } : {}),
       ...(typeof input.available === 'boolean' ? { isActive: input.available } : {}),
       ...(typeof input.featured === 'boolean' ? { isFeatured: input.featured } : {}),
+      ...(typeof (input as any).controlsStock === 'boolean' ? { controlsStock: (input as any).controlsStock } : {}),
       ...this.mapChannelData(input.channels),
       ...(sortOrder !== undefined ? { sortOrder } : {}),
       ...(prepTimeMinutes !== undefined ? { prepTimeMinutes } : {}),
@@ -847,6 +861,7 @@ export class AdminMenuService {
       availablePdv: Boolean(product.availableCounter),
       availableKiosk: Boolean(product.availableKiosk ?? product.availableCounter),
       availableWaiter: Boolean(product.availableTable),
+      controlsStock: Boolean(product.controlsStock),
       featured: Boolean(product.isFeatured),
       sortOrder: Number(product.sortOrder ?? 0),
       featuredSortOrder: Number(product.sortOrder ?? 0),

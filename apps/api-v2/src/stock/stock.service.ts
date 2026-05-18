@@ -2,9 +2,29 @@
 import { PrismaService } from '../database/prisma.service';
 import type { RequestContext } from '../common/request-context';
 
+const STOCK_ITEM_TYPES = ['PRODUCT', 'RAW_MATERIAL', 'ADDON'] as const;
+type StockItemTypeValue = (typeof STOCK_ITEM_TYPES)[number];
+const COMMITTED_ORDER_STATUSES = [
+  'PENDING_CONFIRMATION',
+  'CONFIRMED',
+  'IN_PREPARATION',
+  'READY',
+  'WAITING_PICKUP',
+  'WAITING_DISPATCH',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+] as const;
+
+type CommittedStockInfo = {
+  quantity: number;
+  orderIds: Set<string>;
+};
+
 export type StockItemInput = {
   name: string;
   code?: string;
+  categoryId?: string | null;
+  stockType?: StockItemTypeValue;
   purchaseUnit?: string;
   stockUnit?: string;
   productionUnit?: string;
@@ -22,6 +42,12 @@ export type StockItemInput = {
   isCritical?: boolean;
   isHighTurnover?: boolean;
   allowNegativeStock?: boolean;
+};
+
+export type StockCategoryInput = {
+  name: string;
+  sortOrder?: number;
+  isActive?: boolean;
 };
 
 export type StockMovementInput = {
@@ -67,6 +93,12 @@ export type StockMovementFilters = {
   to?: string;
 };
 
+export type StockCheckoutItemInput = {
+  productId: string;
+  quantity: number;
+  name?: string;
+};
+
 export type InventoryCountInput = {
   stockItemId: string;
   countedQuantity: number;
@@ -86,14 +118,205 @@ export type BatchInventoryCountInput = {
 export class StockService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listItems(ctx: RequestContext) {
-    return this.prisma.stockItem.findMany({
-      where: { companyId: ctx.companyId, isActive: true },
-      orderBy: { name: 'asc' },
+  async listItems(ctx: RequestContext, filters: { includeInactive?: boolean } = {}) {
+    const [items, committedStock] = await Promise.all([
+      this.prisma.stockItem.findMany({
+        where: {
+          companyId: ctx.companyId,
+          ...(filters.includeInactive ? {} : { isActive: true }),
+        },
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          categoryId: true,
+          name: true,
+          code: true,
+          stockType: true,
+          purchaseUnit: true,
+          stockUnit: true,
+          productionUnit: true,
+          conversionFactor: true,
+          currentQuantity: true,
+          minimumQuantity: true,
+          reorderPoint: true,
+          averageCost: true,
+          lastCost: true,
+          leadTimeDays: true,
+          controlsStock: true,
+          controlsBatch: true,
+          controlsExpiry: true,
+          requiresFefo: true,
+          isPerishable: true,
+          isFractionable: true,
+          isCritical: true,
+          isHighTurnover: true,
+          allowNegativeStock: true,
+          isActive: true,
+          updatedAt: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              sortOrder: true,
+              isActive: true,
+            },
+          },
+        },
+      }),
+      this.readCommittedStock(ctx),
+    ]);
+
+    return items.map((item) => this.withAvailability(item, committedStock));
+  }
+
+  async listCategories(ctx: RequestContext, filters: { includeInactive?: boolean } = {}) {
+    return this.prisma.stockCategory.findMany({
+      where: {
+        companyId: ctx.companyId,
+        ...(filters.includeInactive ? {} : { isActive: true }),
+      },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: {
         id: true,
         name: true,
+        sortOrder: true,
+        isActive: true,
+        _count: { select: { items: true } },
+      },
+    });
+  }
+
+  async createCategory(ctx: RequestContext, input: StockCategoryInput) {
+    const name = String(input.name ?? '').trim();
+    if (!name) throw new BadRequestException('name obrigatorio.');
+    const sortOrder = input.sortOrder === undefined ? 0 : this.parseNonNegativeInteger(input.sortOrder, 'sortOrder invalido.');
+
+    return this.prisma.stockCategory.create({
+      data: {
+        companyId: ctx.companyId,
+        name,
+        sortOrder,
+        isActive: input.isActive === undefined ? true : Boolean(input.isActive),
+      },
+    });
+  }
+
+  async updateCategory(ctx: RequestContext, id: string, input: Partial<StockCategoryInput>) {
+    const existing = await this.prisma.stockCategory.findUnique({ where: { id } });
+    if (!existing || existing.companyId !== ctx.companyId) {
+      throw new NotFoundException('Categoria de estoque nao encontrada.');
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (input.name !== undefined) {
+      const name = String(input.name ?? '').trim();
+      if (!name) throw new BadRequestException('name nao pode ser vazio.');
+      payload.name = name;
+    }
+    if (input.sortOrder !== undefined) payload.sortOrder = this.parseNonNegativeInteger(input.sortOrder, 'sortOrder invalido.');
+    if (input.isActive !== undefined) payload.isActive = Boolean(input.isActive);
+    if (Object.keys(payload).length === 0) {
+      throw new BadRequestException('Payload vazio para atualizacao.');
+    }
+
+    return this.prisma.stockCategory.update({ where: { id }, data: payload });
+  }
+
+  async updateCategoryStatus(ctx: RequestContext, id: string, input: { isActive: boolean }) {
+    return this.updateCategory(ctx, id, { isActive: Boolean(input.isActive) });
+  }
+
+  async getDashboard(ctx: RequestContext) {
+    const [items, committedStock, blockedBatches, expiringBatches] = await Promise.all([
+      this.prisma.stockItem.findMany({
+        where: { companyId: ctx.companyId, isActive: true },
+        select: {
+          id: true,
+          stockType: true,
+          currentQuantity: true,
+          minimumQuantity: true,
+          reorderPoint: true,
+          averageCost: true,
+          controlsBatch: true,
+          controlsExpiry: true,
+          isPerishable: true,
+        },
+      }),
+      this.readCommittedStock(ctx),
+      this.prisma.stockBatch.count({
+        where: {
+          stockItem: { companyId: ctx.companyId, isActive: true },
+          status: { in: ['QUARANTINED', 'DISCARDED', 'EXPIRED'] },
+        },
+      }),
+      this.prisma.stockBatch.count({
+        where: {
+          stockItem: { companyId: ctx.companyId, isActive: true },
+          quantityRemaining: { gt: 0 },
+          status: { in: ['AVAILABLE', 'OPENED'] },
+          expirationDate: { lte: this.daysFromNow(7) },
+        },
+      }),
+    ]);
+
+    const byType = { PRODUCT: 0, ADDON: 0, RAW_MATERIAL: 0 };
+    let totalValue = 0;
+    let belowMinimum = 0;
+    let reorderAttention = 0;
+    let perishable = 0;
+    let batchControlled = 0;
+    let committedQuantity = 0;
+    let committedValue = 0;
+    let availableValue = 0;
+    let belowAvailableMinimum = 0;
+
+    for (const item of items) {
+      const stockType = String(item.stockType) as StockItemTypeValue;
+      byType[stockType] = (byType[stockType] ?? 0) + 1;
+      const current = Number(item.currentQuantity ?? 0);
+      const committed = committedStock.get(item.id)?.quantity ?? 0;
+      const available = current - committed;
+      const minimum = Number(item.minimumQuantity ?? 0);
+      const reorder = Number(item.reorderPoint ?? 0);
+      const averageCost = Number(item.averageCost ?? 0);
+      totalValue += current * averageCost;
+      committedQuantity += committed;
+      committedValue += committed * averageCost;
+      availableValue += available * averageCost;
+      if (current <= minimum) belowMinimum += 1;
+      if (available <= minimum) belowAvailableMinimum += 1;
+      if (reorder > 0 && current <= reorder) reorderAttention += 1;
+      if (item.controlsExpiry || item.isPerishable) perishable += 1;
+      if (item.controlsBatch) batchControlled += 1;
+    }
+
+    return {
+      totalItems: items.length,
+      byType,
+      totalValue: this.money(totalValue),
+      availableValue: this.money(availableValue),
+      committedValue: this.money(committedValue),
+      committedQuantity: this.decimal(committedQuantity),
+      belowMinimum,
+      belowAvailableMinimum,
+      reorderAttention,
+      perishable,
+      batchControlled,
+      blockedBatches,
+      expiringBatches,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  async getItem(ctx: RequestContext, id: string) {
+    const item = await this.prisma.stockItem.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        categoryId: true,
+        name: true,
         code: true,
+        stockType: true,
         purchaseUnit: true,
         stockUnit: true,
         productionUnit: true,
@@ -103,6 +326,7 @@ export class StockService {
         reorderPoint: true,
         averageCost: true,
         lastCost: true,
+        standardCost: true,
         leadTimeDays: true,
         controlsStock: true,
         controlsBatch: true,
@@ -113,9 +337,228 @@ export class StockService {
         isCritical: true,
         isHighTurnover: true,
         allowNegativeStock: true,
+        isActive: true,
+        createdAt: true,
         updatedAt: true,
+        companyId: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            sortOrder: true,
+            isActive: true,
+          },
+        },
       },
     });
+    if (!item || item.companyId !== ctx.companyId) {
+      throw new NotFoundException('Item de estoque nao encontrado.');
+    }
+    const safeItem = { ...item } as Record<string, unknown>;
+    delete safeItem.companyId;
+    const committedStock = await this.readCommittedStock(ctx);
+    return this.withAvailability(safeItem, committedStock);
+  }
+
+  async listAvailability(ctx: RequestContext) {
+    const items = await this.listItems(ctx);
+    return items.map((item: any) => ({
+      stockItemId: item.id,
+      name: item.name,
+      code: item.code,
+      stockType: item.stockType,
+      stockUnit: item.stockUnit,
+      currentQuantity: Number(item.currentQuantity ?? 0),
+      committedQuantity: Number(item.committedQuantity ?? 0),
+      availableQuantity: Number(item.availableQuantity ?? 0),
+      committedOrderCount: Number(item.committedOrderCount ?? 0),
+      minimumQuantity: Number(item.minimumQuantity ?? 0),
+      reorderPoint: Number(item.reorderPoint ?? 0),
+      averageCost: Number(item.averageCost ?? 0),
+      availableValue: this.money(Number(item.availableQuantity ?? 0) * Number(item.averageCost ?? 0)),
+      committedValue: this.money(Number(item.committedQuantity ?? 0) * Number(item.averageCost ?? 0)),
+    }));
+  }
+
+  async listProductAvailability(ctx: RequestContext) {
+    const [products, committedStock] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { companyId: ctx.companyId, deletedAt: null, isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: {
+          id: true,
+          categoryId: true,
+          name: true,
+          sku: true,
+          salePrice: true,
+          costPrice: true,
+          controlsStock: true,
+          recipeId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              sortOrder: true,
+            },
+          },
+          recipe: {
+            select: {
+              id: true,
+              name: true,
+              yieldQuantity: true,
+              yieldUnit: true,
+              lossPercent: true,
+              active: true,
+              items: {
+                where: { affectsStock: true },
+                select: {
+                  stockItemId: true,
+                  quantity: true,
+                  unit: true,
+                  optional: true,
+                  affectsStock: true,
+                  affectsCost: true,
+                  stockItem: {
+                    select: {
+                      id: true,
+                      name: true,
+                      code: true,
+                      stockType: true,
+                      stockUnit: true,
+                      currentQuantity: true,
+                      minimumQuantity: true,
+                      reorderPoint: true,
+                      averageCost: true,
+                      controlsStock: true,
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.readCommittedStock(ctx),
+    ]);
+
+    return products.map((product: any) => this.withProductAvailability(product, committedStock));
+  }
+
+  async assertProductsAvailableForCheckout(ctx: RequestContext, items: StockCheckoutItemInput[]) {
+    const requested = new Map<string, { productId: string; quantity: number; name?: string }>();
+    for (const item of Array.isArray(items) ? items : []) {
+      const productId = String(item.productId ?? '').trim();
+      const quantity = Number(item.quantity ?? 0);
+      if (!productId || !Number.isFinite(quantity) || quantity <= 0) continue;
+      const current = requested.get(productId) ?? { productId, quantity: 0, name: item.name };
+      current.quantity += quantity;
+      current.name = current.name ?? item.name;
+      requested.set(productId, current);
+    }
+
+    if (requested.size === 0) return { available: true, blocked: [] };
+
+    const [products, committedStock] = await Promise.all([
+      this.prisma.product.findMany({
+        where: {
+          companyId: ctx.companyId,
+          deletedAt: null,
+          id: { in: [...requested.keys()] },
+        },
+        select: {
+          id: true,
+          categoryId: true,
+          name: true,
+          sku: true,
+          salePrice: true,
+          costPrice: true,
+          controlsStock: true,
+          recipeId: true,
+          category: {
+            select: {
+              id: true,
+              name: true,
+              sortOrder: true,
+            },
+          },
+          recipe: {
+            select: {
+              id: true,
+              name: true,
+              yieldQuantity: true,
+              yieldUnit: true,
+              lossPercent: true,
+              active: true,
+              items: {
+                where: { affectsStock: true },
+                select: {
+                  stockItemId: true,
+                  quantity: true,
+                  unit: true,
+                  optional: true,
+                  affectsStock: true,
+                  affectsCost: true,
+                  stockItem: {
+                    select: {
+                      id: true,
+                      name: true,
+                      code: true,
+                      stockType: true,
+                      stockUnit: true,
+                      currentQuantity: true,
+                      minimumQuantity: true,
+                      reorderPoint: true,
+                      averageCost: true,
+                      controlsStock: true,
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.readCommittedStock(ctx),
+    ]);
+
+    const availabilityByProductId = new Map(
+      (products ?? []).map((product: any) => [product.id, this.withProductAvailability(product, committedStock)] as const),
+    );
+    const blocked: Array<{
+      productId: string;
+      name: string;
+      requestedQuantity: number;
+      availableToSell: number;
+      limitingIngredients: unknown[];
+    }> = [];
+
+    for (const item of requested.values()) {
+      const availability = availabilityByProductId.get(item.productId);
+      if (!availability) continue;
+      const availableToSell = availability.availableToSell;
+      const hasTechnicalStockControl = availability.controlsStock && availability.recipeId && availability.ingredients.length > 0;
+      if (!hasTechnicalStockControl || availableToSell === null) continue;
+      if (item.quantity > availableToSell) {
+        blocked.push({
+          productId: item.productId,
+          name: availability.name ?? item.name ?? item.productId,
+          requestedQuantity: this.decimal(item.quantity),
+          availableToSell,
+          limitingIngredients: availability.limitingIngredients,
+        });
+      }
+    }
+
+    if (blocked.length > 0) {
+      const first = blocked[0];
+      throw new BadRequestException(
+        `Estoque insuficiente para ${first.name}: solicitado ${first.requestedQuantity}, disponivel ${first.availableToSell}.`,
+      );
+    }
+
+    return { available: true, blocked };
   }
 
   async createItem(ctx: RequestContext, input: StockItemInput) {
@@ -130,12 +573,15 @@ export class StockService {
     this.assertNonNegative(input.reorderPoint ?? 0, 'reorderPoint invalido.');
     this.assertNonNegative(input.averageCost ?? 0, 'averageCost invalido.');
     const leadTimeDays = this.parseNonNegativeInteger(input.leadTimeDays ?? 0, 'leadTimeDays invalido.');
+    const categoryId = await this.resolveCategoryId(ctx, input.categoryId);
 
     return this.prisma.stockItem.create({
       data: {
         companyId: ctx.companyId,
+        ...(categoryId !== undefined ? { categoryId } : {}),
         name,
         code: this.clean(input.code),
+        stockType: this.normalizeStockType(input.stockType) ?? 'RAW_MATERIAL',
         purchaseUnit: this.clean(input.purchaseUnit),
         stockUnit: this.clean(input.stockUnit) ?? 'un',
         productionUnit: this.clean(input.productionUnit),
@@ -169,7 +615,9 @@ export class StockService {
       if (!name) throw new BadRequestException('name nao pode ser vazio.');
       payload.name = name;
     }
+    if (input.categoryId !== undefined) payload.categoryId = await this.resolveCategoryId(ctx, input.categoryId);
     if (input.code !== undefined) payload.code = this.clean(input.code);
+    if (input.stockType !== undefined) payload.stockType = this.normalizeStockType(input.stockType);
     if (input.purchaseUnit !== undefined) payload.purchaseUnit = this.clean(input.purchaseUnit);
     if (input.stockUnit !== undefined) payload.stockUnit = this.clean(input.stockUnit);
     if (input.productionUnit !== undefined) payload.productionUnit = this.clean(input.productionUnit);
@@ -208,6 +656,17 @@ export class StockService {
     }
 
     return this.prisma.stockItem.update({ where: { id }, data: payload });
+  }
+
+  async updateItemStatus(ctx: RequestContext, id: string, input: { isActive: boolean }) {
+    const existing = await this.prisma.stockItem.findUnique({ where: { id } });
+    if (!existing || existing.companyId !== ctx.companyId) {
+      throw new NotFoundException('Item de estoque nao encontrado.');
+    }
+    return this.prisma.stockItem.update({
+      where: { id },
+      data: { isActive: Boolean(input.isActive) },
+    });
   }
 
   async listMovements(ctx: RequestContext, filters: string | StockMovementFilters = {}) {
@@ -339,11 +798,12 @@ export class StockService {
 
       const previous = Number(item.currentQuantity);
       const next = previous + initialQuantity;
+      const weightedAverageCost = this.weightedAverageCost(previous, Number(item.averageCost ?? 0), initialQuantity, unitCost);
       await tx.stockItem.update({
         where: { id: stockItemId },
         data: {
           currentQuantity: this.decimal(next),
-          averageCost: this.decimal(unitCost),
+          averageCost: this.decimal(weightedAverageCost),
           lastCost: this.decimal(unitCost),
           controlsBatch: true,
         },
@@ -520,37 +980,51 @@ export class StockService {
   }
 
   async listBreakageAlerts(ctx: RequestContext) {
-    const items = await this.prisma.stockItem.findMany({
-      where: { companyId: ctx.companyId, isActive: true, controlsStock: true },
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        stockUnit: true,
-        currentQuantity: true,
-        minimumQuantity: true,
-        reorderPoint: true,
-        isCritical: true,
-      },
-    });
+    const [items, committedStock] = await Promise.all([
+      this.prisma.stockItem.findMany({
+        where: { companyId: ctx.companyId, isActive: true, controlsStock: true },
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          stockUnit: true,
+          currentQuantity: true,
+          minimumQuantity: true,
+          reorderPoint: true,
+          isCritical: true,
+        },
+      }),
+      this.readCommittedStock(ctx),
+    ]);
 
     const stockAlerts = items
       .map((item) => {
         const current = Number(item.currentQuantity);
+        const committed = committedStock.get(item.id)?.quantity ?? 0;
+        const available = current - committed;
         const minimum = Number(item.minimumQuantity);
         const reorder = Number(item.reorderPoint);
         const threshold = reorder > 0 ? reorder : minimum;
-        const level = current <= 0 ? 'critical' : current <= minimum ? 'high' : current <= threshold ? 'medium' : null;
+        const level = available <= 0 ? 'critical' : available <= minimum ? 'high' : available <= threshold ? 'medium' : null;
         if (!level) return null;
+        const type = current <= 0
+          ? 'stockout'
+          : available <= 0
+            ? 'committed_stockout'
+            : available <= minimum
+              ? 'available_below_minimum'
+              : 'available_below_reorder';
         return {
           stockItemId: item.id,
           name: item.name,
           stockUnit: item.stockUnit,
           currentQuantity: current,
+          committedQuantity: this.decimal(committed),
+          availableQuantity: this.decimal(available),
           minimumQuantity: minimum,
           reorderPoint: reorder,
           severity: item.isCritical || level === 'critical' ? 'critical' : level,
-          type: current <= 0 ? 'stockout' : current <= minimum ? 'below_minimum' : 'below_reorder',
+          type,
         };
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -606,6 +1080,146 @@ export class StockService {
       });
 
     return [...stockAlerts, ...batchAlerts];
+  }
+
+  async listOperationalAlerts(ctx: RequestContext) {
+    const [breakageAlerts, products] = await Promise.all([
+      this.listBreakageAlerts(ctx),
+      this.prisma.product.findMany({
+        where: { companyId: ctx.companyId, deletedAt: null, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          salePrice: true,
+          costPrice: true,
+          controlsStock: true,
+          recipeId: true,
+          recipe: {
+            select: {
+              yieldQuantity: true,
+              lossPercent: true,
+              items: {
+                select: {
+                  stockItemId: true,
+                  quantity: true,
+                  affectsCost: true,
+                  stockItem: {
+                    select: {
+                      id: true,
+                      name: true,
+                      averageCost: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const createdAt = new Date().toISOString();
+    const alerts: Array<{
+      id: string;
+      type: string;
+      severity: 'info' | 'warning' | 'critical';
+      message: string;
+      relatedEntityId: string;
+      metadata?: Record<string, unknown>;
+      createdAt: string;
+      read: boolean;
+    }> = [];
+
+    for (const alert of breakageAlerts) {
+      const batchId = 'batchId' in alert ? alert.batchId : null;
+      alerts.push({
+        id: `stock:${alert.stockItemId}:${batchId ?? alert.type}`,
+        type: alert.type,
+        severity: alert.severity === 'critical' ? 'critical' : 'warning',
+        message: `${alert.name}: ${alert.type} (saldo ${alert.currentQuantity}, minimo ${alert.minimumQuantity}).`,
+        relatedEntityId: alert.stockItemId,
+        metadata: alert,
+        createdAt,
+        read: false,
+      });
+    }
+
+    for (const product of products) {
+      const salePrice = Number(product.salePrice ?? 0);
+      if (salePrice <= 0) {
+        alerts.push({
+          id: `product_without_price:${product.id}`,
+          type: 'product_without_price',
+          severity: 'critical',
+          message: `${product.name}: produto sem preco de venda.`,
+          relatedEntityId: product.id,
+          createdAt,
+          read: false,
+        });
+      }
+
+      if (product.controlsStock && !product.recipeId) {
+        alerts.push({
+          id: `product_without_recipe:${product.id}`,
+          type: 'product_without_recipe',
+          severity: 'warning',
+          message: `${product.name}: produto controla estoque, mas nao possui ficha tecnica vinculada.`,
+          relatedEntityId: product.id,
+          createdAt,
+          read: false,
+        });
+        continue;
+      }
+
+      if (!product.recipe) continue;
+      const recipeCost = this.calculateRecipeUnitCost(product.recipe);
+      const missingCostItems = product.recipe.items
+        .filter((item) => item.affectsCost !== false && Number(item.quantity ?? 0) > 0 && Number(item.stockItem?.averageCost ?? 0) <= 0)
+        .map((item) => item.stockItem?.name ?? item.stockItemId);
+
+      if (missingCostItems.length > 0) {
+        alerts.push({
+          id: `recipe_missing_cost:${product.id}`,
+          type: 'ingredient_without_average_cost',
+          severity: 'warning',
+          message: `${product.name}: ficha tecnica possui insumo sem custo medio.`,
+          relatedEntityId: product.id,
+          metadata: { missingCostItems },
+          createdAt,
+          read: false,
+        });
+      }
+
+      if (salePrice > 0 && recipeCost > 0) {
+        const cmvPercent = (recipeCost / salePrice) * 100;
+        if (recipeCost >= salePrice) {
+          alerts.push({
+            id: `price_below_cost:${product.id}`,
+            type: 'price_below_cost',
+            severity: 'critical',
+            message: `${product.name}: custo tecnico maior ou igual ao preco de venda.`,
+            relatedEntityId: product.id,
+            metadata: { salePrice: this.money(salePrice), recipeCost: this.money(recipeCost), cmvPercent: this.money(cmvPercent) },
+            createdAt,
+            read: false,
+          });
+        } else if (cmvPercent > 35) {
+          alerts.push({
+            id: `cmv_above_target:${product.id}`,
+            type: 'cmv_above_target',
+            severity: 'warning',
+            message: `${product.name}: CMV tecnico acima da meta de 35%.`,
+            relatedEntityId: product.id,
+            metadata: { salePrice: this.money(salePrice), recipeCost: this.money(recipeCost), cmvPercent: this.money(cmvPercent) },
+            createdAt,
+            read: false,
+          });
+        }
+      }
+    }
+
+    const severityRank = { critical: 3, warning: 2, info: 1 } as const;
+    return alerts.sort((a, b) => severityRank[b.severity] - severityRank[a.severity]).slice(0, 120);
   }
 
   async applyInventoryCount(ctx: RequestContext, input: { counts: InventoryCountInput[]; notes?: string }) {
@@ -824,6 +1438,8 @@ export class StockService {
                 recipe: {
                   select: {
                     id: true,
+                    yieldQuantity: true,
+                    lossPercent: true,
                     items: {
                       where: { affectsStock: true },
                       select: { stockItemId: true, quantity: true },
@@ -841,12 +1457,18 @@ export class StockService {
 
     return this.prisma.$transaction(async (tx) => {
       let movementsCreated = 0;
+      const costByOrderItem = new Map<string, number>();
       for (const item of order.items) {
         if (!item.product?.controlsStock || !item.product?.recipe?.items?.length) continue;
         const orderItemQty = Number(item.quantity);
+        const recipeYieldQuantity = Number(item.product.recipe.yieldQuantity ?? 1);
+        const recipeLossMultiplier = 1 + Number(item.product.recipe.lossPercent ?? 0) / 100;
 
         for (const recipeItem of item.product.recipe.items) {
-          const consumeQty = Number(recipeItem.quantity) * orderItemQty;
+          const baseRecipeQuantity = Number(recipeItem.quantity);
+          const consumeQty = recipeYieldQuantity > 0
+            ? (baseRecipeQuantity * recipeLossMultiplier * orderItemQty) / recipeYieldQuantity
+            : baseRecipeQuantity * recipeLossMultiplier * orderItemQty;
           if (!Number.isFinite(consumeQty) || consumeQty <= 0) continue;
 
           const stock = await tx.stockItem.findUnique({ where: { id: recipeItem.stockItemId } });
@@ -902,26 +1524,424 @@ export class StockService {
           };
           if (allocations.length > 0) {
             for (const allocation of allocations) {
+              const allocationTotalCost = allocation.quantity * allocation.unitCost;
               await tx.stockMovement.create({
                 data: {
                   ...movementBase,
                   batchId: allocation.batchId,
                   quantity: this.decimal(allocation.quantity),
                   unitCost: this.decimal(allocation.unitCost),
-                  totalCost: this.decimal(allocation.quantity * allocation.unitCost),
+                  totalCost: this.decimal(allocationTotalCost),
                 },
               });
+              costByOrderItem.set(item.id, (costByOrderItem.get(item.id) ?? 0) + allocationTotalCost);
               movementsCreated += 1;
             }
           } else {
             await tx.stockMovement.create({ data: movementBase });
+            costByOrderItem.set(item.id, (costByOrderItem.get(item.id) ?? 0) + consumeQty * Number(updated.averageCost ?? 0));
             movementsCreated += 1;
           }
         }
       }
 
+      const orderItemDelegate = (tx as any).orderItem;
+      if (orderItemDelegate?.update) {
+        for (const item of order.items) {
+          const totalCost = costByOrderItem.get(item.id) ?? 0;
+          const quantity = Number(item.quantity ?? 0);
+          if (totalCost <= 0 || quantity <= 0) continue;
+          await orderItemDelegate.update({
+            where: { id: item.id },
+            data: { costSnapshot: this.money(totalCost / quantity) },
+          });
+        }
+      }
+
       return { orderId, consumed: true, movementsCreated };
     });
+  }
+
+  async releaseOrderConsumption(ctx: RequestContext, orderId: string, input: { reasonCode?: string; notes?: string } = {}) {
+    const existingReturn = await this.prisma.stockMovement.findFirst({
+      where: {
+        sourceModule: 'orders',
+        sourceId: orderId,
+        movementType: 'RETURN',
+        movementTypeDetailed: 'sale_consumption_cancel_return',
+      },
+      select: { id: true },
+    });
+    if (existingReturn) {
+      return { orderId, released: false, reason: 'already_released' as const };
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, companyId: ctx.companyId },
+      select: { id: true },
+    });
+    if (!order) throw new NotFoundException('Pedido nao encontrado para recomposicao de estoque.');
+
+    const consumptionMovements = await this.prisma.stockMovement.findMany({
+      where: {
+        sourceModule: 'orders',
+        sourceId: orderId,
+        movementType: 'SALE_CONSUMPTION',
+        stockItem: { companyId: ctx.companyId },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        stockItemId: true,
+        branchId: true,
+        batchId: true,
+        orderItemId: true,
+        quantity: true,
+        unitCost: true,
+      },
+    });
+
+    if (consumptionMovements.length === 0) {
+      return { orderId, released: false, reason: 'no_consumption' as const };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      let movementsCreated = 0;
+      let quantityReleased = 0;
+      let totalCostReleased = 0;
+      const reasonCode = this.clean(input.reasonCode) ?? 'order_canceled';
+      const notes = this.clean(input.notes) ?? 'Recomposicao automatica por cancelamento de pedido.';
+
+      for (const movement of consumptionMovements) {
+        const quantity = Number(movement.quantity ?? 0);
+        if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+        const stock = await tx.stockItem.findUnique({ where: { id: movement.stockItemId } });
+        if (!stock || stock.companyId !== ctx.companyId) continue;
+
+        const previous = Number(stock.currentQuantity ?? 0);
+        const next = previous + quantity;
+        await tx.stockItem.update({
+          where: { id: movement.stockItemId },
+          data: { currentQuantity: this.decimal(next) },
+        });
+
+        if (movement.batchId) {
+          const batch = await tx.stockBatch.findUnique({ where: { id: movement.batchId } });
+          if (batch?.stockItemId === movement.stockItemId) {
+            const batchPrevious = Number(batch.quantityRemaining ?? 0);
+            const batchNext = batchPrevious + quantity;
+            const batchStatus = String(batch.status ?? '');
+            const nextStatus = batchStatus === 'EXHAUSTED' ? 'OPENED' : batch.status;
+            await tx.stockBatch.update({
+              where: { id: movement.batchId },
+              data: {
+                quantityRemaining: this.decimal(batchNext),
+                status: nextStatus,
+              },
+            });
+          }
+        }
+
+        const branchId = movement.branchId ?? ctx.branchId;
+        if (branchId) {
+          await tx.stockLocationBalance.upsert({
+            where: { branchId_stockItemId: { branchId, stockItemId: movement.stockItemId } },
+            update: { currentQuantity: this.decimal(next), companyId: ctx.companyId },
+            create: {
+              branchId,
+              stockItemId: movement.stockItemId,
+              companyId: ctx.companyId,
+              currentQuantity: this.decimal(next),
+            },
+          });
+        }
+
+        const unitCost = Number(movement.unitCost ?? stock.averageCost ?? 0);
+        const totalCost = quantity * unitCost;
+        await tx.stockMovement.create({
+          data: {
+            stockItemId: movement.stockItemId,
+            branchId,
+            batchId: movement.batchId,
+            orderItemId: movement.orderItemId,
+            movementType: 'RETURN',
+            movementTypeDetailed: 'sale_consumption_cancel_return',
+            sourceModule: 'orders',
+            sourceId: order.id,
+            referenceType: 'SALE_CONSUMPTION',
+            referenceId: movement.id,
+            actorId: ctx.userId,
+            requestId: ctx.requestId,
+            quantity: this.decimal(quantity),
+            unitCost: this.decimal(unitCost),
+            totalCost: this.decimal(totalCost),
+            previousStock: this.decimal(previous),
+            newStock: this.decimal(next),
+            reasonCode,
+            notes,
+          },
+        });
+
+        movementsCreated += 1;
+        quantityReleased += quantity;
+        totalCostReleased += totalCost;
+      }
+
+      return {
+        orderId,
+        released: true,
+        movementsCreated,
+        quantityReleased: this.decimal(quantityReleased),
+        totalCostReleased: this.money(totalCostReleased),
+      };
+    });
+  }
+
+  private async readCommittedStock(ctx: RequestContext): Promise<Map<string, CommittedStockInfo>> {
+    const orderDelegate = (this.prisma as any).order;
+    if (!orderDelegate?.findMany) return new Map();
+
+    const orders = await orderDelegate.findMany({
+      where: {
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+        deletedAt: null,
+        status: { in: [...COMMITTED_ORDER_STATUSES] as any[] },
+      },
+      select: {
+        id: true,
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            product: {
+              select: {
+                controlsStock: true,
+                recipe: {
+                  select: {
+                    yieldQuantity: true,
+                    lossPercent: true,
+                    items: {
+                      where: { affectsStock: true },
+                      select: {
+                        stockItemId: true,
+                        quantity: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const orderIds = (orders ?? []).map((order: any) => order.id).filter(Boolean);
+    if (orderIds.length === 0) return new Map();
+
+    const consumptionMovements = await this.prisma.stockMovement.findMany({
+      where: {
+        sourceModule: 'orders',
+        sourceId: { in: orderIds },
+        movementType: 'SALE_CONSUMPTION',
+      },
+      select: { sourceId: true },
+    });
+    const consumedOrderIds = new Set(
+      (consumptionMovements ?? [])
+        .map((movement: any) => movement.sourceId)
+        .filter(Boolean),
+    );
+
+    const committed = new Map<string, CommittedStockInfo>();
+    for (const order of orders ?? []) {
+      if (!order?.id || consumedOrderIds.has(order.id)) continue;
+
+      for (const item of order.items ?? []) {
+        const product = item.product;
+        const recipe = product?.recipe;
+        if (!product?.controlsStock || !recipe?.items?.length) continue;
+
+        const orderItemQty = Number(item.quantity ?? 0);
+        if (!Number.isFinite(orderItemQty) || orderItemQty <= 0) continue;
+
+        const yieldQuantity = Number(recipe.yieldQuantity ?? 1);
+        const lossMultiplier = 1 + Number(recipe.lossPercent ?? 0) / 100;
+
+        for (const recipeItem of recipe.items) {
+          const stockItemId = String(recipeItem.stockItemId ?? '').trim();
+          const baseQuantity = Number(recipeItem.quantity ?? 0);
+          if (!stockItemId || !Number.isFinite(baseQuantity) || baseQuantity <= 0) continue;
+
+          const quantity = yieldQuantity > 0
+            ? (baseQuantity * lossMultiplier * orderItemQty) / yieldQuantity
+            : baseQuantity * lossMultiplier * orderItemQty;
+          if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+          const current = committed.get(stockItemId) ?? { quantity: 0, orderIds: new Set<string>() };
+          current.quantity += quantity;
+          current.orderIds.add(order.id);
+          committed.set(stockItemId, current);
+        }
+      }
+    }
+
+    return committed;
+  }
+
+  private withAvailability<T extends Record<string, any>>(item: T, committedStock: Map<string, CommittedStockInfo>) {
+    const info = committedStock.get(String(item.id));
+    const committedQuantity = info?.quantity ?? 0;
+    const currentQuantity = Number(item.currentQuantity ?? 0);
+    return {
+      ...item,
+      committedQuantity: this.decimal(committedQuantity),
+      availableQuantity: this.decimal(currentQuantity - committedQuantity),
+      committedOrderCount: info?.orderIds.size ?? 0,
+    };
+  }
+
+  private withProductAvailability(product: any, committedStock: Map<string, CommittedStockInfo>) {
+    const salePrice = Number(product.salePrice ?? 0);
+    const base = {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku ?? null,
+      categoryId: product.categoryId ?? null,
+      category: product.category ?? null,
+      salePrice: this.money(salePrice),
+      costPrice: this.money(Number(product.costPrice ?? 0)),
+      controlsStock: Boolean(product.controlsStock),
+      recipeId: product.recipeId ?? null,
+    };
+
+    if (!product.controlsStock) {
+      return {
+        ...base,
+        availabilityStatus: 'not_controlled',
+        availableToSell: null,
+        technicalCost: this.money(Number(product.costPrice ?? 0)),
+        grossMargin: salePrice > 0 ? this.money(salePrice - Number(product.costPrice ?? 0)) : null,
+        ingredients: [],
+        limitingIngredients: [],
+      };
+    }
+
+    if (!product.recipeId || !product.recipe) {
+      return {
+        ...base,
+        availabilityStatus: 'missing_recipe',
+        availableToSell: 0,
+        technicalCost: this.money(Number(product.costPrice ?? 0)),
+        grossMargin: salePrice > 0 ? this.money(salePrice - Number(product.costPrice ?? 0)) : null,
+        ingredients: [],
+        limitingIngredients: [],
+      };
+    }
+
+    const recipe = product.recipe;
+    const yieldQuantity = Number(recipe.yieldQuantity ?? 1);
+    const lossMultiplier = 1 + Number(recipe.lossPercent ?? 0) / 100;
+    const ingredients: Array<Record<string, unknown>> = [];
+    let availableToSell = Number.POSITIVE_INFINITY;
+    let technicalCost = 0;
+
+    for (const recipeItem of recipe.items ?? []) {
+      const stock = recipeItem.stockItem;
+      const stockItemId = String(recipeItem.stockItemId ?? stock?.id ?? '').trim();
+      const recipeQuantity = Number(recipeItem.quantity ?? 0);
+      if (!stockItemId || !Number.isFinite(recipeQuantity) || recipeQuantity <= 0) continue;
+
+      const requiredPerUnit = yieldQuantity > 0
+        ? (recipeQuantity * lossMultiplier) / yieldQuantity
+        : recipeQuantity * lossMultiplier;
+      if (!Number.isFinite(requiredPerUnit) || requiredPerUnit <= 0) continue;
+
+      const currentQuantity = Number(stock?.currentQuantity ?? 0);
+      const committed = committedStock.get(stockItemId)?.quantity ?? 0;
+      const availableQuantity = currentQuantity - committed;
+      const itemAvailableToSell = Math.floor(Math.max(availableQuantity, 0) / requiredPerUnit);
+      const averageCost = Number(stock?.averageCost ?? 0);
+      if (recipeItem.affectsCost !== false) {
+        technicalCost += requiredPerUnit * averageCost;
+      }
+      availableToSell = Math.min(availableToSell, itemAvailableToSell);
+
+      ingredients.push({
+        stockItemId,
+        name: stock?.name ?? stockItemId,
+        code: stock?.code ?? null,
+        stockType: stock?.stockType ?? null,
+        stockUnit: stock?.stockUnit ?? null,
+        recipeUnit: recipeItem.unit ?? null,
+        requiredPerUnit: this.decimal(requiredPerUnit),
+        currentQuantity: this.decimal(currentQuantity),
+        committedQuantity: this.decimal(committed),
+        availableQuantity: this.decimal(availableQuantity),
+        availableToSell: itemAvailableToSell,
+        averageCost: this.money(averageCost),
+        costPerProductUnit: this.money(recipeItem.affectsCost === false ? 0 : requiredPerUnit * averageCost),
+        minimumQuantity: Number(stock?.minimumQuantity ?? 0),
+        reorderPoint: Number(stock?.reorderPoint ?? 0),
+        controlsStock: stock?.controlsStock !== false,
+        isActive: stock?.isActive !== false,
+        optional: Boolean(recipeItem.optional),
+      });
+    }
+
+    if (ingredients.length === 0) {
+      return {
+        ...base,
+        recipe: {
+          id: recipe.id,
+          name: recipe.name,
+          yieldQuantity: Number(recipe.yieldQuantity ?? 0),
+          yieldUnit: recipe.yieldUnit ?? null,
+          lossPercent: Number(recipe.lossPercent ?? 0),
+          active: Boolean(recipe.active),
+        },
+        availabilityStatus: 'recipe_without_stock_items',
+        availableToSell: 0,
+        technicalCost: this.money(0),
+        grossMargin: salePrice > 0 ? this.money(salePrice) : null,
+        ingredients: [],
+        limitingIngredients: [],
+      };
+    }
+
+    const normalizedAvailableToSell = Number.isFinite(availableToSell)
+      ? Math.max(0, availableToSell)
+      : 0;
+    const sortedIngredients = [...ingredients].sort((left, right) =>
+      Number(left.availableToSell ?? 0) - Number(right.availableToSell ?? 0),
+    );
+    const limitingIngredients = sortedIngredients.slice(0, 3);
+    const availabilityStatus = normalizedAvailableToSell <= 0
+      ? 'out_of_stock'
+      : normalizedAvailableToSell <= 5
+        ? 'low_stock'
+        : 'available';
+
+    return {
+      ...base,
+      recipe: {
+        id: recipe.id,
+        name: recipe.name,
+        yieldQuantity: Number(recipe.yieldQuantity ?? 0),
+        yieldUnit: recipe.yieldUnit ?? null,
+        lossPercent: Number(recipe.lossPercent ?? 0),
+        active: Boolean(recipe.active),
+      },
+      availabilityStatus,
+      availableToSell: normalizedAvailableToSell,
+      technicalCost: this.money(technicalCost),
+      grossMargin: salePrice > 0 ? this.money(salePrice - technicalCost) : null,
+      grossMarginPercent: salePrice > 0 ? this.money(((salePrice - technicalCost) / salePrice) * 100) : null,
+      ingredients,
+      limitingIngredients,
+    };
   }
 
   private async applyManualMovement(
@@ -952,6 +1972,11 @@ export class StockService {
       const previous = Number(item.currentQuantity);
       const delta = movementType === 'ENTRY' ? quantity : -quantity;
       const next = previous + delta;
+      const currentAverageCost = Number(item.averageCost ?? 0);
+      const movementUnitCost = unitCost > 0 ? unitCost : currentAverageCost;
+      const nextAverageCost = movementType === 'ENTRY' && unitCost > 0
+        ? this.weightedAverageCost(previous, currentAverageCost, quantity, unitCost)
+        : currentAverageCost;
 
       if (next < 0 && !item.allowNegativeStock) {
         throw new BadRequestException('Estoque insuficiente para saida manual.');
@@ -961,7 +1986,7 @@ export class StockService {
         where: { id: stockItemId },
         data: {
           currentQuantity: this.decimal(next),
-          ...(unitCost > 0 ? { averageCost: this.decimal(unitCost), lastCost: this.decimal(unitCost) } : {}),
+          ...(movementType === 'ENTRY' && unitCost > 0 ? { averageCost: this.decimal(nextAverageCost), lastCost: this.decimal(unitCost) } : {}),
         },
       });
       const allocations = movementType === 'EXIT'
@@ -999,8 +2024,8 @@ export class StockService {
         actorId: ctx.userId,
         requestId: ctx.requestId,
         quantity: this.decimal(quantity),
-        unitCost: this.decimal(unitCost),
-        totalCost: this.decimal(quantity * unitCost),
+        unitCost: this.decimal(movementUnitCost),
+        totalCost: this.decimal(quantity * movementUnitCost),
         previousStock: this.decimal(previous),
         newStock: this.decimal(next),
         reasonCode: this.clean(input.reasonCode),
@@ -1011,7 +2036,7 @@ export class StockService {
       if (allocations.length > 0) {
         for (const allocation of allocations) {
           movements.push(await tx.stockMovement.create({
-            data: {
+          data: {
               ...movementBase,
               batchId: allocation.batchId,
               quantity: this.decimal(allocation.quantity),
@@ -1095,13 +2120,65 @@ export class StockService {
     return allocations;
   }
 
+  private normalizeStockType(value: unknown): StockItemTypeValue | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const normalized = String(value).trim().toUpperCase();
+    if ((STOCK_ITEM_TYPES as readonly string[]).includes(normalized)) {
+      return normalized as StockItemTypeValue;
+    }
+    throw new BadRequestException('stockType invalido. Use PRODUCT, RAW_MATERIAL ou ADDON.');
+  }
+
+  private async resolveCategoryId(ctx: RequestContext, categoryId: string | null | undefined): Promise<string | null | undefined> {
+    if (categoryId === undefined) return undefined;
+    const normalized = this.clean(categoryId);
+    if (normalized === null) return null;
+    const category = await this.prisma.stockCategory.findUnique({ where: { id: normalized } });
+    if (!category || category.companyId !== ctx.companyId || !category.isActive) {
+      throw new BadRequestException('Categoria de estoque invalida para a empresa atual.');
+    }
+    return category.id;
+  }
+
   private clean(value: unknown): string | null {
     const normalized = String(value ?? '').trim();
     return normalized.length > 0 ? normalized : null;
   }
 
+  private daysFromNow(days: number) {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date;
+  }
+
+  private weightedAverageCost(previousQuantity: number, previousAverageCost: number, entryQuantity: number, entryUnitCost: number) {
+    const previousQty = Number(previousQuantity ?? 0);
+    const previousCost = Number(previousAverageCost ?? 0);
+    const quantity = Number(entryQuantity ?? 0);
+    const unitCost = Number(entryUnitCost ?? 0);
+    const nextQuantity = previousQty + quantity;
+    if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) return this.decimal(unitCost);
+    if (!Number.isFinite(unitCost) || unitCost <= 0) return this.decimal(previousCost);
+    return this.decimal(((previousQty * previousCost) + (quantity * unitCost)) / nextQuantity);
+  }
+
+  private calculateRecipeUnitCost(recipe: any) {
+    const grossCost = (recipe?.items ?? []).reduce((sum: number, item: any) => {
+      if (item.affectsCost === false) return sum;
+      return sum + Number(item.quantity ?? 0) * Number(item.stockItem?.averageCost ?? 0);
+    }, 0);
+    const lossMultiplier = 1 + Number(recipe?.lossPercent ?? 0) / 100;
+    const totalCost = grossCost * lossMultiplier;
+    const yieldQuantity = Number(recipe?.yieldQuantity ?? 1);
+    return yieldQuantity > 0 ? totalCost / yieldQuantity : totalCost;
+  }
+
   private decimal(value: number) {
     return Number(value.toFixed(4));
+  }
+
+  private money(value: number) {
+    return Number(value.toFixed(2));
   }
 
   private assertNonNegative(value: unknown, message: string) {

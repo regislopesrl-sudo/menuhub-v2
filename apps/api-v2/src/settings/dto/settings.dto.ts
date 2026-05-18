@@ -83,7 +83,13 @@ export interface OperationSettingsDto {
 }
 
 export interface PaymentSettingsDto {
+  debitActive?: boolean;
+  creditActive?: boolean;
   pixActive?: boolean;
+  pixOnlineActive?: boolean;
+  creditOnlineActive?: boolean;
+  foodVoucherActive?: boolean;
+  mealVoucherActive?: boolean;
   cashActive?: boolean;
   onlineCardActive?: boolean;
   presentCardActive?: boolean;

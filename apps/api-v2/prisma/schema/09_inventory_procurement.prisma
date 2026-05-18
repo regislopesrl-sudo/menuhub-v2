@@ -203,10 +203,13 @@ model Supplier {
   createdAt DateTime @default(now()) @map("created_at")
 
   purchaseOrders  PurchaseOrder[]
+  purchaseReceipts PurchaseReceipt[]
+  purchaseQuotes   PurchaseQuote[]
   goodsReceipts   GoodsReceipt[]
   accountsPayable AccountsPayable[]
 
   @@index([companyId])
+  @@unique([companyId, document])
   @@map("suppliers")
 }
 
@@ -227,6 +230,7 @@ model PurchaseOrder {
 
   items         PurchaseOrderItem[]
   goodsReceipts GoodsReceipt[]
+  receipts      PurchaseReceipt[]
 
   @@index([branchId])
   @@index([supplierId])
@@ -374,4 +378,3 @@ model SupplierItemMapping {
   @@index([stockItemId])
   @@map("supplier_item_mappings")
 }
-

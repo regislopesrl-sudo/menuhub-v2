@@ -171,8 +171,13 @@ export class OrdersService {
     if (this.shouldConsumeStockOnStatus(status)) {
       try {
         await this.stockService.consumeByOrder(ctx, order.id);
-      } catch {
-        // non-blocking consumption integration for now
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Falha desconhecida na baixa automatica de estoque.';
+        try {
+          await this.orderRepository.addInternalNote(order.id, ctx, `Falha na baixa automatica de estoque: ${message}`);
+        } catch {
+          // audit note is best effort; status update must not be reverted by note failure
+        }
       }
     }
 
@@ -228,6 +233,21 @@ export class OrdersService {
       internalNote: input.internalNote,
     });
     if (!order) throw new NotFoundException(`Pedido '${id}' nao encontrado para a empresa atual.`);
+
+    try {
+      await this.stockService.releaseOrderConsumption(ctx, order.id, {
+        reasonCode: 'order_canceled',
+        notes: input.reasonText ?? input.internalNote ?? 'Pedido cancelado.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha desconhecida na recomposicao de estoque.';
+      try {
+        await this.orderRepository.addInternalNote(order.id, ctx, `Falha na recomposicao automatica de estoque: ${message}`);
+      } catch {
+        // audit note is best effort; cancellation must not be reverted by note failure
+      }
+    }
+
     recordAuditFromContext({
       action: AUDIT_ACTIONS.ORDER_CANCEL,
       outcome: 'success',

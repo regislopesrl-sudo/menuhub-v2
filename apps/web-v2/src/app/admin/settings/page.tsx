@@ -17,10 +17,16 @@ import {
   getCompanySettings,
   getOperationSettings,
   getPaymentSettings,
+  downloadBranchSalesHistoryTemplate,
+  listBranchSalesHistoryImports,
+  lookupBranchAddressByCep,
   patchBranchSettings,
   patchCompanySettings,
   patchOperationSettings,
   patchPaymentSettings,
+  uploadBranchSalesHistory,
+  type BranchSalesHistoryImport,
+  type BranchCepLookupResponse,
   type BranchSettingsResponse,
   type CompanySettingsResponse,
   type OperationSettingsResponse,
@@ -61,6 +67,8 @@ const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: 'WhatsApp',
 };
 
+const LOCAL_UPLOAD_LIMIT_MB = 4;
+
 export default function AdminSettingsPage() {
   const moduleHeaders = useMemo(
     () => ({
@@ -80,6 +88,14 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingTab, setSavingTab] = useState<SettingsTab | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [cepLookupStatus, setCepLookupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [cepLookupMessage, setCepLookupMessage] = useState<string | null>(null);
+  const [lastCepLookup, setLastCepLookup] = useState('');
+  const [salesHistoryImports, setSalesHistoryImports] = useState<BranchSalesHistoryImport[]>([]);
+  const [salesHistoryFile, setSalesHistoryFile] = useState<File | null>(null);
+  const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
+  const [salesHistoryAction, setSalesHistoryAction] = useState<'template' | 'templateReal' | 'validate' | 'import' | 'validateReal' | 'importReal' | null>(null);
+  const [salesHistoryMessage, setSalesHistoryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -111,11 +127,33 @@ export default function AdminSettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== 'branch' || !branch) return;
+    const digits = digitsOnly(branch.zipCode, 8);
+    const hasMissingAddress = !branch.street || !branch.district || !branch.city || !branch.state;
+    if (digits.length === 8 && hasMissingAddress && digits !== lastCepLookup && cepLookupStatus !== 'loading') {
+      void lookupBranchCep(digits);
+    }
+  }, [activeTab, branch?.zipCode]);
+
+  useEffect(() => {
+    if (!branch?.branchId) return;
+    void loadSalesHistoryImports(branch.branchId);
+  }, [branch?.branchId]);
+
   const kpis = useMemo(() => {
     const openDays = operation?.schedules.filter((item) => item.isOpen).length ?? 0;
     const activeChannels = Object.values(operation?.channels ?? {}).filter(Boolean).length;
     const deliveryAreas = operation?.delivery.areas.length ?? 0;
-    const activePayments = [payments?.pixActive, payments?.cashActive, payments?.onlineCardActive, payments?.presentCardActive].filter(Boolean).length;
+    const activePayments = [
+      payments?.debitActive,
+      payments?.creditActive,
+      payments?.pixActive,
+      payments?.pixOnlineActive,
+      payments?.creditOnlineActive,
+      payments?.foodVoucherActive,
+      payments?.mealVoucherActive,
+    ].filter(Boolean).length;
     return { openDays, activeChannels, deliveryAreas, activePayments };
   }, [operation, payments]);
 
@@ -202,6 +240,128 @@ export default function AdminSettingsPage() {
     }
   }
 
+  function handleBranchCepChange(value: string) {
+    if (!branch) return;
+    const nextZipCode = maskCep(value);
+    const digits = digitsOnly(nextZipCode, 8);
+    setBranch({ ...branch, zipCode: nextZipCode });
+    setCepLookupMessage(null);
+
+    if (digits.length < 8) {
+      setCepLookupStatus('idle');
+      setLastCepLookup('');
+      return;
+    }
+
+    if (digits !== lastCepLookup) {
+      void lookupBranchCep(digits);
+    }
+  }
+
+  async function lookupBranchCep(zipCode?: string) {
+    const digits = digitsOnly(zipCode ?? branch?.zipCode ?? '', 8);
+    if (digits.length !== 8) {
+      setCepLookupStatus('error');
+      setCepLookupMessage('Informe um CEP com 8 digitos.');
+      return;
+    }
+
+    setCepLookupStatus('loading');
+    setCepLookupMessage('Buscando CEP...');
+    setError(null);
+    try {
+      const address = await lookupBranchAddressByCep(undefined, digits);
+      setBranch((current) => (current ? applyCepAddress(current, address) : current));
+      setLastCepLookup(digits);
+      setCepLookupStatus('success');
+      setCepLookupMessage(
+        address.latitude !== null && address.longitude !== null
+          ? 'Endereco e localizacao preenchidos pelo CEP.'
+          : 'Endereco preenchido pelo CEP. Latitude/longitude nao encontrados automaticamente.',
+      );
+    } catch (err) {
+      setCepLookupStatus('error');
+      setCepLookupMessage(err instanceof Error ? err.message : 'Nao foi possivel consultar o CEP.');
+    }
+  }
+
+  async function loadSalesHistoryImports(branchId: string) {
+    setSalesHistoryLoading(true);
+    try {
+      const response = await listBranchSalesHistoryImports(undefined, branchId);
+      setSalesHistoryImports(response.items);
+      setSalesHistoryMessage(null);
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Nao foi possivel carregar historico de importacoes.');
+    } finally {
+      setSalesHistoryLoading(false);
+    }
+  }
+
+  async function handleSalesHistoryTemplateDownload(target: 'history' | 'real' = 'history') {
+    if (!branch) return;
+    setSalesHistoryAction(target === 'real' ? 'templateReal' : 'template');
+    setSalesHistoryMessage(null);
+    try {
+      const blob = await downloadBranchSalesHistoryTemplate(undefined, branch.branchId, target);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = target === 'real' ? 'vendas-reais-operacionais.csv' : 'vendas-historicas-24-meses.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 250);
+      setSalesHistoryMessage(target === 'real' ? 'Modelo de importacao real gerado.' : 'Modelo CSV gerado.');
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Falha ao gerar modelo CSV.');
+    } finally {
+      setSalesHistoryAction(null);
+    }
+  }
+
+  async function handleSalesHistoryUpload(mode: 'validate' | 'import' | 'validateReal' | 'importReal') {
+    if (!branch) return;
+    if (!salesHistoryFile) {
+      setSalesHistoryMessage('Selecione um arquivo CSV de vendas.');
+      return;
+    }
+    if (mode === 'importReal') {
+      const confirmed = window.confirm(
+        'Importar no real cria pedidos, pagamentos e pode baixar estoque dos produtos vinculados por product_id ou product_sku. Deseja continuar?',
+      );
+      if (!confirmed) return;
+    }
+    setSalesHistoryAction(mode);
+    setSalesHistoryMessage(null);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const apiMode = mode === 'validateReal' ? 'validate-real' : mode === 'importReal' ? 'import-real' : mode;
+      const result = await uploadBranchSalesHistory(undefined, branch.branchId, salesHistoryFile, apiMode);
+      setSalesHistoryImports((current) => [result, ...current.filter((item) => item.id !== result.id)].slice(0, 30));
+      setSuccessMessage(
+        mode === 'validate'
+          ? 'Arquivo validado e registrado como pre-visualizacao.'
+          : mode === 'validateReal'
+            ? 'Arquivo validado para importacao real de pedidos.'
+            : mode === 'importReal'
+              ? 'Vendas importadas como pedidos reais.'
+              : 'Vendas historicas importadas para o BI.',
+      );
+      setSalesHistoryMessage(
+        `${result.validRows} linha(s) valida(s), ${result.invalidRows} invalida(s). Status: ${salesHistoryStatusLabel(result.status)}.`,
+      );
+      if (mode === 'import' || mode === 'importReal') {
+        setSalesHistoryFile(null);
+      }
+    } catch (err) {
+      setSalesHistoryMessage(err instanceof Error ? err.message : 'Falha ao processar vendas historicas.');
+    } finally {
+      setSalesHistoryAction(null);
+    }
+  }
+
   async function saveOperationSection(mode: 'hours' | 'channels' | 'delivery' | 'fiscal') {
     const currentOperation = operation;
     if (!currentOperation) return;
@@ -251,6 +411,70 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function saveDeliverySection() {
+    const currentOperation = operation;
+    const currentCompany = company;
+    if (!currentOperation || !currentCompany) return;
+
+    const values = [
+      currentOperation.delivery.minimumOrder,
+      currentOperation.delivery.averagePrepMinutes,
+      currentOperation.delivery.averageDeliveryMinutes,
+      currentOperation.delivery.serviceFee,
+    ];
+    if (values.some((value) => Number(value) < 0)) {
+      setError('Campos monetarios e tempos do delivery devem ser maiores ou iguais a zero.');
+      return;
+    }
+
+    setSavingTab('delivery');
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const [operationResponse, companyResponse] = await Promise.all([
+        patchOperationSettings(undefined, { delivery: currentOperation.delivery }),
+        patchCompanySettings(undefined, {
+          logoUrl: currentCompany.logoUrl,
+          publicTitle: currentCompany.publicTitle,
+          publicDescription: currentCompany.publicDescription,
+          bannerUrl: currentCompany.bannerUrl,
+          brandColor: currentCompany.brandColor,
+        }),
+      ]);
+      setOperation(operationResponse);
+      setCompany(companyResponse);
+      setSuccessMessage('Delivery e vitrine do cardapio online atualizados.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar delivery.');
+    } finally {
+      setSavingTab(null);
+    }
+  }
+
+  async function handleLogoUpload(files: FileList | null) {
+    const file = files?.[0];
+    if (!file || !company) return;
+    try {
+      setError(null);
+      const dataUrl = await fileToDataUrl(file, ['image/']);
+      setCompany({ ...company, logoUrl: dataUrl });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar logo.');
+    }
+  }
+
+  async function handleDeliveryMediaUpload(files: FileList | null) {
+    if (!files?.length || !company) return;
+    try {
+      setError(null);
+      const dataUrls = await Promise.all(Array.from(files).map((file) => fileToDataUrl(file, ['image/', 'video/'])));
+      const current = splitMediaList(company.bannerUrl);
+      setCompany({ ...company, bannerUrl: [...current, ...dataUrls].join('\n') });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao carregar midia do cardapio.');
+    }
+  }
+
   async function savePaymentsSection() {
     const currentPayments = payments;
     if (!currentPayments) return;
@@ -261,9 +485,14 @@ export default function AdminSettingsPage() {
     try {
       const response = await patchPaymentSettings(undefined, {
         pixActive: currentPayments.pixActive,
-        cashActive: currentPayments.cashActive,
-        onlineCardActive: currentPayments.onlineCardActive,
-        presentCardActive: currentPayments.presentCardActive,
+        debitActive: currentPayments.debitActive,
+        creditActive: currentPayments.creditActive,
+        pixOnlineActive: currentPayments.pixOnlineActive,
+        creditOnlineActive: currentPayments.creditOnlineActive,
+        foodVoucherActive: currentPayments.foodVoucherActive,
+        mealVoucherActive: currentPayments.mealVoucherActive,
+        onlineCardActive: currentPayments.creditOnlineActive,
+        presentCardActive: currentPayments.debitActive || currentPayments.creditActive,
         mercadoPagoMode: currentPayments.mercadoPagoMode,
       });
       setPayments(response);
@@ -414,9 +643,36 @@ export default function AdminSettingsPage() {
             <Field label="Email da loja">
               <Input value={branch.email} onChange={(e) => setBranch({ ...branch, email: e.target.value })} />
             </Field>
-            <Field label="CEP">
-              <Input value={branch.zipCode} onChange={(e) => setBranch({ ...branch, zipCode: maskCep(e.target.value) })} />
-            </Field>
+            <div className={styles.field}>
+              <span>CEP</span>
+              <div className={styles.cepLookupRow}>
+                <Input
+                  value={branch.zipCode}
+                  onBlur={() => {
+                    const digits = digitsOnly(branch.zipCode, 8);
+                    if (digits.length === 8) void lookupBranchCep(digits);
+                  }}
+                  onChange={(e) => handleBranchCepChange(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  className={styles.cepLookupButton}
+                  onClick={() => void lookupBranchCep()}
+                  disabled={cepLookupStatus === 'loading'}
+                >
+                  {cepLookupStatus === 'loading' ? 'Buscando...' : 'Buscar CEP'}
+                </Button>
+              </div>
+              {cepLookupMessage ? (
+                <small
+                  className={`${styles.cepLookupFeedback} ${
+                    cepLookupStatus === 'error' ? styles.cepLookupFeedbackError : ''
+                  }`.trim()}
+                >
+                  {cepLookupMessage}
+                </small>
+              ) : null}
+            </div>
             <Field label="Rua">
               <Input value={branch.street} onChange={(e) => setBranch({ ...branch, street: e.target.value })} />
             </Field>
@@ -446,6 +702,97 @@ export default function AdminSettingsPage() {
             <Toggle checked={branch.isOpen} label="Loja aberta" onChange={(checked) => setBranch({ ...branch, isOpen: checked })} />
             <Toggle checked={branch.isActive} label="Filial ativa" onChange={(checked) => setBranch({ ...branch, isActive: checked })} />
           </div>
+          <section className={styles.salesHistoryPanel}>
+            <div className={styles.salesHistoryHeader}>
+              <div>
+                <span>Vendas historicas da filial</span>
+                <h3>Upload dos ultimos 24 meses</h3>
+                <p>
+                  Importe vendas antigas para alimentar os relatorios BI sem criar pedidos reais, estoque, financeiro,
+                  KDS ou notificacoes.
+                </p>
+                <p>
+                  Para importar no real, use product_id ou product_sku nas linhas dos itens. Assim o sistema cria pedidos,
+                  registra pagamento e baixa estoque pela ficha tecnica quando houver produto vinculado.
+                </p>
+              </div>
+              <Badge tone={salesHistoryImports.some((item) => item.status === 'COMPLETED') ? 'success' : 'warning'}>
+                {salesHistoryImports.length} importacao(oes)
+              </Badge>
+            </div>
+            <div className={styles.salesHistoryActions}>
+              <Button type="button" onClick={() => void handleSalesHistoryTemplateDownload()} disabled={salesHistoryAction === 'template'}>
+                {salesHistoryAction === 'template' ? 'Gerando...' : 'Baixar modelo CSV'}
+              </Button>
+              <Button type="button" onClick={() => void handleSalesHistoryTemplateDownload('real')} disabled={salesHistoryAction === 'templateReal'}>
+                {salesHistoryAction === 'templateReal' ? 'Gerando...' : 'Modelo real'}
+              </Button>
+              <input
+                className={styles.fileInput}
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                onChange={(event) => setSalesHistoryFile(event.target.files?.[0] ?? null)}
+              />
+              <Button
+                type="button"
+                onClick={() => void handleSalesHistoryUpload('validate')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'validate' ? 'Validando...' : 'Validar arquivo'}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void handleSalesHistoryUpload('import')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'import' ? 'Importando...' : 'Importar vendas'}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleSalesHistoryUpload('validateReal')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'validateReal' ? 'Validando...' : 'Validar real'}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => void handleSalesHistoryUpload('importReal')}
+                disabled={!salesHistoryFile || salesHistoryAction !== null}
+              >
+                {salesHistoryAction === 'importReal' ? 'Importando...' : 'Importar no real'}
+              </Button>
+            </div>
+            {salesHistoryMessage ? <p className={styles.salesHistoryMessage}>{salesHistoryMessage}</p> : null}
+            <div className={styles.salesHistoryList}>
+              {salesHistoryLoading ? (
+                <span>Carregando importacoes...</span>
+              ) : salesHistoryImports.length === 0 ? (
+                <span>Nenhuma importacao historica registrada para esta filial.</span>
+              ) : (
+                salesHistoryImports.slice(0, 4).map((item) => (
+                  <div key={item.id} className={styles.salesHistoryRow}>
+                    <div>
+                      <strong>{item.fileName}</strong>
+                      <small>
+                        {item.summary?.source === 'IMPORTED_REAL_ORDERS' ? 'Real' : 'BI'} | {salesHistoryStatusLabel(item.status)} | {item.validRows} validas | {item.invalidRows} com erro
+                      </small>
+                      {item.summary?.source === 'IMPORTED_REAL_ORDERS' ? (
+                        <small>
+                          {item.summary.orderGroups ?? item.createdCount} pedido(s) | {item.summary.stockConsumedOrders ?? 0} baixa(s) | {item.summary.stockWarnings ?? item.summary.warningCount ?? 0} alerta(s)
+                        </small>
+                      ) : null}
+                    </div>
+                    <div>
+                      <strong>{money(item.summary?.netAmount ?? 0)}</strong>
+                      <small>{formatShortDate(item.createdAt)}</small>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </Card>
       ) : null}
 
@@ -544,11 +891,59 @@ export default function AdminSettingsPage() {
           <div className={styles.panelHeader}>
             <div>
               <h2>Delivery</h2>
-              <p>Politicas do canal de entrega e resumo das areas configuradas no backend.</p>
+              <p>Politicas do canal e vitrine publica exibida no cardapio online.</p>
             </div>
-            <Button variant="primary" onClick={() => void saveOperationSection('delivery')} disabled={savingTab === 'delivery'}>
+            <Button variant="primary" onClick={() => void saveDeliverySection()} disabled={savingTab === 'delivery'}>
               {savingTab === 'delivery' ? 'Salvando...' : 'Salvar Delivery'}
             </Button>
+          </div>
+          <div className={styles.deliveryShowcase}>
+            <div className={styles.deliveryPreviewCard}>
+              <div className={styles.deliveryPreviewMedia}>
+                {splitMediaList(company.bannerUrl)[0]?.startsWith('data:video') || /\.(mp4|webm|ogg)(\?|#|$)/i.test(splitMediaList(company.bannerUrl)[0] ?? '') ? (
+                  <video src={splitMediaList(company.bannerUrl)[0]} muted loop playsInline controls />
+                ) : splitMediaList(company.bannerUrl)[0] ? (
+                  <img src={splitMediaList(company.bannerUrl)[0]} alt="Midia principal do cardapio online" />
+                ) : (
+                  <span>Midia do cardapio online</span>
+                )}
+              </div>
+              <div className={styles.deliveryPreviewIdentity}>
+                <div className={styles.deliveryPreviewLogo}>
+                  {company.logoUrl ? <img src={company.logoUrl} alt="Logo da empresa" /> : <span>{company.publicTitle.slice(0, 2).toUpperCase()}</span>}
+                </div>
+                <div>
+                  <small>Cardapio online</small>
+                  <strong>{company.publicTitle || company.tradeName}</strong>
+                </div>
+              </div>
+            </div>
+            <div className={styles.deliveryMediaConfig}>
+              <Field label="Nome exibido no cardapio online">
+                <Input value={company.publicTitle} onChange={(e) => setCompany({ ...company, publicTitle: e.target.value })} />
+              </Field>
+              <Field label="Texto de apoio">
+                <Input value={company.publicDescription} onChange={(e) => setCompany({ ...company, publicDescription: e.target.value })} />
+              </Field>
+              <Field label="Upload do logo">
+                <input className={styles.fileInput} type="file" accept="image/*" onChange={(event) => void handleLogoUpload(event.target.files)} />
+              </Field>
+              <Field label="Upload de fotos ou video do card principal">
+                <input className={styles.fileInput} type="file" accept="image/*,video/*" multiple onChange={(event) => void handleDeliveryMediaUpload(event.target.files)} />
+              </Field>
+              <Field label="Midias do card principal">
+                <textarea
+                  className={styles.textArea}
+                  value={company.bannerUrl}
+                  onChange={(e) => setCompany({ ...company, bannerUrl: e.target.value })}
+                  placeholder="Uma URL por linha. Aceita imagem, video ou arquivo enviado."
+                  rows={5}
+                />
+              </Field>
+              <p className={styles.helperText}>
+                As midias sao exibidas como slides no topo do cardapio online. Para producao com arquivos grandes, a proxima etapa ideal e trocar este upload local por storage/CDN.
+              </p>
+            </div>
           </div>
           <div className={styles.formGrid}>
             <Field label="Pedido minimo">
@@ -608,10 +1003,13 @@ export default function AdminSettingsPage() {
             </Button>
           </div>
           <div className={styles.switchRow}>
-            <Toggle checked={payments.pixActive} label="PIX ativo" onChange={(checked) => setPayments({ ...payments, pixActive: checked })} />
-            <Toggle checked={payments.cashActive} label="Dinheiro ativo" onChange={(checked) => setPayments({ ...payments, cashActive: checked })} />
-            <Toggle checked={payments.onlineCardActive} label="Cartao online ativo" onChange={(checked) => setPayments({ ...payments, onlineCardActive: checked })} />
-            <Toggle checked={payments.presentCardActive} label="Cartao presencial ativo" onChange={(checked) => setPayments({ ...payments, presentCardActive: checked })} />
+            <Toggle checked={payments.debitActive} label="Débito" onChange={(checked) => setPayments({ ...payments, debitActive: checked })} />
+            <Toggle checked={payments.creditActive} label="Crédito" onChange={(checked) => setPayments({ ...payments, creditActive: checked })} />
+            <Toggle checked={payments.pixActive} label="Pix" onChange={(checked) => setPayments({ ...payments, pixActive: checked })} />
+            <Toggle checked={payments.pixOnlineActive} label="Pix Online" onChange={(checked) => setPayments({ ...payments, pixOnlineActive: checked })} />
+            <Toggle checked={payments.creditOnlineActive} label="Crédito Online" onChange={(checked) => setPayments({ ...payments, creditOnlineActive: checked })} />
+            <Toggle checked={payments.foodVoucherActive} label="Vale Alimentação" onChange={(checked) => setPayments({ ...payments, foodVoucherActive: checked })} />
+            <Toggle checked={payments.mealVoucherActive} label="Vale Refeição" onChange={(checked) => setPayments({ ...payments, mealVoucherActive: checked })} />
           </div>
           <div className={styles.formGrid}>
             <Field label="Modo Mercado Pago">
@@ -752,6 +1150,42 @@ export default function AdminSettingsPage() {
   );
 }
 
+function splitMediaList(value: string) {
+  return value
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function fileToDataUrl(file: File, allowedPrefixes: string[]) {
+  if (!allowedPrefixes.some((prefix) => file.type.startsWith(prefix))) {
+    throw new Error('Tipo de arquivo nao suportado para esta area.');
+  }
+  if (file.size > LOCAL_UPLOAD_LIMIT_MB * 1024 * 1024) {
+    throw new Error(`Arquivo muito grande. Limite local: ${LOCAL_UPLOAD_LIMIT_MB} MB.`);
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('Nao foi possivel ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function applyCepAddress(branch: BranchSettingsResponse, address: BranchCepLookupResponse): BranchSettingsResponse {
+  return {
+    ...branch,
+    zipCode: maskCep(address.cep),
+    street: address.street || branch.street,
+    complement: branch.complement || address.complement,
+    district: address.district || branch.district,
+    city: address.city || branch.city,
+    state: address.state || branch.state,
+    latitude: address.latitude ?? branch.latitude,
+    longitude: address.longitude ?? branch.longitude,
+  };
+}
+
 function updateSchedule(
   operation: OperationSettingsResponse,
   setOperation: (value: OperationSettingsResponse) => void,
@@ -858,6 +1292,25 @@ function isScheduleValid(entry: OperationSettingsResponse['schedules'][number]) 
 function timeToMinutes(value: string) {
   const [hour, minute] = value.split(':').map(Number);
   return hour * 60 + minute;
+}
+
+function salesHistoryStatusLabel(status: BranchSalesHistoryImport['status']) {
+  const labels: Record<BranchSalesHistoryImport['status'], string> = {
+    PREVIEWED: 'Validado',
+    PROCESSING: 'Processando',
+    COMPLETED: 'Importado',
+    COMPLETED_WITH_ERRORS: 'Importado com alertas',
+    FAILED: 'Falhou',
+  };
+  return labels[status] ?? status;
+}
+
+function formatShortDate(value: string) {
+  return new Date(value).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function money(value: number) {

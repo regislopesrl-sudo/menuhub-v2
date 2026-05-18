@@ -336,11 +336,35 @@ enum FinancialSettlementMethod {
   OTHER
 }
 
+enum FinancialCategoryType {
+  REVENUE
+  EXPENSE
+  BOTH
+}
+
+enum FinancialAccountType {
+  CASH
+  BANK
+  PIX
+  CARD
+  MARKETPLACE
+  TRANSITORY
+  OTHER
+}
+
+enum FinancialDataStatus {
+  COMPLETE
+  PARTIAL_DATA
+  NO_DATA
+}
+
 enum FinancialReconciliationStatus {
   PENDING
   MATCHED
+  RECONCILED
   DIVERGENT
   ADJUSTED
+  IGNORED
   CLOSED
 }
 

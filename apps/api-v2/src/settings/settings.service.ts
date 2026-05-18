@@ -36,6 +36,21 @@ const CHANNEL_KEYS: SettingsChannelKey[] = [
 
 type JsonRecord = Record<string, unknown>;
 
+type ViaCepResponse = {
+  cep?: string;
+  logradouro?: string;
+  complemento?: string;
+  bairro?: string;
+  localidade?: string;
+  uf?: string;
+  erro?: boolean;
+};
+
+type NominatimPlace = {
+  lat?: string;
+  lon?: string;
+};
+
 @Injectable()
 export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -241,6 +256,88 @@ export class SettingsService {
     return this.getBranch(ctx);
   }
 
+  async lookupAddressByCep(rawCep: string) {
+    const cep = this.normalizeCep(rawCep);
+    const timeoutMs = Number(process.env.CEP_LOOKUP_TIMEOUT_MS ?? '8000') || 8000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new BadRequestException(`Consulta de CEP falhou (${response.status}).`);
+      }
+
+      const body = (await response.json()) as ViaCepResponse;
+      if (body.erro) {
+        throw new NotFoundException('CEP nao encontrado.');
+      }
+
+      const street = this.readExternalString(body.logradouro) ?? '';
+      const city = this.readExternalString(body.localidade) ?? '';
+      const state = (this.readExternalString(body.uf) ?? '').slice(0, 2).toUpperCase();
+      const coordinates = await this.lookupCoordinatesByAddress({ street, city, state }).catch(() => null);
+
+      return {
+        cep: this.readExternalString(body.cep) ?? this.formatCep(cep),
+        street,
+        complement: this.readExternalString(body.complemento) ?? '',
+        district: this.readExternalString(body.bairro) ?? '',
+        city,
+        state,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException('Nao foi possivel consultar o CEP agora.');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async lookupCoordinatesByAddress(input: { street: string; city: string; state: string }) {
+    if (!input.street || !input.city || !input.state) return null;
+
+    const timeoutMs = Number(process.env.GEOCODING_LOOKUP_TIMEOUT_MS ?? '8000') || 8000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const params = new URLSearchParams({
+      format: 'json',
+      limit: '1',
+      countrycodes: 'br',
+      street: input.street,
+      city: input.city,
+      state: input.state,
+    });
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'MenuHubV2 DEV address lookup',
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+
+      const places = (await response.json()) as NominatimPlace[];
+      const first = Array.isArray(places) ? places[0] : null;
+      const latitude = this.parseCoordinate(first?.lat);
+      const longitude = this.parseCoordinate(first?.lon);
+      if (latitude === null || longitude === null) return null;
+      return { latitude, longitude };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async getOperation(ctx: RequestContext) {
     const branchId = await this.resolveBranchId(ctx);
     await this.assertBranchBelongsToCompany(branchId, ctx.companyId);
@@ -352,7 +449,13 @@ export class SettingsService {
 
     return {
       branchId,
+      debitActive: this.readBoolean(meta, 'debitActive', this.readBoolean(meta, 'presentCardActive', true)),
+      creditActive: this.readBoolean(meta, 'creditActive', this.readBoolean(meta, 'presentCardActive', true)),
       pixActive: this.readBoolean(meta, 'pixActive', true),
+      pixOnlineActive: this.readBoolean(meta, 'pixOnlineActive', this.readBoolean(meta, 'pixActive', true)),
+      creditOnlineActive: this.readBoolean(meta, 'creditOnlineActive', this.readBoolean(meta, 'onlineCardActive', true)),
+      foodVoucherActive: this.readBoolean(meta, 'foodVoucherActive', false),
+      mealVoucherActive: this.readBoolean(meta, 'mealVoucherActive', false),
       cashActive: this.readBoolean(meta, 'cashActive', true),
       onlineCardActive: this.readBoolean(meta, 'onlineCardActive', true),
       presentCardActive: this.readBoolean(meta, 'presentCardActive', true),
@@ -373,7 +476,13 @@ export class SettingsService {
     const current = await this.readSetting(ctx.companyId, branchId, PAYMENT_SETTINGS_KEY);
     const next: JsonRecord = {
       ...current,
+      ...(body.debitActive !== undefined ? { debitActive: Boolean(body.debitActive) } : {}),
+      ...(body.creditActive !== undefined ? { creditActive: Boolean(body.creditActive) } : {}),
       ...(body.pixActive !== undefined ? { pixActive: Boolean(body.pixActive) } : {}),
+      ...(body.pixOnlineActive !== undefined ? { pixOnlineActive: Boolean(body.pixOnlineActive) } : {}),
+      ...(body.creditOnlineActive !== undefined ? { creditOnlineActive: Boolean(body.creditOnlineActive) } : {}),
+      ...(body.foodVoucherActive !== undefined ? { foodVoucherActive: Boolean(body.foodVoucherActive) } : {}),
+      ...(body.mealVoucherActive !== undefined ? { mealVoucherActive: Boolean(body.mealVoucherActive) } : {}),
       ...(body.cashActive !== undefined ? { cashActive: Boolean(body.cashActive) } : {}),
       ...(body.onlineCardActive !== undefined ? { onlineCardActive: Boolean(body.onlineCardActive) } : {}),
       ...(body.presentCardActive !== undefined ? { presentCardActive: Boolean(body.presentCardActive) } : {}),
@@ -663,6 +772,27 @@ export class SettingsService {
     return normalized.length > 0 ? normalized : null;
   }
 
+  private normalizeCep(value: unknown): string {
+    const digits = String(value ?? '').replace(/\D/g, '');
+    if (digits.length !== 8) {
+      throw new BadRequestException('CEP invalido. Informe um CEP com 8 digitos.');
+    }
+    return digits;
+  }
+
+  private formatCep(value: string): string {
+    return `${value.slice(0, 5)}-${value.slice(5)}`;
+  }
+
+  private readExternalString(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private parseCoordinate(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Number(parsed.toFixed(7)) : null;
+  }
+
   private assertCompanySemanticConstraints(body: CompanySettingsDto) {
     const brandColor = this.normalizeOptionalString(body.brandColor);
     if (brandColor && !this.isHexColor(brandColor)) {
@@ -679,12 +809,12 @@ export class SettingsService {
     }
 
     const logoUrl = this.normalizeOptionalString(body.logoUrl);
-    if (logoUrl && !this.isValidHttpUrl(logoUrl)) {
+    if (logoUrl && !this.isValidMediaReferenceList(logoUrl, false)) {
       throw new BadRequestException('Logo URL invalida.');
     }
 
     const bannerUrl = this.normalizeOptionalString(body.bannerUrl);
-    if (bannerUrl && !this.isValidHttpUrl(bannerUrl)) {
+    if (bannerUrl && !this.isValidMediaReferenceList(bannerUrl, true)) {
       throw new BadRequestException('Banner URL invalida.');
     }
 
@@ -760,6 +890,16 @@ export class SettingsService {
     } catch {
       return false;
     }
+  }
+
+  private isValidDataMediaUrl(value: string) {
+    return /^data:(image|video)\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=]+$/.test(value);
+  }
+
+  private isValidMediaReferenceList(value: string, allowMultiple: boolean) {
+    const entries = allowMultiple ? value.split(/\n+/).map((item) => item.trim()).filter(Boolean) : [value.trim()];
+    if (entries.length === 0) return true;
+    return entries.every((entry) => this.isValidHttpUrl(entry) || this.isValidDataMediaUrl(entry));
   }
 
   private readString(input: unknown, key: string): string | null {

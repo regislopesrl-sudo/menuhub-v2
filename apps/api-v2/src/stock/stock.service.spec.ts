@@ -17,6 +17,12 @@ describe('StockService', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    stockCategory: {
+      findMany: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     stockMovement: {
       findMany: jest.fn(),
       create: jest.fn(),
@@ -27,12 +33,17 @@ describe('StockService', () => {
     },
     stockBatch: {
       findMany: jest.fn(),
+      count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       findUnique: jest.fn(),
     },
     order: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
+    },
+    product: {
+      findMany: jest.fn(),
     },
     $transaction: jest.fn(),
   } as any;
@@ -44,13 +55,19 @@ describe('StockService', () => {
     prisma.$transaction.mockImplementation(async (cb: any) =>
       cb({
         stockItem: prisma.stockItem,
+        stockCategory: prisma.stockCategory,
         stockMovement: prisma.stockMovement,
         stockLocationBalance: prisma.stockLocationBalance,
         stockBatch: prisma.stockBatch,
         order: prisma.order,
+        product: prisma.product,
       }),
     );
     prisma.stockBatch.findMany.mockResolvedValue([]);
+    prisma.stockBatch.count.mockResolvedValue(0);
+    prisma.stockMovement.findMany.mockResolvedValue([]);
+    prisma.order.findMany.mockResolvedValue([]);
+    prisma.product.findMany.mockResolvedValue([]);
   });
 
   it('cria item com name obrigatorio', async () => {
@@ -91,6 +108,259 @@ describe('StockService', () => {
         isHighTurnover: true,
       }),
     }));
+  });
+
+  it('cria categoria de estoque', async () => {
+    prisma.stockCategory.create.mockResolvedValue({ id: 'cat-1', name: 'Hortifruti' });
+    const result = await service.createCategory(ctx, { name: ' Hortifruti ', sortOrder: 2 });
+    expect(result).toEqual({ id: 'cat-1', name: 'Hortifruti' });
+    expect(prisma.stockCategory.create).toHaveBeenCalledWith({
+      data: {
+        companyId: 'company-demo',
+        name: 'Hortifruti',
+        sortOrder: 2,
+        isActive: true,
+      },
+    });
+  });
+
+  it('vincula categoria valida ao item', async () => {
+    prisma.stockCategory.findUnique.mockResolvedValue({ id: 'cat-1', companyId: 'company-demo', isActive: true });
+    prisma.stockItem.create.mockResolvedValue({ id: 's1', categoryId: 'cat-1' });
+
+    await service.createItem(ctx, { name: 'Tomate', categoryId: 'cat-1' });
+
+    expect(prisma.stockItem.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ categoryId: 'cat-1' }),
+    }));
+  });
+
+  it('informa saldo comprometido e disponivel por pedidos abertos', async () => {
+    prisma.stockItem.findMany.mockResolvedValue([
+      {
+        id: 's1',
+        name: 'Queijo',
+        code: 'QUE',
+        stockType: 'RAW_MATERIAL',
+        stockUnit: 'kg',
+        currentQuantity: 10,
+        minimumQuantity: 1,
+        reorderPoint: 2,
+        averageCost: 20,
+        isActive: true,
+      },
+    ]);
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: 'order-1',
+        items: [
+          {
+            quantity: 2,
+            product: {
+              controlsStock: true,
+              recipe: {
+                yieldQuantity: 1,
+                lossPercent: 10,
+                items: [{ stockItemId: 's1', quantity: 1.5 }],
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    const items = await service.listItems(ctx);
+
+    expect(items[0]).toEqual(expect.objectContaining({
+      id: 's1',
+      committedQuantity: 3.3,
+      availableQuantity: 6.7,
+      committedOrderCount: 1,
+    }));
+  });
+
+  it('calcula disponibilidade de venda por produto usando ficha tecnica e saldo comprometido', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        categoryId: 'cat-1',
+        name: 'Pizza',
+        sku: 'PIZ',
+        salePrice: 30,
+        costPrice: 0,
+        controlsStock: true,
+        recipeId: 'r1',
+        category: { id: 'cat-1', name: 'Pizzas', sortOrder: 1 },
+        recipe: {
+          id: 'r1',
+          name: 'Ficha Pizza',
+          yieldQuantity: 1,
+          yieldUnit: 'un',
+          lossPercent: 0,
+          active: true,
+          items: [
+            {
+              stockItemId: 's1',
+              quantity: 2,
+              unit: 'kg',
+              optional: false,
+              affectsStock: true,
+              affectsCost: true,
+              stockItem: {
+                id: 's1',
+                name: 'Queijo',
+                code: 'QUE',
+                stockType: 'RAW_MATERIAL',
+                stockUnit: 'kg',
+                currentQuantity: 10,
+                minimumQuantity: 1,
+                reorderPoint: 2,
+                averageCost: 5,
+                controlsStock: true,
+                isActive: true,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: 'order-1',
+        items: [
+          {
+            quantity: 2,
+            product: {
+              controlsStock: true,
+              recipe: {
+                yieldQuantity: 1,
+                lossPercent: 0,
+                items: [{ stockItemId: 's1', quantity: 2 }],
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    const products = await service.listProductAvailability(ctx);
+
+    expect(products[0]).toEqual(expect.objectContaining({
+      productId: 'p1',
+      name: 'Pizza',
+      availabilityStatus: 'low_stock',
+      availableToSell: 3,
+      technicalCost: 10,
+      grossMargin: 20,
+    }));
+    expect(products[0].ingredients[0]).toEqual(expect.objectContaining({
+      stockItemId: 's1',
+      requiredPerUnit: 2,
+      currentQuantity: 10,
+      committedQuantity: 4,
+      availableQuantity: 6,
+      availableToSell: 3,
+    }));
+    expect(products[0].limitingIngredients[0]).toEqual(expect.objectContaining({ stockItemId: 's1' }));
+  });
+
+  it('marca produto controlado sem ficha tecnica como pendente de receita', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        categoryId: null,
+        name: 'Produto sem ficha',
+        sku: null,
+        salePrice: 20,
+        costPrice: 8,
+        controlsStock: true,
+        recipeId: null,
+        category: null,
+        recipe: null,
+      },
+    ]);
+
+    const products = await service.listProductAvailability(ctx);
+
+    expect(products[0]).toEqual(expect.objectContaining({
+      productId: 'p1',
+      availabilityStatus: 'missing_recipe',
+      availableToSell: 0,
+      technicalCost: 8,
+      grossMargin: 12,
+    }));
+  });
+
+  it('bloqueia checkout quando produto com ficha nao tem saldo suficiente', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        categoryId: null,
+        name: 'Pizza',
+        sku: null,
+        salePrice: 30,
+        costPrice: 0,
+        controlsStock: true,
+        recipeId: 'r1',
+        category: null,
+        recipe: {
+          id: 'r1',
+          name: 'Ficha Pizza',
+          yieldQuantity: 1,
+          yieldUnit: 'un',
+          lossPercent: 0,
+          active: true,
+          items: [
+            {
+              stockItemId: 's1',
+              quantity: 2,
+              unit: 'kg',
+              optional: false,
+              affectsStock: true,
+              affectsCost: true,
+              stockItem: {
+                id: 's1',
+                name: 'Queijo',
+                code: 'QUE',
+                stockType: 'RAW_MATERIAL',
+                stockUnit: 'kg',
+                currentQuantity: 3,
+                minimumQuantity: 1,
+                reorderPoint: 2,
+                averageCost: 5,
+                controlsStock: true,
+                isActive: true,
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    await expect(service.assertProductsAvailableForCheckout(ctx, [
+      { productId: 'p1', name: 'Pizza', quantity: 2 },
+    ])).rejects.toThrow('Estoque insuficiente para Pizza');
+  });
+
+  it('nao bloqueia checkout de produto sem ficha tecnica para evitar parada operacional', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: 'p1',
+        categoryId: null,
+        name: 'Produto sem ficha',
+        sku: null,
+        salePrice: 20,
+        costPrice: 8,
+        controlsStock: true,
+        recipeId: null,
+        category: null,
+        recipe: null,
+      },
+    ]);
+
+    await expect(service.assertProductsAvailableForCheckout(ctx, [
+      { productId: 'p1', name: 'Produto sem ficha', quantity: 50 },
+    ])).resolves.toEqual({ available: true, blocked: [] });
   });
 
   it('bloqueia item sem nome', async () => {
@@ -290,6 +560,43 @@ describe('StockService', () => {
     expect(alerts[0].type).toBe('stockout');
   });
 
+  it('gera alerta quando pedidos comprometem o saldo disponivel', async () => {
+    prisma.stockItem.findMany.mockResolvedValue([
+      { id: 's1', name: 'Queijo', stockUnit: 'kg', currentQuantity: 3, minimumQuantity: 1, reorderPoint: 2, isCritical: false },
+    ]);
+    prisma.order.findMany.mockResolvedValue([
+      {
+        id: 'order-1',
+        items: [
+          {
+            quantity: 2,
+            product: {
+              controlsStock: true,
+              recipe: {
+                yieldQuantity: 1,
+                lossPercent: 0,
+                items: [{ stockItemId: 's1', quantity: 2 }],
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    const alerts = await service.listBreakageAlerts(ctx);
+
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        stockItemId: 's1',
+        type: 'committed_stockout',
+        currentQuantity: 3,
+        committedQuantity: 4,
+        availableQuantity: -1,
+        severity: 'critical',
+      }),
+    ]);
+  });
+
   it('gera alertas de validade de lote', async () => {
     prisma.stockItem.findMany.mockResolvedValue([]);
     prisma.stockBatch.findMany.mockResolvedValue([
@@ -318,6 +625,54 @@ describe('StockService', () => {
         severity: 'critical',
       }),
     ]);
+  });
+
+  it('gera dashboard premium de estoque', async () => {
+    prisma.stockItem.findMany.mockResolvedValue([
+      {
+        id: 's1',
+        stockType: 'RAW_MATERIAL',
+        currentQuantity: 2,
+        minimumQuantity: 3,
+        reorderPoint: 5,
+        averageCost: 10,
+        controlsBatch: true,
+        controlsExpiry: true,
+        isPerishable: true,
+      },
+      {
+        id: 's2',
+        stockType: 'PRODUCT',
+        currentQuantity: 4,
+        minimumQuantity: 1,
+        reorderPoint: 0,
+        averageCost: 7,
+        controlsBatch: false,
+        controlsExpiry: false,
+        isPerishable: false,
+      },
+    ]);
+    prisma.stockBatch.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1);
+
+    const dashboard = await service.getDashboard(ctx);
+
+    expect(dashboard).toEqual(expect.objectContaining({
+      totalItems: 2,
+      byType: { PRODUCT: 1, ADDON: 0, RAW_MATERIAL: 1 },
+      totalValue: 48,
+      availableValue: 48,
+      committedValue: 0,
+      committedQuantity: 0,
+      belowMinimum: 1,
+      belowAvailableMinimum: 1,
+      reorderAttention: 1,
+      perishable: 1,
+      batchControlled: 1,
+      blockedBatches: 2,
+      expiringBatches: 1,
+    }));
   });
 
   it('bloqueia dados invalidos de item premium', async () => {
@@ -454,6 +809,82 @@ describe('StockService', () => {
     expect(prisma.stockMovement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ batchId: 'b1', movementType: 'SALE_CONSUMPTION', quantity: 3 }),
     });
+  });
+
+  it('recompoe estoque consumido quando pedido e cancelado', async () => {
+    prisma.stockMovement.findFirst.mockResolvedValue(null);
+    prisma.order.findFirst.mockResolvedValue({ id: 'order-1' });
+    prisma.stockMovement.findMany.mockResolvedValue([
+      {
+        id: 'sale-movement-1',
+        stockItemId: 's1',
+        branchId: 'branch-demo',
+        batchId: 'b1',
+        orderItemId: 'oi-1',
+        quantity: 3,
+        unitCost: 4,
+        createdAt: new Date('2026-05-01T10:00:00.000Z'),
+      },
+    ]);
+    prisma.stockItem.findUnique.mockResolvedValue({
+      id: 's1',
+      companyId: 'company-demo',
+      currentQuantity: 7,
+      averageCost: 4,
+    });
+    prisma.stockItem.update.mockResolvedValue({ id: 's1', currentQuantity: 10 });
+    prisma.stockBatch.findUnique.mockResolvedValue({
+      id: 'b1',
+      stockItemId: 's1',
+      quantityRemaining: 2,
+      status: 'EXHAUSTED',
+    });
+    prisma.stockBatch.update.mockResolvedValue({ id: 'b1', quantityRemaining: 5, status: 'OPENED' });
+    prisma.stockMovement.create.mockResolvedValue({ id: 'return-movement-1' });
+
+    const result = await service.releaseOrderConsumption(ctx, 'order-1');
+
+    expect(result).toEqual({
+      orderId: 'order-1',
+      released: true,
+      movementsCreated: 1,
+      quantityReleased: 3,
+      totalCostReleased: 12,
+    });
+    expect(prisma.stockItem.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { currentQuantity: 10 },
+    });
+    expect(prisma.stockBatch.update).toHaveBeenCalledWith({
+      where: { id: 'b1' },
+      data: { quantityRemaining: 5, status: 'OPENED' },
+    });
+    expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        stockItemId: 's1',
+        batchId: 'b1',
+        orderItemId: 'oi-1',
+        movementType: 'RETURN',
+        movementTypeDetailed: 'sale_consumption_cancel_return',
+        referenceType: 'SALE_CONSUMPTION',
+        referenceId: 'sale-movement-1',
+        quantity: 3,
+        unitCost: 4,
+        totalCost: 12,
+        previousStock: 7,
+        newStock: 10,
+      }),
+    });
+  });
+
+  it('nao duplica recomposicao de estoque no cancelamento', async () => {
+    prisma.stockMovement.findFirst.mockResolvedValue({ id: 'return-movement-1' });
+
+    const result = await service.releaseOrderConsumption(ctx, 'order-1');
+
+    expect(result).toEqual({ orderId: 'order-1', released: false, reason: 'already_released' });
+    expect(prisma.stockMovement.findMany).not.toHaveBeenCalled();
+    expect(prisma.stockItem.update).not.toHaveBeenCalled();
   });
 
   it('estima conversao entre unidades', async () => {

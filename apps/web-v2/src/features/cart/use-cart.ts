@@ -50,6 +50,28 @@ export function useCart() {
     });
   };
 
+  const replaceItem = (
+    index: number,
+    product: MenuProduct,
+    selectedAddons: Array<{ groupId: string; optionId: string; name: string; price: number }> = [],
+    quantity = 1,
+  ) => {
+    const safeQuantity = Math.max(1, Number(quantity || 1));
+    setItems((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              productId: product.id,
+              name: product.name,
+              unitPrice: product.price,
+              addons: selectedAddons,
+              quantity: safeQuantity,
+            }
+          : item,
+      ),
+    );
+  };
+
   const removeItem = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
@@ -77,6 +99,7 @@ export function useCart() {
     items,
     subtotal,
     addItem,
+    replaceItem,
     removeItem,
     updateQuantity,
     clearCart,

@@ -1,0 +1,83 @@
+model ProductRecipe {
+  id                String    @id @default(cuid()) @map("id")
+  companyId         String    @map("company_id")
+  productId         String    @map("product_id")
+  status            String    @default("DRAFT") @map("status")
+  version           Int       @default(1) @map("version")
+  yieldQuantity     Decimal?  @map("yield_quantity") @db.Decimal(14, 4)
+  yieldUnit         String?   @map("yield_unit")
+  totalCost         Decimal?  @map("total_cost") @db.Decimal(14, 2)
+  costDataStatus    String    @default("NO_DATA") @map("cost_data_status")
+  notes             String?   @map("notes")
+  metadata          Json?     @map("metadata")
+  createdByUserId   String?   @map("created_by_user_id")
+  activatedByUserId String?   @map("activated_by_user_id")
+  activatedAt       DateTime? @map("activated_at")
+  archivedAt        DateTime? @map("archived_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  items         ProductRecipeItem[]
+  costSnapshots ProductRecipeCostSnapshot[]
+
+  @@unique([companyId, productId, version])
+  @@index([companyId])
+  @@index([companyId, productId])
+  @@index([companyId, status])
+  @@index([companyId, costDataStatus])
+  @@index([companyId, createdAt])
+  @@map("product_recipes")
+}
+
+model ProductRecipeItem {
+  id                String   @id @default(cuid()) @map("id")
+  companyId         String   @map("company_id")
+  recipeId          String   @map("recipe_id")
+  productId         String   @map("product_id")
+  stockItemId       String   @map("stock_item_id")
+  quantity          Decimal  @map("quantity") @db.Decimal(14, 4)
+  unitOfMeasure     String   @map("unit_of_measure")
+  lossPercent       Decimal  @default(0) @map("loss_percent") @db.Decimal(8, 4)
+  effectiveQuantity Decimal? @map("effective_quantity") @db.Decimal(14, 4)
+  unitCost          Decimal? @map("unit_cost") @db.Decimal(14, 4)
+  totalCost         Decimal? @map("total_cost") @db.Decimal(14, 2)
+  notes             String?  @map("notes")
+  sortOrder         Int      @default(0) @map("sort_order")
+  metadata          Json?    @map("metadata")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  recipe ProductRecipe @relation(fields: [recipeId], references: [id])
+
+  @@unique([recipeId, stockItemId])
+  @@index([companyId])
+  @@index([companyId, productId])
+  @@index([recipeId])
+  @@index([stockItemId])
+  @@map("product_recipe_items")
+}
+
+model ProductRecipeCostSnapshot {
+  id                 String   @id @default(cuid()) @map("id")
+  companyId          String   @map("company_id")
+  productId          String   @map("product_id")
+  recipeId           String   @map("recipe_id")
+  recipeVersion      Int      @map("recipe_version")
+  salePrice          Decimal? @map("sale_price") @db.Decimal(14, 2)
+  totalCost          Decimal? @map("total_cost") @db.Decimal(14, 2)
+  cmvPercent         Decimal? @map("cmv_percent") @db.Decimal(8, 4)
+  grossMargin        Decimal? @map("gross_margin") @db.Decimal(14, 2)
+  grossMarginPercent Decimal? @map("gross_margin_percent") @db.Decimal(8, 4)
+  costDataStatus     String   @default("NO_DATA") @map("cost_data_status")
+  metadata           Json?    @map("metadata")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  recipe ProductRecipe @relation(fields: [recipeId], references: [id])
+
+  @@index([companyId])
+  @@index([companyId, productId])
+  @@index([recipeId])
+  @@index([companyId, costDataStatus])
+  @@index([createdAt])
+  @@map("product_recipe_cost_snapshots")
+}

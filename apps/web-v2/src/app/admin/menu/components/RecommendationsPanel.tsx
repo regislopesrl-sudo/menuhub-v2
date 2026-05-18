@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { getSmartMenuRecommendations } from '@/features/menu/menu-recommendations';
 import type { MenuProduct } from '@/features/menu/menu.mock';
+import { brl } from '../menu-view-model';
 import styles from '../page.module.css';
 
 type RecommendationCategoryRow = {
@@ -12,13 +13,7 @@ type RecommendationCategoryRow = {
   count: number;
 };
 
-export function RecommendationsPanel({
-  products,
-  onOpenRecommendations,
-}: {
-  products: MenuProduct[];
-  onOpenRecommendations: (product: MenuProduct) => void;
-}) {
+export function RecommendationsPanel({ products }: { products: MenuProduct[] }) {
   const [selectedCategory, setSelectedCategory] = useState('');
 
   const categories = useMemo<RecommendationCategoryRow[]>(() => {
@@ -49,7 +44,7 @@ export function RecommendationsPanel({
   }, [activeCategory, products]);
 
   if (products.length === 0) {
-    return <EmptyState title="Sem produtos" description="Cadastre produtos antes de configurar o Peca tambem." />;
+    return <EmptyState title="Sem produtos" description="Cadastre produtos para a IA montar o Peca tambem." />;
   }
 
   return (
@@ -57,12 +52,15 @@ export function RecommendationsPanel({
       <Card className={styles.addonsHubHero}>
         <div>
           <span>Peça também</span>
-          <strong>Configure recomendações por produto.</strong>
-          <p>Escolha uma categoria, abra o produto e selecione quais itens devem aparecer para o cliente.</p>
+          <strong>IA automática de recomendações.</strong>
+          <p>
+            O sistema escolhe sozinho os produtos que combinam com a sacola do cliente, considerando categoria,
+            preço, destaque, disponibilidade e relação entre itens.
+          </p>
         </div>
         <div className={styles.addonsHubMetrics}>
-          <Badge>{categories.length} categorias</Badge>
-          <Badge>{products.filter((product) => product.recommendations?.active).length} configurados</Badge>
+          <Badge>IA ativa</Badge>
+          <Badge>{products.filter((product) => product.available !== false).length} produtos elegiveis</Badge>
         </div>
       </Card>
 
@@ -85,27 +83,21 @@ export function RecommendationsPanel({
         </Card>
 
         <Card className={styles.addonProductsColumn}>
-          <strong>Produtos da categoria</strong>
+          <strong>Prévia da IA por produto</strong>
           <div className={styles.addonProductRows}>
             {visibleProducts.map((product) => {
-              const active = product.recommendations?.active === true && (product.recommendations.productIds ?? []).length > 0;
+              const suggestions = getSmartMenuRecommendations(products, { sourceProductId: product.id, limit: 4 });
               return (
-                <label key={product.id} className={styles.recommendationProductRow}>
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    readOnly
-                    onClick={(event) => {
-                      event.preventDefault();
-                      onOpenRecommendations(product);
-                    }}
-                  />
+                <div key={product.id} className={styles.recommendationProductRow}>
                   <span>{product.name}</span>
                   <small>
-                    {product.categoryName ?? 'Sem categoria'} | {(product.recommendations?.productIds ?? []).length} item(ns) selecionado(s)
+                    {suggestions.length > 0
+                      ? suggestions.map((item) => item.name).join(' | ')
+                      : 'Sem sugestoes automaticas disponiveis'}
                   </small>
-                  <Button onClick={() => onOpenRecommendations(product)}>Configurar</Button>
-                </label>
+                  <Badge>{suggestions.length} IA</Badge>
+                  {suggestions[0] ? <strong>{brl(suggestions[0].deliveryPrice ?? suggestions[0].price)}</strong> : null}
+                </div>
               );
             })}
           </div>

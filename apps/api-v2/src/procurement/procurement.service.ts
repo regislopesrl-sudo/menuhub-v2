@@ -4,13 +4,27 @@ import type { RequestContext } from '../common/request-context';
 import { AUDIT_ACTIONS } from '../common/audit-log';
 import { recordAuditFromContext } from '../common/audit-log-recorder';
 import { decodeFiscalAccessKey } from './fiscal-access-key';
-import { LocalMockFiscalDocumentLookupProvider } from './fiscal-document-lookup.provider';
+import {
+  HttpFiscalDocumentLookupProvider,
+  LocalMockFiscalDocumentLookupProvider,
+  type FiscalDocumentLookupProvider,
+} from './fiscal-document-lookup.provider';
 
 @Injectable()
 export class ProcurementService {
-  private readonly fiscalLookupProvider = new LocalMockFiscalDocumentLookupProvider();
+  private readonly fiscalLookupProvider: FiscalDocumentLookupProvider;
+  private readonly fiscalLookupProviderMode: string;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {
+    this.fiscalLookupProviderMode = String(process.env.FISCAL_LOOKUP_PROVIDER ?? 'local-mock').trim().toLowerCase();
+    this.fiscalLookupProvider = ['http', 'external-http', 'real-http'].includes(this.fiscalLookupProviderMode)
+      ? new HttpFiscalDocumentLookupProvider({
+          endpoint: process.env.FISCAL_LOOKUP_HTTP_URL,
+          token: process.env.FISCAL_LOOKUP_HTTP_TOKEN,
+          timeoutMs: Number(process.env.FISCAL_LOOKUP_TIMEOUT_MS ?? 20000),
+        })
+      : new LocalMockFiscalDocumentLookupProvider();
+  }
 
   async listSuppliers(ctx: RequestContext) {
     return this.prisma.supplier.findMany({
@@ -19,14 +33,128 @@ export class ProcurementService {
     });
   }
 
+  async getDashboard(ctx: RequestContext) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    const branchId = ctx.branchId;
+    const now = new Date();
+    const last30Days = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30);
+    const pendingDocumentStatuses = ['PENDING_REVIEW', 'PARTIALLY_MAPPED', 'LOOKUP_FAILED'] as const;
+
+    const [
+      suppliersTotal,
+      suppliersActive,
+      purchaseOrdersOpen,
+      purchaseOrdersReceived,
+      purchaseOrdersCanceled,
+      purchaseAmount,
+      fiscalPending,
+      fiscalReady,
+      fiscalConfirmed,
+      fiscalAmount,
+      payablesPending,
+      payablesOverdue,
+      payablesAmount,
+    ] = await Promise.all([
+      this.prisma.supplier.count({ where: { companyId: ctx.companyId } }),
+      this.prisma.supplier.count({ where: { companyId: ctx.companyId, active: true } }),
+      this.prisma.purchaseOrder.count({
+        where: { branchId, supplier: { companyId: ctx.companyId }, status: { in: ['DRAFT', 'APPROVED', 'SENT', 'PARTIALLY_RECEIVED'] } },
+      }),
+      this.prisma.purchaseOrder.count({
+        where: { branchId, supplier: { companyId: ctx.companyId }, status: 'RECEIVED' },
+      }),
+      this.prisma.purchaseOrder.count({
+        where: { branchId, supplier: { companyId: ctx.companyId }, status: 'CANCELED' },
+      }),
+      this.prisma.purchaseOrder.aggregate({
+        where: { branchId, supplier: { companyId: ctx.companyId }, createdAt: { gte: last30Days }, status: { not: 'CANCELED' } },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.purchaseDocument.count({ where: { companyId: ctx.companyId, branchId, status: { in: pendingDocumentStatuses as any } } }),
+      this.prisma.purchaseDocument.count({ where: { companyId: ctx.companyId, branchId, status: 'READY_TO_CONFIRM' } }),
+      this.prisma.purchaseDocument.count({ where: { companyId: ctx.companyId, branchId, status: 'CONFIRMED' } }),
+      this.prisma.purchaseDocument.aggregate({
+        where: { companyId: ctx.companyId, branchId, status: { not: 'CANCELED' } },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.accountsPayable.count({ where: { branchId, originType: { in: ['PURCHASE_ORDER', 'GOODS_RECEIPT'] }, status: 'PENDING' } }),
+      this.prisma.accountsPayable.count({
+        where: { branchId, originType: { in: ['PURCHASE_ORDER', 'GOODS_RECEIPT'] }, status: 'PENDING', dueDate: { lt: now } },
+      }),
+      this.prisma.accountsPayable.aggregate({
+        where: { branchId, originType: { in: ['PURCHASE_ORDER', 'GOODS_RECEIPT'] }, status: 'PENDING' },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return {
+      suppliers: {
+        total: suppliersTotal,
+        active: suppliersActive,
+        inactive: Math.max(0, suppliersTotal - suppliersActive),
+      },
+      purchaseOrders: {
+        open: purchaseOrdersOpen,
+        received: purchaseOrdersReceived,
+        canceled: purchaseOrdersCanceled,
+        totalLast30Days: Number(purchaseAmount._sum.totalAmount ?? 0),
+      },
+      fiscalDocuments: {
+        pendingReview: fiscalPending,
+        readyToConfirm: fiscalReady,
+        confirmed: fiscalConfirmed,
+        totalImported: Number(fiscalAmount._sum.totalAmount ?? 0),
+      },
+      accountsPayable: {
+        pending: payablesPending,
+        overdue: payablesOverdue,
+        pendingAmount: Number(payablesAmount._sum.amount ?? 0),
+      },
+      generatedAt: now.toISOString(),
+    };
+  }
+
+  getFiscalLookupStatus() {
+    const realLookupEnabled = ['http', 'external-http', 'real-http'].includes(this.fiscalLookupProviderMode);
+    return {
+      providerName: realLookupEnabled ? 'external-http' : 'local-mock',
+      mode: realLookupEnabled ? 'real-http' : 'local-mock',
+      realLookupEnabled,
+      configured: realLookupEnabled ? Boolean(process.env.FISCAL_LOOKUP_HTTP_URL) : true,
+      requirements: realLookupEnabled
+        ? []
+        : [
+            'Certificado digital A1/e-CNPJ ou credencial de provedor fiscal',
+            'Endpoint seguro para consulta de XML/itens por chave',
+            'FISCAL_LOOKUP_PROVIDER=http',
+            'FISCAL_LOOKUP_HTTP_URL configurado no servidor',
+          ],
+    };
+  }
+
+  async getSupplier(ctx: RequestContext, id: string) {
+    const supplier = await this.prisma.supplier.findFirst({
+      where: { id, companyId: ctx.companyId },
+      include: {
+        _count: {
+          select: { purchaseOrders: true, goodsReceipts: true, accountsPayable: true },
+        },
+      },
+    });
+    if (!supplier) throw new NotFoundException('Fornecedor nao encontrado.');
+    return supplier;
+  }
+
   async createSupplier(ctx: RequestContext, input: { name: string; document?: string; email?: string; phone?: string; notes?: string }) {
     const name = String(input.name ?? '').trim();
     if (!name) throw new BadRequestException('name obrigatorio.');
+    const document = this.clean(input.document);
+    await this.assertSupplierDocumentAvailable(ctx, document);
     const supplier = await this.prisma.supplier.create({
       data: {
         companyId: ctx.companyId,
         name,
-        document: this.clean(input.document),
+        document,
         email: this.clean(input.email),
         phone: this.clean(input.phone),
         notes: this.clean(input.notes),
@@ -51,7 +179,11 @@ export class ProcurementService {
       if (!name) throw new BadRequestException('name obrigatorio.');
       payload.name = name;
     }
-    if (input.document !== undefined) payload.document = this.clean(input.document);
+    if (input.document !== undefined) {
+      const document = this.clean(input.document);
+      await this.assertSupplierDocumentAvailable(ctx, document, id);
+      payload.document = document;
+    }
     if (input.email !== undefined) payload.email = this.clean(input.email);
     if (input.phone !== undefined) payload.phone = this.clean(input.phone);
     if (input.notes !== undefined) payload.notes = this.clean(input.notes);
@@ -68,14 +200,31 @@ export class ProcurementService {
     return updated;
   }
 
+  updateSupplierStatus(ctx: RequestContext, id: string, input: { active: boolean }) {
+    return this.updateSupplier(ctx, id, { active: Boolean(input.active) });
+  }
+
   async listPurchaseOrders(ctx: RequestContext) {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
     return this.prisma.purchaseOrder.findMany({
       where: { branchId: ctx.branchId, supplier: { companyId: ctx.companyId } },
-      include: { supplier: true, items: true },
+      include: {
+        supplier: true,
+        items: {
+          include: {
+            stockItem: {
+              select: { id: true, name: true, code: true, stockType: true, stockUnit: true, purchaseUnit: true },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+  }
+
+  getPurchaseOrder(ctx: RequestContext, id: string) {
+    return this.getPurchaseOrderInCompany(ctx, id);
   }
 
   async createPurchaseOrder(
@@ -93,20 +242,22 @@ export class ProcurementService {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
     if (!Array.isArray(input.items) || input.items.length === 0) throw new BadRequestException('items obrigatorio.');
 
-    const items = input.items.map((item) => {
+    const items = [];
+    for (const item of input.items) {
       const quantity = Number(item.quantity ?? 0);
       const unitCost = Number(item.unitCost ?? 0);
       if (!item.stockItemId || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
         throw new BadRequestException('Item de compra invalido.');
       }
-      return {
-        stockItemId: item.stockItemId,
+      const stockItem = await this.assertPurchasableStockItem(ctx, item.stockItemId);
+      items.push({
+        stockItemId: stockItem.id,
         quantity,
         unitCost,
         totalCost: Number((quantity * unitCost).toFixed(2)),
-        unit: this.clean(item.unit) ?? 'UN',
-      };
-    });
+        unit: this.clean(item.unit) ?? stockItem.purchaseUnit ?? stockItem.stockUnit ?? 'UN',
+      });
+    }
 
     const totalAmount = Number(items.reduce((acc, row) => acc + row.totalCost, 0).toFixed(2));
 
@@ -203,6 +354,7 @@ export class ProcurementService {
     if (po.branchId !== branchId) throw new NotFoundException('Pedido de compra nao encontrado.');
     if (po.status === 'CANCELED') throw new BadRequestException('Pedido cancelado nao pode ser recebido.');
     if (['RECEIVED', 'PARTIALLY_RECEIVED'].includes(String(po.status))) throw new BadRequestException('Pedido ja recebido.');
+    const orderedStockItemIds = new Set(po.items.map((item) => item.stockItemId));
 
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.goodsReceipt.create({
@@ -226,6 +378,9 @@ export class ProcurementService {
         if (!row.stockItemId || !Number.isFinite(receivedQuantity) || receivedQuantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
           throw new BadRequestException('Item de recebimento invalido.');
         }
+        if (!orderedStockItemIds.has(row.stockItemId)) {
+          throw new BadRequestException('Recebimento contem item que nao pertence ao pedido de compra.');
+        }
         const orderedQuantity = Number(row.orderedQuantity ?? receivedQuantity);
         const divergence = Math.abs(receivedQuantity - orderedQuantity) > 0.0001;
         if (divergence) hasDivergence = true;
@@ -233,6 +388,9 @@ export class ProcurementService {
         const item = await tx.stockItem.findUnique({ where: { id: row.stockItemId } });
         if (!item || item.companyId !== ctx.companyId) {
           throw new NotFoundException('Item de estoque nao encontrado para recebimento.');
+        }
+        if (String(item.stockType) !== 'RAW_MATERIAL') {
+          throw new BadRequestException('Recebimento de compra aceita apenas insumos.');
         }
 
         const batchNumber = this.clean(row.batchNumber);
@@ -391,10 +549,41 @@ export class ProcurementService {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
     return this.prisma.goodsReceipt.findMany({
       where: { purchaseOrder: { branchId: ctx.branchId }, supplier: { companyId: ctx.companyId } },
-      include: { supplier: true, items: true, purchaseOrder: true },
+      include: {
+        supplier: true,
+        purchaseOrder: true,
+        items: {
+          include: {
+            stockItem: {
+              select: { id: true, name: true, code: true, stockType: true, stockUnit: true, purchaseUnit: true },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+  }
+
+  async getReceipt(ctx: RequestContext, receiptId: string) {
+    const receipt = await this.prisma.goodsReceipt.findUnique({
+      where: { id: receiptId },
+      include: {
+        supplier: true,
+        purchaseOrder: true,
+        items: {
+          include: {
+            stockItem: {
+              select: { id: true, name: true, code: true, stockType: true, stockUnit: true, purchaseUnit: true },
+            },
+          },
+        },
+      },
+    });
+    if (!receipt || receipt.supplier.companyId !== ctx.companyId || receipt.purchaseOrder?.branchId !== ctx.branchId) {
+      throw new NotFoundException('Recebimento nao encontrado.');
+    }
+    return receipt;
   }
 
   async conferenceReceipt(ctx: RequestContext, receiptId: string) {
@@ -449,15 +638,70 @@ export class ProcurementService {
     }));
   }
 
-  async listPurchaseHistory(ctx: RequestContext, stockItemId: string) {
-    if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio.');
+  async listPurchaseHistory(ctx: RequestContext, stockItemId?: string) {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
     return this.prisma.purchaseOrderItem.findMany({
-      where: { stockItemId, purchaseOrder: { branchId: ctx.branchId, supplier: { companyId: ctx.companyId } } },
-      include: { purchaseOrder: { include: { supplier: true } } },
+      where: {
+        ...(stockItemId ? { stockItemId } : {}),
+        purchaseOrder: { branchId: ctx.branchId, supplier: { companyId: ctx.companyId } },
+      },
+      include: {
+        stockItem: { select: { id: true, name: true, code: true, stockUnit: true, purchaseUnit: true } },
+        purchaseOrder: { include: { supplier: true } },
+      },
       orderBy: { purchaseOrder: { createdAt: 'desc' } },
       take: 100,
     });
+  }
+
+  async getPurchaseHistorySummary(ctx: RequestContext, stockItemId?: string) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    const rows = await this.prisma.goodsReceiptItem.findMany({
+      where: {
+        ...(stockItemId ? { stockItemId } : {}),
+        goodsReceipt: { purchaseOrder: { branchId: ctx.branchId }, supplier: { companyId: ctx.companyId } },
+      },
+      include: {
+        stockItem: { select: { id: true, name: true, code: true, stockUnit: true, purchaseUnit: true } },
+        goodsReceipt: { include: { supplier: true } },
+      },
+      orderBy: { goodsReceipt: { createdAt: 'desc' } },
+      take: 200,
+    });
+
+    const byItem = new Map<string, any>();
+    for (const row of rows) {
+      const quantity = Number(row.receivedQuantity ?? 0);
+      const unitCost = Number(row.unitCost ?? 0);
+      const totalCost = quantity * unitCost;
+      const current = byItem.get(row.stockItemId) ?? {
+        stockItemId: row.stockItemId,
+        stockItemName: row.stockItem?.name ?? row.stockItemId,
+        stockUnit: row.stockItem?.stockUnit ?? row.stockItem?.purchaseUnit ?? 'UN',
+        samples: 0,
+        totalQuantity: 0,
+        totalCost: 0,
+        lastUnitCost: unitCost,
+        lastSupplierName: row.goodsReceipt.supplier?.name ?? null,
+        lastReceivedAt: row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt,
+      };
+      current.samples += 1;
+      current.totalQuantity += quantity;
+      current.totalCost += totalCost;
+      if (new Date(row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt).getTime() >= new Date(current.lastReceivedAt).getTime()) {
+        current.lastUnitCost = unitCost;
+        current.lastSupplierName = row.goodsReceipt.supplier?.name ?? null;
+        current.lastReceivedAt = row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt;
+      }
+      byItem.set(row.stockItemId, current);
+    }
+
+    return Array.from(byItem.values()).map((row) => ({
+      ...row,
+      totalQuantity: Number(row.totalQuantity.toFixed(3)),
+      totalCost: Number(row.totalCost.toFixed(2)),
+      weightedAverageCost: row.totalQuantity > 0 ? Number((row.totalCost / row.totalQuantity).toFixed(4)) : 0,
+    }));
   }
 
   async getAverageCost(ctx: RequestContext, stockItemId: string) {
@@ -621,8 +865,7 @@ export class ProcurementService {
     const conversionFactor = Number(input.conversionFactor ?? 1);
     if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) throw new BadRequestException('conversionFactor deve ser maior que zero.');
 
-    const stockItem = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
-    if (!stockItem || stockItem.companyId !== ctx.companyId) throw new NotFoundException('Insumo de estoque nao encontrado.');
+    await this.assertPurchasableStockItem(ctx, stockItemId);
 
     const item = doc.items.find((row: any) => row.id === itemId);
     if (!item) throw new NotFoundException('Item fiscal nao encontrado.');
@@ -700,11 +943,20 @@ export class ProcurementService {
         if (!mappedStockItemId) throw new BadRequestException('Item fiscal sem insumo mapeado.');
         const stock = await tx.stockItem.findUnique({ where: { id: mappedStockItemId } });
         if (!stock || stock.companyId !== ctx.companyId) throw new NotFoundException('Insumo mapeado nao encontrado.');
-        const quantity = Number(row.quantity) * Number(row.conversionFactor ?? 1);
+        if (String(stock.stockType) !== 'RAW_MATERIAL') {
+          throw new BadRequestException('Entrada fiscal de compra aceita apenas insumos.');
+        }
+        const fiscalQuantity = Number(row.quantity);
+        const quantity = fiscalQuantity * Number(row.conversionFactor ?? 1);
         if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequestException('Quantidade convertida invalida.');
-        const unitCost = Number(row.unitPrice ?? row.totalAmount ?? 0) / Number(row.quantity || 1);
+        const fiscalTotal = Number(row.totalAmount ?? Number(row.unitPrice ?? 0) * fiscalQuantity);
+        const unitCost = quantity > 0 ? Number((fiscalTotal / quantity).toFixed(4)) : 0;
         const previous = Number(stock.currentQuantity ?? 0);
         const next = previous + quantity;
+        const previousAverageCost = Number(stock.averageCost ?? 0);
+        const weightedAverageCost = next > 0
+          ? Number(((previous * previousAverageCost + quantity * unitCost) / next).toFixed(4))
+          : unitCost;
         let batchId: string | null = null;
         if (row.batchNumber || row.expirationDate) {
           const existingBatch = row.batchNumber
@@ -746,7 +998,7 @@ export class ProcurementService {
           where: { id: stock.id },
           data: {
             currentQuantity: next,
-            averageCost: unitCost,
+            averageCost: weightedAverageCost,
             lastCost: unitCost,
             ...(batchId ? { controlsBatch: true, controlsExpiry: Boolean(row.expirationDate) || stock.controlsExpiry } : {}),
           },
@@ -769,7 +1021,7 @@ export class ProcurementService {
             requestId: ctx.requestId,
             quantity,
             unitCost,
-            totalCost: Number((quantity * unitCost).toFixed(2)),
+            totalCost: Number(fiscalTotal.toFixed(2)),
             previousStock: previous,
             newStock: next,
             reasonCode: 'purchase_fiscal_document_confirmed',
@@ -800,7 +1052,16 @@ export class ProcurementService {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
     const po = await this.prisma.purchaseOrder.findFirst({
       where: { id, branchId: ctx.branchId },
-      include: { supplier: true, items: true },
+      include: {
+        supplier: true,
+        items: {
+          include: {
+            stockItem: {
+              select: { id: true, name: true, code: true, stockType: true, stockUnit: true, purchaseUnit: true },
+            },
+          },
+        },
+      },
     });
     if (!po || po.supplier.companyId !== ctx.companyId) throw new NotFoundException('Pedido de compra nao encontrado.');
     return po;
@@ -832,6 +1093,31 @@ export class ProcurementService {
     const anyMapped = actionable.some((row) => row.status === 'MAPPED');
     const status = allMappedOrIgnored && anyMapped ? 'READY_TO_CONFIRM' : anyMapped ? 'PARTIALLY_MAPPED' : 'PENDING_REVIEW';
     await this.prisma.purchaseDocument.update({ where: { id: documentId }, data: { status } });
+  }
+
+  private async assertPurchasableStockItem(ctx: RequestContext, stockItemId: string) {
+    const stockItem = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
+    if (!stockItem || stockItem.companyId !== ctx.companyId) throw new NotFoundException('Insumo de estoque nao encontrado.');
+    if (String(stockItem.stockType) !== 'RAW_MATERIAL') {
+      throw new BadRequestException('Compras e fornecedores aceitam apenas itens do tipo Insumo.');
+    }
+    if (stockItem.isActive === false) {
+      throw new BadRequestException('Insumo inativo nao pode ser usado em compras.');
+    }
+    return stockItem;
+  }
+
+  private async assertSupplierDocumentAvailable(ctx: RequestContext, document: string | null, ignoreId?: string) {
+    if (!document) return;
+    const existing = await this.prisma.supplier.findFirst({
+      where: {
+        companyId: ctx.companyId,
+        document,
+        ...(ignoreId ? { id: { not: ignoreId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+    if (existing) throw new BadRequestException(`Documento ja cadastrado no fornecedor ${existing.name}.`);
   }
 
   private clean(value: unknown) {

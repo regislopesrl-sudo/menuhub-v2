@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ import {
   createAdminMenuCategory,
   commitAdminMenuImport,
   deleteAdminMenuCategory,
+  deleteAdminMenuProduct,
   deleteAdminMenuProductVariation,
   duplicateAdminMenuProduct,
   fetchAdminMenuCategories,
@@ -75,6 +77,7 @@ const MENU_TABS: Array<{ key: MenuTab; label: string }> = [
 export default function AdminMenuPage() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
+  const router = useRouter();
   const access = useModuleAccess({ companyId, branchId, userRole: 'admin' }, 'menu');
 
   const [products, setProducts] = useState<MenuProduct[]>([]);
@@ -290,6 +293,48 @@ export default function AdminMenuPage() {
     }
   };
 
+  const moveCategory = async (categoryToMove: AdminMenuCategory, direction: -1 | 1) => {
+    if (!categoryToMove.id || savingAction) return;
+    const ordered = categories.filter(
+      (item): item is AdminMenuCategory & { id: string } => item.name !== 'all' && Boolean(item.id),
+    );
+    const currentIndex = ordered.findIndex((item) => item.id === categoryToMove.id);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= ordered.length) return;
+
+    const nextOrder = [...ordered];
+    const [moved] = nextOrder.splice(currentIndex, 1);
+    nextOrder.splice(nextIndex, 0, moved);
+    const updates = nextOrder.map((item, index) => ({ ...item, sortOrder: index + 1 }));
+
+    setSavingAction('reorder-categories');
+    setActionError(null);
+    setCategoryRecords((prev) =>
+      prev.map((item) => {
+        const updated = updates.find((candidate) => candidate.id === item.id);
+        return updated ? { ...item, sortOrder: updated.sortOrder } : item;
+      }),
+    );
+    try {
+      await Promise.all(
+        updates.map((item) =>
+          updateAdminMenuCategory({
+            companyId,
+            branchId,
+            categoryId: item.id,
+            payload: { sortOrder: item.sortOrder },
+          }),
+        ),
+      );
+      setNotice('Ordem das categorias atualizada.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao reorganizar categorias.');
+      await load();
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   const upsertProduct = (product: MenuProduct) => {
     const normalized = normalizeProduct(product);
     setProducts((prev) => {
@@ -316,6 +361,23 @@ export default function AdminMenuPage() {
     }
   };
 
+  const removeProduct = async (product: MenuProduct) => {
+    const message = `Excluir o produto "${product.name}"? Ele saira do catalogo e do cardapio, mas pedidos antigos continuam preservados.`;
+    if (!window.confirm(message)) return;
+    setSavingAction(`delete-${product.id}`);
+    setActionError(null);
+    try {
+      await deleteAdminMenuProduct({ companyId, branchId, productId: product.id });
+      setProducts((prev) => prev.filter((item) => item.id !== product.id));
+      setModal((current) => (current?.product?.id === product.id ? null : current));
+      setNotice('Produto excluido do catalogo.');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao excluir produto.');
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
   const toggleAvailability = async (product: MenuProduct) => {
     setSavingAction(`toggle-${product.id}`);
     setActionError(null);
@@ -328,6 +390,7 @@ export default function AdminMenuPage() {
         channels: product.channels,
       });
       upsertProduct(updated);
+      setModal((current) => (current?.product?.id === product.id ? { ...current, product: updated } : current));
       setNotice(updated.available === false ? 'Produto desativado.' : 'Produto ativado.');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Falha ao atualizar disponibilidade.');
@@ -343,6 +406,7 @@ export default function AdminMenuPage() {
     try {
       const duplicated = await duplicateAdminMenuProduct({ companyId, branchId, productId: product.id });
       upsertProduct(duplicated);
+      setModal({ mode: 'edit', product: duplicated });
       setNotice('Produto duplicado como inativo para revisao.');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Falha ao duplicar produto.');
@@ -357,6 +421,7 @@ export default function AdminMenuPage() {
     try {
       const updated = await updateAdminMenuProductFeatured({ companyId, branchId, productId: product.id, featured: !product.featured });
       upsertProduct(updated);
+      setModal((current) => (current?.product?.id === product.id ? { ...current, product: updated } : current));
       setNotice(updated.featured ? 'Produto marcado como destaque.' : 'Produto removido dos destaques.');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Falha ao atualizar destaque.');
@@ -411,14 +476,20 @@ export default function AdminMenuPage() {
     }
   };
 
+  const openTechnicalSheet = (product: MenuProduct) => {
+    setModal(null);
+    router.push(`/admin/menu/products/${product.id}/ficha-tecnica`);
+  };
+
   const openRecommendations = async (product: MenuProduct) => {
     setSavingAction(`recommendations-${product.id}`);
-    setRecommendationConfig(null);
-    setModal({ mode: 'recommendations', product });
+    setActionError(null);
     try {
-      setRecommendationConfig(await fetchAdminMenuRecommendations({ companyId, branchId, productId: product.id }));
-    } catch {
-      setRecommendationConfig({ title: 'Peca tambem', type: 'manual', limit: 4, active: true, productIds: [] });
+      const config = await fetchAdminMenuRecommendations({ companyId, branchId, productId: product.id });
+      setRecommendationConfig(config);
+      setModal({ mode: 'recommendations', product });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao carregar recomendacoes.');
     } finally {
       setSavingAction(null);
     }
@@ -566,13 +637,6 @@ export default function AdminMenuPage() {
                     key={product.id}
                     product={product}
                     onEdit={() => setModal({ mode: 'edit', product })}
-                    onAddons={() => setModal({ mode: 'edit', product })}
-                    onVariations={() => setModal({ mode: 'variations', product })}
-                    onToggle={() => void toggleAvailability(product)}
-                    onDuplicate={() => void duplicateProduct(product)}
-                    onFeatured={() => void toggleFeatured(product)}
-                    onRecommendations={() => void openRecommendations(product)}
-                    actionLoading={savingAction}
                   />
                 ))}
               </section>
@@ -586,7 +650,7 @@ export default function AdminMenuPage() {
           {categories.filter((item) => item.name !== 'all').length === 0 ? (
             <EmptyState title="Sem categorias" description="Crie a primeira categoria para organizar o catalogo." />
           ) : null}
-          {categories.filter((item) => item.name !== 'all').map((item) => (
+          {categories.filter((item) => item.name !== 'all').map((item, index, list) => (
             <Card key={item.name} className={styles.managementCard}>
               <div className={styles.categoryCardHeader}>
                 <strong>{item.name}</strong>
@@ -597,8 +661,22 @@ export default function AdminMenuPage() {
                 <div className={styles.managementActions}>
                   <Button onClick={() => openCategoryModal(item as AdminMenuCategory)}>Editar</Button>
                   <Button
+                    onClick={() => void moveCategory(item as AdminMenuCategory, -1)}
+                    disabled={index === 0 || savingAction === 'reorder-categories'}
+                    aria-label={`Mover categoria ${item.name} para cima`}
+                  >
+                    Subir
+                  </Button>
+                  <Button
+                    onClick={() => void moveCategory(item as AdminMenuCategory, 1)}
+                    disabled={index === list.length - 1 || savingAction === 'reorder-categories'}
+                    aria-label={`Mover categoria ${item.name} para baixo`}
+                  >
+                    Descer
+                  </Button>
+                  <Button
                     onClick={() => void removeCategory(item as AdminMenuCategory)}
-                    disabled={savingAction === `delete-category-${item.id}`}
+                    disabled={savingAction === `delete-category-${item.id}` || savingAction === 'reorder-categories'}
                   >
                     {savingAction === `delete-category-${item.id}` ? 'Removendo...' : 'Remover'}
                   </Button>
@@ -645,7 +723,7 @@ export default function AdminMenuPage() {
         <ImportProductsPanel importCsv={importCsv} onImportCsvChange={setImportCsv} importPreview={importPreview} savingAction={savingAction} onPreview={() => void previewImport()} onCommit={() => void commitImport()} />
       ) : null}
 
-      {activeTab === 'recommendations' ? <RecommendationsPanel products={products} onOpenRecommendations={(product) => void openRecommendations(product)} /> : null}
+      {activeTab === 'recommendations' ? <RecommendationsPanel products={products} /> : null}
 
       {modal ? (
         <ProductModal
@@ -653,6 +731,14 @@ export default function AdminMenuPage() {
           product={modal.product}
           onClose={() => setModal(null)}
           onSave={(payload) => void saveProduct(payload, modal.product)}
+          onDelete={modal.product ? () => void removeProduct(modal.product as MenuProduct) : undefined}
+          onToggleAvailability={modal.product ? () => void toggleAvailability(modal.product as MenuProduct) : undefined}
+          onDuplicate={modal.product ? () => void duplicateProduct(modal.product as MenuProduct) : undefined}
+          onToggleFeatured={modal.product ? () => void toggleFeatured(modal.product as MenuProduct) : undefined}
+          onOpenAddons={modal.product ? () => setModal({ mode: 'addons', product: modal.product }) : undefined}
+          onOpenVariations={modal.product ? () => setModal({ mode: 'variations', product: modal.product }) : undefined}
+          onOpenTechnicalSheet={modal.product ? () => openTechnicalSheet(modal.product as MenuProduct) : undefined}
+          onOpenRecommendations={modal.product ? () => void openRecommendations(modal.product as MenuProduct) : undefined}
           onSaveRecommendations={(payload) => modal.product ? void saveRecommendations(modal.product, payload) : undefined}
           companyId={companyId}
           branchId={branchId}
@@ -668,6 +754,8 @@ export default function AdminMenuPage() {
           recommendationConfig={recommendationConfig}
           products={products}
           saving={savingAction === 'save' || savingAction === 'save-recommendations'}
+          deleting={modal.product ? savingAction === `delete-${modal.product.id}` : false}
+          actionLoading={savingAction}
         />
       ) : null}
 

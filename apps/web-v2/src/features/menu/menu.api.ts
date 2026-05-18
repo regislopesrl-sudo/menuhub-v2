@@ -4,12 +4,31 @@ import { apiFetch } from '@/lib/api-fetch';
 export type DeliveryStorefrontSettings = {
   companyId: string;
   branchId?: string | null;
+  branchName?: string;
+  city?: string;
+  state?: string;
+  isOpen?: boolean;
+  timezone?: string;
   publicTitle: string;
   publicDescription: string;
   logoUrl: string;
   bannerUrl: string;
   brandColor: string;
   closedMessage: string;
+  schedules?: Array<{
+    dayKey: string;
+    label: string;
+    isOpen: boolean;
+    openAt: string | null;
+    closeAt: string | null;
+  }>;
+  delivery?: {
+    minimumOrder: number;
+    averagePrepMinutes: number;
+    averageDeliveryMinutes: number;
+    allowPickup: boolean;
+    allowDelivery: boolean;
+  };
 };
 
 type MenuApiItem = {
@@ -30,6 +49,10 @@ type MenuApiItem = {
   categoryId?: string;
   categoryName?: string;
   available?: boolean;
+  stockAvailabilityStatus?: MenuProduct['stockAvailabilityStatus'];
+  availableToSell?: number | null;
+  stockStatusLabel?: string;
+  stockStatusMessage?: string;
   availableDelivery?: boolean;
   availablePdv?: boolean;
   availableKiosk?: boolean;
@@ -74,6 +97,11 @@ export async function fetchDeliveryStorefront(input: {
       bannerUrl: process.env.NEXT_PUBLIC_STOREFRONT_BANNER_URL ?? '',
       brandColor: '#2557f6',
       closedMessage: 'Loja fechada no momento. Voltamos em breve.',
+      city: '',
+      state: '',
+      isOpen: true,
+      timezone: 'America/Sao_Paulo',
+      schedules: [],
     };
   }
 
@@ -156,6 +184,11 @@ function mapMenuItem(item: MenuApiItem): MenuProduct {
     categoryId: item.categoryId,
     categoryName: item.categoryName ?? 'Sem categoria',
     available,
+    stockAvailabilityStatus: item.stockAvailabilityStatus,
+    availableToSell:
+      item.availableToSell === null || item.availableToSell === undefined ? item.availableToSell : Number(item.availableToSell),
+    stockStatusLabel: item.stockStatusLabel,
+    stockStatusMessage: item.stockStatusMessage,
     featured: item.featured === true,
     sortOrder: Number(item.sortOrder ?? item.featuredSortOrder ?? 0),
     featuredSortOrder: Number(item.featuredSortOrder ?? 0),
@@ -317,6 +350,17 @@ export async function duplicateAdminMenuProduct(input: {
 }): Promise<MenuProduct> {
   return apiFetch<MenuProduct>(`/v2/admin/menu/products/${input.productId}/duplicate`, {
     method: 'POST',
+    headers: adminHeaders(input),
+  });
+}
+
+export async function deleteAdminMenuProduct(input: {
+  companyId: string;
+  branchId?: string;
+  productId: string;
+}): Promise<{ deleted: boolean; id: string }> {
+  return apiFetch<{ deleted: boolean; id: string }>(`/v2/admin/menu/products/${input.productId}`, {
+    method: 'DELETE',
     headers: adminHeaders(input),
   });
 }

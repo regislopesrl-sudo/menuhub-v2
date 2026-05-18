@@ -8,6 +8,11 @@ export interface MenuProduct {
   imageUrl?: string;
   categoryName?: string;
   available?: boolean;
+  stockAvailabilityStatus?: 'available' | 'low_stock' | 'out_of_stock' | 'missing_recipe' | 'recipe_without_stock_items' | 'not_controlled';
+  availableToSell?: number | null;
+  stockStatusLabel?: string;
+  stockStatusMessage?: string;
+  controlsStock?: boolean;
   salePrice?: number;
   localPrice?: number;
   costPrice?: number;

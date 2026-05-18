@@ -15,9 +15,13 @@ describe('MenuService', () => {
     const modulesService = {
       checkAccess: jest.fn().mockResolvedValue(moduleAccess),
     };
+    const stockService = {
+      listProductAvailability: jest.fn().mockResolvedValue([]),
+    };
     return {
-      service: new MenuService(prismaMock, modulesService as any),
+      service: new MenuService(prismaMock, modulesService as any, stockService as any),
       modulesService,
+      stockService,
     };
   }
 
@@ -137,6 +141,51 @@ describe('MenuService', () => {
         variations: [],
       },
     ]);
+  });
+
+  it('menu publico inclui disponibilidade tecnica sanitizada quando existir', async () => {
+    const prismaMock = {
+      product: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'prod_stock',
+            name: 'Pastel',
+            description: null,
+            imageUrl: null,
+            salePrice: 12,
+            promotionalPrice: null,
+            deliveryPickupPrice: 12,
+            isActive: true,
+            availableDelivery: true,
+            deletedAt: null,
+            category: { name: 'Pasteis' },
+            addonLinks: [],
+            variations: [],
+          },
+        ]),
+      },
+    } as any;
+
+    const { service, stockService } = createService(prismaMock);
+    stockService.listProductAvailability.mockResolvedValue([
+      {
+        productId: 'prod_stock',
+        availabilityStatus: 'low_stock',
+        availableToSell: 3,
+      },
+    ]);
+
+    const result = await service.list(ctx);
+
+    expect(result[0]).toEqual(
+      expect.objectContaining({
+        id: 'prod_stock',
+        stockAvailabilityStatus: 'low_stock',
+        availableToSell: 3,
+        stockStatusLabel: 'Baixo estoque',
+        stockStatusMessage: '3 unidades disponiveis para venda.',
+      }),
+    );
   });
 
   it('menu retorna produto com opcionais', async () => {
@@ -388,6 +437,18 @@ describe('MenuService', () => {
           closedMessage: 'Fechado agora',
         }),
       },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'branch_a',
+          name: 'Filial Centro',
+          city: 'Peruibe',
+          state: 'SP',
+          isActive: true,
+        }),
+      },
+      companySetting: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       product: {
         findMany: jest.fn(),
       },
@@ -399,13 +460,26 @@ describe('MenuService', () => {
 
     expect(result).toEqual({
       companyId: 'company_a',
-      branchId: null,
+      branchId: 'branch_a',
+      branchName: 'Filial Centro',
+      city: 'Peruibe',
+      state: 'SP',
+      isOpen: true,
+      timezone: 'America/Sao_Paulo',
       publicTitle: 'Delivery Demo',
       publicDescription: 'Pedido online premium',
       logoUrl: 'https://img.local/logo.png',
       bannerUrl: 'https://img.local/banner.png',
       brandColor: '#123456',
       closedMessage: 'Fechado agora',
+      schedules: [],
+      delivery: {
+        minimumOrder: 0,
+        averagePrepMinutes: 20,
+        averageDeliveryMinutes: 35,
+        allowPickup: true,
+        allowDelivery: true,
+      },
     });
     expect(prismaMock.product.findMany).not.toHaveBeenCalled();
   });

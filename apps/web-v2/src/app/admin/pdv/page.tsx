@@ -24,6 +24,7 @@ import {
   openPdvSession,
   type PdvMovementType,
   type PdvSessionMovement,
+  type PdvCheckoutPayload,
   type PdvPaymentMethod,
   type PdvSessionSummary,
   type PdvOperatorSummary,
@@ -51,6 +52,43 @@ function currency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
+function isProductEnabledForPdv(product: MenuProduct) {
+  return product.available !== false && product.channels?.pdv !== false && product.stockAvailabilityStatus !== 'out_of_stock';
+}
+
+function isTechnicalStockLimited(product?: MenuProduct | null) {
+  return product?.stockAvailabilityStatus === 'available' || product?.stockAvailabilityStatus === 'low_stock';
+}
+
+function cartQuantityForProduct(cart: CartItem[], productId: string) {
+  return cart
+    .filter((item) => item.productId === productId)
+    .reduce((sum, item) => sum + item.quantity, 0);
+}
+
+function canIncreaseProductQuantity(product: MenuProduct | undefined, currentQuantity: number) {
+  if (!product) return true;
+  if (product.stockAvailabilityStatus === 'out_of_stock') return false;
+  if (!isTechnicalStockLimited(product) || typeof product.availableToSell !== 'number') return true;
+  return currentQuantity < product.availableToSell;
+}
+
+function pdvProductStatusClass(product: MenuProduct, enabled: boolean) {
+  if (!enabled || product.stockAvailabilityStatus === 'out_of_stock') return styles.statusInactive;
+  if (product.stockAvailabilityStatus === 'low_stock') return styles.statusWarning;
+  if (product.stockAvailabilityStatus === 'missing_recipe' || product.stockAvailabilityStatus === 'recipe_without_stock_items') {
+    return styles.statusInfo;
+  }
+  return styles.statusActive;
+}
+
+function pdvProductStatusText(product: MenuProduct, enabled: boolean) {
+  if (!enabled && product.stockAvailabilityStatus !== 'out_of_stock') return 'Desativado';
+  return product.stockStatusLabel ?? (enabled ? 'Ativo' : 'Desativado');
+}
+
+type PdvSaleType = 'COUNTER' | 'TABLE' | 'COMMAND';
+
 export default function AdminPdvPage() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -65,12 +103,14 @@ export default function AdminPdvPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PdvPaymentMethod>('CASH');
-  const [saleType, setSaleType] = useState<'COUNTER' | 'TABLE' | 'COMMAND'>('COUNTER');
+  const [saleType, setSaleType] = useState<PdvSaleType | ''>('');
   const [commandReference, setCommandReference] = useState('');
   const [startInPreparation, setStartInPreparation] = useState(true);
   const [lastOrder, setLastOrder] = useState<{
     id: string;
     status: string;
+    saleType: PdvSaleType;
+    commandReference?: string;
     qrCode?: string;
     qrCodeText?: string;
   } | null>(null);
@@ -111,14 +151,26 @@ export default function AdminPdvPage() {
       ),
     [cart],
   );
+  const selectedSaleType = saleType || null;
+  const isCounterSale = selectedSaleType === 'COUNTER';
+  const isDeferredSale = selectedSaleType === 'TABLE' || selectedSaleType === 'COMMAND';
+  const saleTypeLabel = selectedSaleType === 'TABLE' ? 'Mesa' : selectedSaleType === 'COMMAND' ? 'Comanda' : 'Balcao';
   const categories = useMemo(
-    () => ['all', ...Array.from(new Set(menu.map((item) => item.categoryName).filter(Boolean)))],
+    () => ['all', ...Array.from(new Set(menu.map((item) => item.categoryName || 'Sem categoria')))],
     [menu],
   );
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>([['all', menu.length]]);
+    menu.forEach((item) => {
+      const name = item.categoryName || 'Sem categoria';
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    });
+    return counts;
+  }, [menu]);
   const filteredMenu = useMemo(
     () =>
       menu.filter((product) => {
-        const matchesCategory = category === 'all' || product.categoryName === category;
+        const matchesCategory = category === 'all' || (product.categoryName || 'Sem categoria') === category;
         const q = search.trim().toLowerCase();
         const matchesSearch =
           !q ||
@@ -296,9 +348,19 @@ export default function AdminPdvPage() {
   }
 
   const addItem = (
-    product: { id: string; name: string; price: number },
+    product: MenuProduct,
     addons: Array<{ groupId: string; optionId: string; name: string; price: number }> = [],
   ) => {
+    const currentQuantity = cartQuantityForProduct(cart, product.id);
+    if (!canIncreaseProductQuantity(product, currentQuantity)) {
+      setCheckoutError(
+        product.stockAvailabilityStatus === 'out_of_stock'
+          ? `${product.name} esta sem estoque disponivel.`
+          : `Limite de estoque disponivel para ${product.name}: ${product.availableToSell}.`,
+      );
+      return;
+    }
+    setCheckoutError(null);
     setCart((prev) => {
       const addonKey = addons
         .map((addon) => `${addon.groupId}:${addon.optionId}`)
@@ -322,6 +384,20 @@ export default function AdminPdvPage() {
   };
 
   const changeQty = (lineKey: string, delta: number) => {
+    if (delta > 0) {
+      const item = cart.find((cartItem) => itemKey(cartItem) === lineKey);
+      const product = item ? menu.find((menuItem) => menuItem.id === item.productId) : undefined;
+      const currentQuantity = item ? cartQuantityForProduct(cart, item.productId) : 0;
+      if (!canIncreaseProductQuantity(product, currentQuantity)) {
+        setCheckoutError(
+          product
+            ? `Limite de estoque disponivel para ${product.name}: ${product.availableToSell}.`
+            : 'Limite de estoque atingido para este produto.',
+        );
+        return;
+      }
+      setCheckoutError(null);
+    }
     setCart((prev) =>
       prev
         .map((item) =>
@@ -340,32 +416,47 @@ export default function AdminPdvPage() {
       setCheckoutError('Abra o caixa antes de finalizar pedidos no PDV.');
       return;
     }
+    if (!selectedSaleType) {
+      setCheckoutError('Escolha o tipo de venda antes de lancar o pedido.');
+      return;
+    }
+    if (isDeferredSale && !commandReference.trim()) {
+      setCheckoutError(saleType === 'TABLE' ? 'Informe a mesa para lancar o pedido.' : 'Informe a comanda para lancar o pedido.');
+      return;
+    }
     setCheckoutError(null);
     setFinishing(true);
     try {
-        const result = await createPdvOrder({
+      const payload: PdvCheckoutPayload = {
+        storeId,
+        saleType: selectedSaleType,
+        commandReference: commandReference.trim() || undefined,
+        ...(isCounterSale ? { paymentMethod } : {}),
+        startInPreparation,
+        items: cart.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          selectedOptions: item.addons,
+        })),
+      };
+
+      const result = await createPdvOrder({
         companyId,
         branchId,
-          payload: {
-          storeId,
-          saleType,
-          commandReference: commandReference.trim() || undefined,
-          paymentMethod,
-          startInPreparation,
-          items: cart.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            selectedOptions: item.addons,
-          })),
-        },
+        payload,
       });
       setLastOrder({
         id: result.order.id,
         status: result.order.status,
+        saleType: selectedSaleType,
+        commandReference: commandReference.trim() || undefined,
         qrCode: result.payment?.qrCode,
         qrCodeText: result.payment?.qrCodeText,
       });
       setCart([]);
+      if (isDeferredSale) {
+        setCommandReference('');
+      }
       if (openSession?.id) {
         const [summary, operator, divergence] = await Promise.all([
           getPdvSessionSummary({
@@ -524,6 +615,14 @@ export default function AdminPdvPage() {
 
   const confirmCustomize = () => {
     if (!customizingProduct) return;
+    if (!canIncreaseProductQuantity(customizingProduct, cartQuantityForProduct(cart, customizingProduct.id))) {
+      setCheckoutError(
+        customizingProduct.stockAvailabilityStatus === 'out_of_stock'
+          ? `${customizingProduct.name} esta sem estoque disponivel.`
+          : `Limite de estoque disponivel para ${customizingProduct.name}: ${customizingProduct.availableToSell}.`,
+      );
+      return;
+    }
     const selected = (customizingProduct.addonGroups ?? []).flatMap((group) =>
       group.options
         .filter((option) => selectedAddons.includes(`${group.id}:${option.id}`))
@@ -658,7 +757,13 @@ export default function AdminPdvPage() {
       {!loading && !error ? (
         <section className={styles.grid}>
           <Card className={styles.menu}>
-            <h2 className={styles.sectionTitle}>Produtos</h2>
+            <div className={styles.menuHeading}>
+              <div>
+                <h2 className={styles.sectionTitle}>Produtos</h2>
+                <small className={styles.sub}>Categorias na lateral e itens compactos para venda rapida.</small>
+              </div>
+              <Badge tone="default">{filteredMenu.length} itens</Badge>
+            </div>
             <div className={styles.filters}>
               <Input
                 value={search}
@@ -666,32 +771,61 @@ export default function AdminPdvPage() {
                 placeholder="Buscar produto..."
                 data-pdv-product-search="true"
               />
-              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {item === 'all' ? 'Todas categorias' : item}
-                  </option>
-                ))}
-              </Select>
             </div>
             {menu.length === 0 ? <EmptyState title="Sem produtos" description="Nao ha itens disponiveis no menu." /> : null}
-            <div className={styles.products}>
-              {filteredMenu.map((product) => (
-                <button
-                  key={product.id}
-                  className={styles.productCard}
-                  onClick={() =>
-                    product.addonGroups && product.addonGroups.length > 0
-                      ? (setCustomizingProduct(product), setSelectedAddons([]))
-                      : addItem(product)
-                  }
-                >
-                  <strong>{product.name}</strong>
-                  <small>{product.description || 'Produto sem descricao'}</small>
-                  {product.categoryName ? <small>{product.categoryName}</small> : null}
-                  <span>{currency(product.price)}</span>
-                </button>
-              ))}
+            <div className={styles.catalogShell}>
+              <aside className={styles.categoryRail} aria-label="Categorias do PDV">
+                {categories.map((item) => {
+                  const active = category === item;
+                  const label = item === 'all' ? 'Todas' : item;
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      className={`${styles.categoryButton} ${active ? styles.categoryButtonActive : ''}`}
+                      onClick={() => setCategory(item)}
+                    >
+                      <span>{label}</span>
+                      <strong>{categoryCounts.get(item) ?? 0}</strong>
+                    </button>
+                  );
+                })}
+              </aside>
+              <div className={styles.products}>
+                {filteredMenu.map((product) => {
+                  const enabled = isProductEnabledForPdv(product);
+                  const currentQuantity = cartQuantityForProduct(cart, product.id);
+                  const canAdd = enabled && canIncreaseProductQuantity(product, currentQuantity);
+                  const stockHint = isTechnicalStockLimited(product) && typeof product.availableToSell === 'number'
+                    ? `${Math.max(product.availableToSell - currentQuantity, 0)} disponiveis`
+                    : product.stockStatusMessage;
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      className={`${styles.productCard} ${!canAdd ? styles.productCardDisabled : ''} ${product.stockAvailabilityStatus === 'low_stock' ? styles.productCardLowStock : ''}`}
+                      disabled={!canAdd}
+                      title={canAdd ? 'Adicionar ao carrinho' : product.stockStatusMessage ?? 'Produto indisponivel no PDV'}
+                      onClick={() => {
+                        if (!canAdd) return;
+                        product.addonGroups && product.addonGroups.length > 0
+                          ? (setCustomizingProduct(product), setSelectedAddons([]))
+                          : addItem(product);
+                      }}
+                    >
+                      <div className={styles.productCardTop}>
+                        <strong>{product.name}</strong>
+                        <small className={`${styles.statusPill} ${pdvProductStatusClass(product, enabled)}`}>
+                          {pdvProductStatusText(product, enabled)}
+                        </small>
+                      </div>
+                      {stockHint ? <small className={styles.stockHint}>{stockHint}</small> : null}
+                      <span className={styles.productPrice}>{currency(product.price)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {filteredMenu.length === 0 ? <EmptyState title="Nada encontrado" description="Ajuste a busca ou selecione outra categoria." /> : null}
             </div>
           </Card>
 
@@ -719,24 +853,34 @@ export default function AdminPdvPage() {
 
             <div className={styles.payment}>
               <label>Tipo de venda</label>
-              <select value={saleType} onChange={(e) => setSaleType(e.target.value as 'COUNTER' | 'TABLE' | 'COMMAND')}>
+              <select value={saleType} onChange={(e) => setSaleType(e.target.value as PdvSaleType | '')}>
+                <option value="">Escolha o tipo de venda</option>
                 <option value="COUNTER">Balcao</option>
                 <option value="TABLE">Mesa</option>
                 <option value="COMMAND">Comanda</option>
               </select>
-              {saleType !== 'COUNTER' ? (
+              {isDeferredSale ? (
                 <Input
                   value={commandReference}
                   onChange={(e) => setCommandReference(e.target.value)}
                   placeholder={saleType === 'TABLE' ? 'Identificador da mesa (ex: M12)' : 'Referencia da comanda'}
                 />
               ) : null}
-              <label>Pagamento</label>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PdvPaymentMethod)}>
-                <option value="CASH">Dinheiro</option>
-                <option value="PIX">PIX</option>
-                <option value="CREDIT_CARD">Cartao</option>
-              </select>
+              {isCounterSale ? (
+                <>
+                  <label>Pagamento</label>
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PdvPaymentMethod)}>
+                    <option value="CASH">Dinheiro</option>
+                    <option value="PIX">PIX</option>
+                    <option value="CREDIT_CARD">Cartao</option>
+                  </select>
+                </>
+              ) : isDeferredSale ? (
+                <div className={styles.deferredPaymentNotice}>
+                  <strong>{saleTypeLabel} sem pagamento imediato</strong>
+                  <small>O pedido sera vinculado e cobrado no fechamento da {saleType === 'TABLE' ? 'mesa' : 'comanda'}.</small>
+                </div>
+              ) : null}
               <label className={styles.checkbox}>
                 <input
                   type="checkbox"
@@ -754,7 +898,9 @@ export default function AdminPdvPage() {
             {checkoutError ? <div className={styles.error}>{checkoutError}</div> : null}
             {lastOrder ? (
               <div className={styles.success}>
-                Pedido {lastOrder.id} criado com status {lastOrder.status}.
+                {lastOrder.saleType === 'COUNTER'
+                  ? `Pedido ${lastOrder.id} finalizado com status ${lastOrder.status}.`
+                  : `Pedido ${lastOrder.id} lancado na ${lastOrder.saleType === 'TABLE' ? 'mesa' : 'comanda'} ${lastOrder.commandReference ?? ''}.`}
                 {lastOrder.qrCodeText ? (
                   <div className={styles.pixBox}>
                     <strong>PIX aguardando pagamento</strong>
@@ -764,8 +910,14 @@ export default function AdminPdvPage() {
                 ) : null}
               </div>
             ) : null}
-            <Button variant="primary" onClick={() => void finalize()} disabled={finishing || cart.length === 0}>
-              {finishing ? 'Finalizando...' : 'Finalizar pedido'}
+            <Button variant="primary" onClick={() => void finalize()} disabled={finishing || cart.length === 0 || !selectedSaleType}>
+              {finishing
+                ? 'Processando...'
+                : isCounterSale
+                  ? 'Finalizar pedido'
+                  : isDeferredSale
+                    ? `Lancar na ${saleType === 'TABLE' ? 'mesa' : 'comanda'}`
+                    : 'Escolha o tipo de venda'}
             </Button>
             <small className={styles.shortcutHint}>Atalhos: F2 busca, F4 finalizar venda, Esc limpar/fechar modal, Enter confirma modal.</small>
           </Card>
@@ -849,5 +1001,3 @@ export default function AdminPdvPage() {
 function itemKey(item: CartItem): string {
   return `${item.productId}-${item.addons.map((a) => `${a.groupId}:${a.optionId}`).sort().join('|')}`;
 }
-
-

@@ -59,13 +59,91 @@ model CashMovement {
   @@index([orderId])
   @@index([paymentId])
   @@index([idempotencyKey])
+  @@unique([branchId, idempotencyKey])
   @@map("cash_movements")
+}
+
+model FinancialCategory {
+  id          String                @id @default(uuid()) @map("id")
+  companyId   String                @map("company_id")
+  parentId    String?               @map("parent_id")
+  type        FinancialCategoryType @map("type")
+  name        String                @map("name")
+  description String?               @map("description")
+  status      String                @default("ACTIVE") @map("status")
+  sortOrder   Int                   @default(0) @map("sort_order")
+  metadata    Json?                 @map("metadata")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  parent  FinancialCategory?  @relation("FinancialCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children FinancialCategory[] @relation("FinancialCategoryTree")
+
+  ledgerEntries FinancialLedgerEntry[]
+  payables      AccountsPayable[]
+  receivables   AccountsReceivable[]
+
+  @@index([companyId])
+  @@index([companyId, type])
+  @@index([companyId, status])
+  @@unique([companyId, type, name])
+  @@map("financial_categories")
+}
+
+model CostCenter {
+  id          String   @id @default(uuid()) @map("id")
+  companyId   String   @map("company_id")
+  branchId    String?  @map("branch_id")
+  name        String   @map("name")
+  description String?  @map("description")
+  status      String   @default("ACTIVE") @map("status")
+  metadata    Json?    @map("metadata")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  ledgerEntries FinancialLedgerEntry[]
+  payables      AccountsPayable[]
+  receivables   AccountsReceivable[]
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, status])
+  @@unique([companyId, branchId, name])
+  @@map("cost_centers")
+}
+
+model FinancialAccount {
+  id             String               @id @default(uuid()) @map("id")
+  companyId      String               @map("company_id")
+  branchId       String?              @map("branch_id")
+  type           FinancialAccountType @map("type")
+  name           String               @map("name")
+  description    String?              @map("description")
+  openingBalance Decimal              @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  currentBalance Decimal              @default(0) @map("current_balance") @db.Decimal(14, 2)
+  status         String               @default("ACTIVE") @map("status")
+  metadata       Json?                @map("metadata")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  ledgerEntries FinancialLedgerEntry[]
+  payables      AccountsPayable[]
+  receivables   AccountsReceivable[]
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, type])
+  @@index([companyId, status])
+  @@map("financial_accounts")
 }
 
 model AccountsPayable {
   id              String                @id @default(uuid()) @map("id")
   branchId        String                @map("branch_id")
   supplierId      String?               @map("supplier_id")
+  financialAccountId String?            @map("financial_account_id")
+  categoryId      String?               @map("category_id")
+  costCenterId    String?               @map("cost_center_id")
   createdById     String?               @map("created_by_id")
   approvedById    String?               @map("approved_by_id")
   updatedById     String?               @map("updated_by_id")
@@ -87,12 +165,18 @@ model AccountsPayable {
 
   branch   Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
   supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  category FinancialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   settlements          PayableSettlement[]
   financialLedgerEntries FinancialLedgerEntry[]
 
   @@index([branchId])
   @@index([branchId, status, dueDate])
   @@index([supplierId])
+  @@index([financialAccountId])
+  @@index([categoryId])
+  @@index([costCenterId])
   @@index([dueDate])
   @@map("accounts_payable")
 }
@@ -101,6 +185,9 @@ model AccountsReceivable {
   id          String                   @id @default(uuid()) @map("id")
   branchId    String                   @map("branch_id")
   customerId  String?                  @map("customer_id")
+  financialAccountId String?           @map("financial_account_id")
+  categoryId  String?                  @map("category_id")
+  costCenterId String?                 @map("cost_center_id")
   orderId     String?                  @map("order_id")
   paymentId   String?                  @map("payment_id")
   createdById String?                  @map("created_by_id")
@@ -124,6 +211,9 @@ model AccountsReceivable {
 
   branch   Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  category FinancialCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
   payment  OrderPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   settlements            ReceivableSettlement[]
@@ -132,6 +222,9 @@ model AccountsReceivable {
   @@index([branchId])
   @@index([branchId, status, dueDate])
   @@index([customerId])
+  @@index([financialAccountId])
+  @@index([categoryId])
+  @@index([costCenterId])
   @@index([orderId])
   @@index([paymentId])
   @@index([externalReference])
@@ -168,6 +261,7 @@ model ReceivableSettlement {
   @@index([paymentId])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("receivable_settlements")
 }
 
@@ -198,6 +292,7 @@ model PayableSettlement {
   @@index([branchId, settledAt])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("payable_settlements")
 }
 
@@ -205,7 +300,11 @@ model FinancialLedgerEntry {
   id                   String             @id @default(uuid()) @map("id")
   branchId             String             @map("branch_id")
   actorUserId          String?            @map("actor_user_id")
+  financialAccountId   String?            @map("financial_account_id")
+  categoryId           String?            @map("category_id")
+  costCenterId         String?            @map("cost_center_id")
   entryType            String             @map("entry_type")
+  status               String             @default("POSTED") @map("status")
   originType           FinancialOriginType @default(ADJUSTMENT) @map("origin_type")
   originId             String?            @map("origin_id")
   accountsReceivableId String?            @map("accounts_receivable_id")
@@ -225,10 +324,16 @@ model FinancialLedgerEntry {
   traceId              String?            @map("trace_id")
   idempotencyKey       String?            @map("idempotency_key")
   metadata             Json?              @map("metadata")
+  canceledById         String?            @map("canceled_by_id")
+  canceledAt           DateTime?          @map("canceled_at")
+  cancellationReason   String?            @map("cancellation_reason")
   createdAt            DateTime           @default(now()) @map("created_at")
 
   branch              Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
   actorUser           User?                @relation("FinancialLedgerEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  financialAccount    FinancialAccount?    @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  category            FinancialCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter          CostCenter?          @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   receivable          AccountsReceivable?  @relation(fields: [accountsReceivableId], references: [id], onDelete: SetNull)
   payable             AccountsPayable?     @relation(fields: [accountsPayableId], references: [id], onDelete: SetNull)
   receivableSettlement ReceivableSettlement? @relation(fields: [receivableSettlementId], references: [id], onDelete: SetNull)
@@ -238,6 +343,10 @@ model FinancialLedgerEntry {
   order               Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([branchId, createdAt])
+  @@index([branchId, status, createdAt])
+  @@index([financialAccountId])
+  @@index([categoryId])
+  @@index([costCenterId])
   @@index([accountsReceivableId])
   @@index([accountsPayableId])
   @@index([cashMovementId])
@@ -245,7 +354,140 @@ model FinancialLedgerEntry {
   @@index([orderId])
   @@index([requestId])
   @@index([traceId])
+  @@unique([branchId, idempotencyKey])
   @@map("financial_ledger_entries")
+}
+
+model CashFlowSnapshot {
+  id               String              @id @default(uuid()) @map("id")
+  companyId        String              @map("company_id")
+  branchId         String?             @map("branch_id")
+  periodStart      DateTime            @map("period_start")
+  periodEnd        DateTime            @map("period_end")
+  openingBalance   Decimal             @default(0) @map("opening_balance") @db.Decimal(14, 2)
+  totalRevenue     Decimal             @default(0) @map("total_revenue") @db.Decimal(14, 2)
+  totalExpense     Decimal             @default(0) @map("total_expense") @db.Decimal(14, 2)
+  netCashFlow      Decimal             @default(0) @map("net_cash_flow") @db.Decimal(14, 2)
+  projectedRevenue Decimal             @default(0) @map("projected_revenue") @db.Decimal(14, 2)
+  projectedExpense Decimal             @default(0) @map("projected_expense") @db.Decimal(14, 2)
+  projectedBalance Decimal             @default(0) @map("projected_balance") @db.Decimal(14, 2)
+  dataStatus       FinancialDataStatus @default(COMPLETE) @map("data_status")
+  metadata         Json?               @map("metadata")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, periodStart, periodEnd])
+  @@map("cash_flow_snapshots")
+}
+
+model DreSnapshot {
+  id                   String              @id @default(uuid()) @map("id")
+  companyId            String              @map("company_id")
+  branchId             String?             @map("branch_id")
+  periodStart          DateTime            @map("period_start")
+  periodEnd            DateTime            @map("period_end")
+  grossRevenue         Decimal             @default(0) @map("gross_revenue") @db.Decimal(14, 2)
+  discounts            Decimal             @default(0) @map("discounts") @db.Decimal(14, 2)
+  cancellationsRefunds Decimal             @default(0) @map("cancellations_refunds") @db.Decimal(14, 2)
+  netRevenue           Decimal             @default(0) @map("net_revenue") @db.Decimal(14, 2)
+  cmv                  Decimal             @default(0) @map("cmv") @db.Decimal(14, 2)
+  grossMargin          Decimal             @default(0) @map("gross_margin") @db.Decimal(14, 2)
+  operationalExpenses  Decimal             @default(0) @map("operational_expenses") @db.Decimal(14, 2)
+  paymentFees          Decimal             @default(0) @map("payment_fees") @db.Decimal(14, 2)
+  deliveryFees         Decimal             @default(0) @map("delivery_fees") @db.Decimal(14, 2)
+  operationalProfit    Decimal             @default(0) @map("operational_profit") @db.Decimal(14, 2)
+  dataStatus           FinancialDataStatus @default(PARTIAL_DATA) @map("data_status")
+  metadata             Json?               @map("metadata")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, periodStart, periodEnd])
+  @@map("dre_snapshots")
+}
+
+model CmvSnapshot {
+  id             String              @id @default(uuid()) @map("id")
+  companyId      String              @map("company_id")
+  branchId       String?             @map("branch_id")
+  periodStart    DateTime            @map("period_start")
+  periodEnd      DateTime            @map("period_end")
+  productId      String?             @map("product_id")
+  categoryId     String?             @map("category_id")
+  stockItemId    String?             @map("stock_item_id")
+  quantitySold   Decimal             @default(0) @map("quantity_sold") @db.Decimal(14, 4)
+  averageCost    Decimal             @default(0) @map("average_cost") @db.Decimal(14, 4)
+  totalCost      Decimal             @default(0) @map("total_cost") @db.Decimal(14, 2)
+  revenue        Decimal             @default(0) @map("revenue") @db.Decimal(14, 2)
+  grossMargin    Decimal             @default(0) @map("gross_margin") @db.Decimal(14, 2)
+  grossMarginPct Decimal             @default(0) @map("gross_margin_pct") @db.Decimal(8, 4)
+  dataStatus     FinancialDataStatus @default(PARTIAL_DATA) @map("data_status")
+  sourceType     FinancialOriginType? @map("source_type")
+  sourceId       String?             @map("source_id")
+  metadata       Json?               @map("metadata")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([companyId, periodStart, periodEnd])
+  @@index([productId])
+  @@index([categoryId])
+  @@index([stockItemId])
+  @@map("cmv_snapshots")
+}
+
+model PaymentFee {
+  id          String   @id @default(uuid()) @map("id")
+  companyId   String   @map("company_id")
+  branchId    String?  @map("branch_id")
+  paymentId   String?  @map("payment_id")
+  orderId     String?  @map("order_id")
+  provider    String?  @map("provider")
+  method      String?  @map("method")
+  grossAmount Decimal  @map("gross_amount") @db.Decimal(14, 2)
+  feeAmount   Decimal  @default(0) @map("fee_amount") @db.Decimal(14, 2)
+  netAmount   Decimal  @map("net_amount") @db.Decimal(14, 2)
+  feePct      Decimal? @map("fee_pct") @db.Decimal(8, 4)
+  occurredAt  DateTime @map("occurred_at")
+  metadata    Json?    @map("metadata")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([paymentId])
+  @@index([orderId])
+  @@index([occurredAt])
+  @@map("payment_fees")
+}
+
+model ReceivableSchedule {
+  id                  String   @id @default(uuid()) @map("id")
+  companyId           String   @map("company_id")
+  branchId            String?  @map("branch_id")
+  accountReceivableId String?  @map("account_receivable_id")
+  paymentId           String?  @map("payment_id")
+  provider            String?  @map("provider")
+  method              String?  @map("method")
+  grossAmount         Decimal  @map("gross_amount") @db.Decimal(14, 2)
+  feeAmount           Decimal  @default(0) @map("fee_amount") @db.Decimal(14, 2)
+  netAmount           Decimal  @map("net_amount") @db.Decimal(14, 2)
+  expectedDate        DateTime @map("expected_date")
+  receivedAt          DateTime? @map("received_at")
+  status              String   @default("PENDING") @map("status")
+  metadata            Json?    @map("metadata")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@index([expectedDate])
+  @@index([status])
+  @@index([paymentId])
+  @@map("receivable_schedules")
 }
 
 model FinancialReconciliationBatch {
@@ -334,4 +576,3 @@ model DailyFinancialClosure {
   @@index([branchId, status, closureDate])
   @@map("daily_financial_closures")
 }
-

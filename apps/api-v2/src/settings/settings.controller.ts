@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { CurrentContext } from '../common/current-context.decorator';
 import type { RequestContext } from '../common/request-context';
 import {
@@ -79,6 +79,12 @@ export class SettingsController {
       });
       throw error;
     }
+  }
+
+  @Get('cep/:cep')
+  @RequirePermissions(TENANT_PERMISSIONS.SETTINGS_READ, TENANT_PERMISSIONS.SETTINGS_WRITE)
+  async lookupCep(@Param('cep') cep: string) {
+    return this.settingsService.lookupAddressByCep(cep);
   }
 
   @Get('operation')
