@@ -36,6 +36,7 @@ describe('buildRequestContextFromHeaders', () => {
     });
 
     expect(ctx.branchId).toBe('branch_a');
+    expect(ctx.allowedBranchIds).toEqual(['branch_a']);
   });
 
   it('nunca eleva developer via header fallback', () => {

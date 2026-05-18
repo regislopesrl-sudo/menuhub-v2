@@ -21,6 +21,7 @@ export type ChannelKey = 'delivery' | 'pdv' | 'whatsapp' | 'kiosk' | 'waiter_app
 export interface RequestContext {
   companyId: string;
   branchId?: string;
+  allowedBranchIds?: string[];
   userRole: UserRole;
   requestId: string;
   source?: 'jwt' | 'header-fallback' | 'technical-admin';
@@ -53,9 +54,12 @@ export function buildRequestContextFromHeaders(headers: HeaderMap): RequestConte
   const channelRaw = readHeader(headers, 'x-channel')?.toLowerCase();
   const channel = VALID_CHANNELS.includes(channelRaw as ChannelKey) ? (channelRaw as ChannelKey) : undefined;
 
+  const branchId = readHeader(headers, 'x-branch-id');
+
   return {
     companyId,
-    branchId: readHeader(headers, 'x-branch-id'),
+    branchId,
+    allowedBranchIds: branchId ? [branchId] : [],
     userRole,
     requestId,
     source: 'header-fallback',
@@ -72,6 +76,7 @@ export function buildRequestContextFromClaims(headers: HeaderMap, claims: AuthTo
   return {
     companyId: claims.companyId,
     branchId: claims.branchId,
+    allowedBranchIds: claims.branchScope ?? (claims.branchId ? [claims.branchId] : []),
     userRole: claims.role,
     requestId,
     source: 'jwt',
@@ -104,6 +109,5 @@ function readHeader(headers: HeaderMap, key: string): string | undefined {
   }
   return undefined;
 }
-
 
 
