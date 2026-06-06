@@ -33,7 +33,7 @@ export class CouponsService {
     const discountType = body.discountType ?? CouponDiscountType.FIXED_AMOUNT;
     const discountValue = this.positiveMoney(body.discountValue, 'Valor do desconto');
     this.assertDiscount(discountType, discountValue);
-    const existing = await this.prisma.coupon.findUnique({ where: { code }, select: { id: true } });
+    const existing = await this.prisma.coupon.findFirst({ where: { companyId: ctx.companyId, code }, select: { id: true } });
     if (existing) {
       throw new BadRequestException('Ja existe cupom com este codigo.');
     }
@@ -64,10 +64,21 @@ export class CouponsService {
       body.discountValue !== undefined ? this.positiveMoney(body.discountValue, 'Valor do desconto') : Number(current.discountValue);
     this.assertDiscount(discountType, discountValue);
 
+    const nextCode = body.code !== undefined ? this.normalizeCode(body.code) : undefined;
+    if (nextCode) {
+      const existing = await this.prisma.coupon.findFirst({
+        where: { companyId: ctx.companyId, code: nextCode, id: { not: couponId } },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new BadRequestException('Ja existe cupom com este codigo para esta empresa.');
+      }
+    }
+
     const coupon = await this.prisma.coupon.update({
       where: { id: couponId },
       data: {
-        ...(body.code !== undefined ? { code: this.normalizeCode(body.code) } : {}),
+        ...(nextCode ? { code: nextCode } : {}),
         ...(body.discountType !== undefined ? { discountType } : {}),
         ...(body.discountValue !== undefined ? { discountValue: discountValue as any } : {}),
         ...(body.minimumOrderAmount !== undefined ? { minimumOrderAmount: this.optionalMoney(body.minimumOrderAmount) as any } : {}),

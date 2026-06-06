@@ -87,7 +87,14 @@ export class PromotionsService {
   }
 
   private async resolveBranchId(ctx: RequestContext): Promise<string> {
-    if (ctx.branchId) return ctx.branchId;
+    if (ctx.branchId) {
+      const branch = await this.prisma.branch.findFirst({
+        where: { id: ctx.branchId, companyId: ctx.companyId },
+        select: { id: true },
+      });
+      if (branch) return branch.id;
+      throw new BadRequestException('Filial fora do escopo da empresa atual.');
+    }
     const branch = await this.prisma.branch.findFirst({ where: { companyId: ctx.companyId }, select: { id: true } });
     if (!branch) throw new BadRequestException('Nenhuma filial encontrada para promocoes.');
     return branch.id;

@@ -200,7 +200,7 @@ model MenuProduct {
 model Coupon {
   id                 String             @id @default(uuid()) @map("id")
   companyId          String             @map("company_id")
-  code               String             @unique @map("code")
+  code               String             @map("code")
   discountType       CouponDiscountType @map("discount_type")
   discountValue      Decimal            @map("discount_value") @db.Decimal(12, 2)
   minimumOrderAmount Decimal?           @map("minimum_order_amount") @db.Decimal(12, 2)
@@ -215,6 +215,6 @@ model Coupon {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
+  @@unique([companyId, code])
   @@map("coupons")
 }
-
