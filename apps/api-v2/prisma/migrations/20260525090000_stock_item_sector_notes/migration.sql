@@ -1,0 +1,3 @@
+ALTER TABLE "stock_items"
+  ADD COLUMN IF NOT EXISTS "sector" TEXT,
+  ADD COLUMN IF NOT EXISTS "notes" TEXT;

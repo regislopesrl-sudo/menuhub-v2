@@ -26,6 +26,7 @@ import { listStockItems, listStockProductAvailability, type StockItem, type Stoc
 import styles from './page.module.css';
 
 type RecipeItemDraft = {
+  componentType: ComponentType;
   stockItemId: string;
   quantity: string;
   unit: string;
@@ -33,6 +34,8 @@ type RecipeItemDraft = {
   affectsStock: boolean;
   affectsCost: boolean;
 };
+
+type ComponentType = 'INGREDIENT' | 'SUBPRODUCT';
 
 type RecipeFormState = {
   name: string;
@@ -44,7 +47,8 @@ type RecipeFormState = {
   items: RecipeItemDraft[];
 };
 
-const DEFAULT_UNIT = 'un';
+const UNIT_OPTIONS = ['KG', 'G', 'L', 'ML', 'UN', 'CX', 'FD', 'PCT', 'SC', 'DZ'];
+const DEFAULT_UNIT = 'UN';
 
 function getRouteParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value ?? '';
@@ -59,6 +63,88 @@ function formatPercent(value: number | null | undefined) {
   return `${Number(value).toFixed(1)}%`;
 }
 
+function normalizeUnit(value: unknown) {
+  const unit = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const aliases: Record<string, string> = {
+    quilo: 'kg',
+    kilos: 'kg',
+    quilograma: 'kg',
+    quilogramas: 'kg',
+    grama: 'g',
+    gramas: 'g',
+    litro: 'l',
+    litros: 'l',
+    unidade: 'un',
+    unidades: 'un',
+    und: 'un',
+    duzia: 'dz',
+    duzias: 'dz',
+  };
+  return aliases[unit] ?? unit;
+}
+
+function toSelectableUnit(value: unknown, fallback = DEFAULT_UNIT) {
+  const normalized = normalizeUnit(value);
+  const selectableMap: Record<string, string> = {
+    kg: 'KG',
+    g: 'G',
+    l: 'L',
+    ml: 'ML',
+    un: 'UN',
+    cx: 'CX',
+    fd: 'FD',
+    pct: 'PCT',
+    sc: 'SC',
+    dz: 'DZ',
+  };
+  const selectable = selectableMap[normalized] ?? String(value ?? fallback).trim().toUpperCase();
+  return UNIT_OPTIONS.includes(selectable) ? selectable : fallback;
+}
+
+function convertBasicUnit(quantity: number, fromUnit: string, toUnit: string) {
+  const mass: Record<string, number> = { mg: 0.001, g: 1, kg: 1000, t: 1000000 };
+  const volume: Record<string, number> = { ml: 1, l: 1000 };
+  const count: Record<string, number> = { un: 1, dz: 12 };
+
+  for (const group of [mass, volume, count]) {
+    if (group[fromUnit] && group[toUnit]) {
+      return (quantity * group[fromUnit]) / group[toUnit];
+    }
+  }
+
+  return null;
+}
+
+function quantityInStockUnit(quantityValue: unknown, unitValue: unknown, stockItem?: StockItem) {
+  const quantity = Number(quantityValue ?? 0);
+  if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+  const fromUnit = normalizeUnit(unitValue);
+  const stockUnit = normalizeUnit(stockItem?.stockUnit ?? stockItem?.productionUnit ?? stockItem?.purchaseUnit);
+  if (!fromUnit || !stockUnit || fromUnit === stockUnit) return quantity;
+
+  const converted = convertBasicUnit(quantity, fromUnit, stockUnit);
+  if (converted !== null) return converted;
+
+  const purchaseUnit = normalizeUnit(stockItem?.purchaseUnit);
+  const conversionFactor = Number(stockItem?.conversionFactor ?? 1);
+  if (purchaseUnit && fromUnit === purchaseUnit && Number.isFinite(conversionFactor) && conversionFactor > 0) {
+    return quantity * conversionFactor;
+  }
+
+  return quantity;
+}
+
+function calculateItemCost(item: RecipeItemDraft, stockItem?: StockItem) {
+  if (!item.affectsCost) return 0;
+  const quantity = quantityInStockUnit(item.quantity, item.unit, stockItem);
+  return quantity * Number(stockItem?.averageCost ?? 0);
+}
+
 function normalizeSearch(value: unknown) {
   return String(value ?? '')
     .toLowerCase()
@@ -67,6 +153,20 @@ function normalizeSearch(value: unknown) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isSubproductStockItem(stockItem: StockItem) {
+  const categoryName = normalizeSearch(stockItem.category?.name);
+  const notes = normalizeSearch(stockItem.notes);
+  return stockItem.id.startsWith('sg-subproduto-') || categoryName === 'subprodutos' || notes.includes('subproduto importado');
+}
+
+function componentTypeFromStockItem(stockItem?: StockItem): ComponentType {
+  return stockItem && isSubproductStockItem(stockItem) ? 'SUBPRODUCT' : 'INGREDIENT';
+}
+
+function stockItemsForComponentType(stockItems: StockItem[], componentType: ComponentType) {
+  return stockItems.filter((stockItem) => (componentType === 'SUBPRODUCT' ? isSubproductStockItem(stockItem) : !isSubproductStockItem(stockItem)));
 }
 
 function getSearchTokens(value: unknown) {
@@ -78,9 +178,10 @@ function getSearchTokens(value: unknown) {
 
 function itemFromStock(stockItem?: StockItem): RecipeItemDraft {
   return {
+    componentType: componentTypeFromStockItem(stockItem),
     stockItemId: stockItem?.id ?? '',
     quantity: '1',
-    unit: stockItem?.stockUnit ?? DEFAULT_UNIT,
+    unit: toSelectableUnit(stockItem?.stockUnit),
     optional: false,
     affectsStock: true,
     affectsCost: true,
@@ -92,6 +193,7 @@ function isIngredientStockItem(stockItem: StockItem) {
 }
 
 function emptyForm(productName: string, stockItems: StockItem[]): RecipeFormState {
+  const firstIngredient = stockItemsForComponentType(stockItems, 'INGREDIENT')[0] ?? stockItems[0];
   return {
     name: `Ficha tecnica - ${productName || 'Produto'}`,
     type: 'SALE',
@@ -99,7 +201,7 @@ function emptyForm(productName: string, stockItems: StockItem[]): RecipeFormStat
     yieldUnit: DEFAULT_UNIT,
     lossPercent: '0',
     active: true,
-    items: stockItems.length > 0 ? [itemFromStock(stockItems[0])] : [],
+    items: firstIngredient ? [itemFromStock(firstIngredient)] : [],
   };
 }
 
@@ -108,9 +210,10 @@ function formFromRecipe(recipe: Recipe, stockItems: StockItem[]): RecipeFormStat
   const items = recipe.items
     .filter((item) => stockItemIds.has(item.stockItemId))
     .map((item) => ({
+      componentType: componentTypeFromStockItem(stockItems.find((stockItem) => stockItem.id === item.stockItemId)),
       stockItemId: item.stockItemId,
       quantity: String(item.quantity ?? 1),
-      unit: item.unit || DEFAULT_UNIT,
+      unit: toSelectableUnit(item.unit),
       optional: item.optional === true,
       affectsStock: item.affectsStock !== false,
       affectsCost: item.affectsCost !== false,
@@ -120,10 +223,10 @@ function formFromRecipe(recipe: Recipe, stockItems: StockItem[]): RecipeFormStat
     name: recipe.name,
     type: recipe.type,
     yieldQuantity: String(recipe.yieldQuantity ?? 1),
-    yieldUnit: recipe.yieldUnit || DEFAULT_UNIT,
+    yieldUnit: toSelectableUnit(recipe.yieldUnit),
     lossPercent: String(recipe.lossPercent ?? 0),
     active: recipe.active !== false,
-    items: items.length > 0 ? items : stockItems.length > 0 ? [itemFromStock(stockItems[0])] : [],
+    items: items.length > 0 ? items : emptyForm(recipe.name, stockItems).items,
   };
 }
 
@@ -181,15 +284,14 @@ export default function ProductTechnicalSheetPage() {
   const linkedRecipe = composition?.recipe ?? null;
   const productName = composition?.productName ?? 'Produto';
   const stockItemById = useMemo(() => new Map(stockItems.map((item) => [item.id, item] as const)), [stockItems]);
+  const ingredientStockItems = useMemo(() => stockItemsForComponentType(stockItems, 'INGREDIENT'), [stockItems]);
+  const subproductStockItems = useMemo(() => stockItemsForComponentType(stockItems, 'SUBPRODUCT'), [stockItems]);
   const liveCostPreview = useMemo(() => {
     const yieldQuantity = Number(form.yieldQuantity || '0');
     const lossPercent = Number(form.lossPercent || '0');
     const grossCost = form.items.reduce((acc, item) => {
-      if (!item.affectsCost) return acc;
       const stockItem = stockItemById.get(item.stockItemId);
-      const quantity = Number(item.quantity || '0');
-      if (!stockItem || !Number.isFinite(quantity) || quantity <= 0) return acc;
-      return acc + quantity * Number(stockItem.averageCost ?? 0);
+      return acc + calculateItemCost(item, stockItem);
     }, 0);
     const lossFactor = Number.isFinite(lossPercent) ? 1 + Math.max(0, lossPercent) / 100 : 1;
     const totalCost = grossCost * lossFactor;
@@ -206,9 +308,9 @@ export default function ProductTechnicalSheetPage() {
   );
   const suggestedStockItems = useMemo(() => {
     const productTokens = getSearchTokens(productName);
-    if (productTokens.length === 0) return stockItems.slice(0, 4);
+    if (productTokens.length === 0) return ingredientStockItems.slice(0, 4);
 
-    return stockItems
+    return ingredientStockItems
       .map((stockItem) => {
         const haystack = normalizeSearch(`${stockItem.name} ${stockItem.code ?? ''} ${stockItem.category?.name ?? ''}`);
         const score = productTokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
@@ -218,7 +320,7 @@ export default function ProductTechnicalSheetPage() {
       .sort((left, right) => right.score - left.score || left.stockItem.name.localeCompare(right.stockItem.name))
       .slice(0, 6)
       .map((entry) => entry.stockItem);
-  }, [productName, stockItems]);
+  }, [ingredientStockItems, productName]);
 
   const updateItem = (index: number, patch: Partial<RecipeItemDraft>) => {
     setForm((current) => ({
@@ -228,7 +330,7 @@ export default function ProductTechnicalSheetPage() {
   };
 
   const addItem = () => {
-    setForm((current) => ({ ...current, items: [...current.items, itemFromStock(stockItems[0])] }));
+    setForm((current) => ({ ...current, items: [...current.items, itemFromStock(ingredientStockItems[0] ?? stockItems[0])] }));
   };
 
   const removeItem = (index: number) => {
@@ -236,7 +338,7 @@ export default function ProductTechnicalSheetPage() {
   };
 
   const applySuggestedItems = () => {
-    const candidates = suggestedStockItems.length > 0 ? suggestedStockItems : stockItems.slice(0, 3);
+    const candidates = suggestedStockItems.length > 0 ? suggestedStockItems : ingredientStockItems.slice(0, 3);
     if (candidates.length === 0) {
       setError('Cadastre insumos em Estoque antes de usar a sugestao automatica.');
       return;
@@ -262,7 +364,7 @@ export default function ProductTechnicalSheetPage() {
 
     const items: RecipeItemPayload[] = form.items.map((item) => {
       const quantity = Number(item.quantity || '0');
-      if (!item.stockItemId.trim()) throw new Error('Selecione o insumo de todos os itens.');
+      if (!item.stockItemId.trim()) throw new Error('Selecione o componente de todos os itens.');
       if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Informe quantidade maior que zero em todos os itens.');
       if (!item.unit.trim()) throw new Error('Informe unidade em todos os itens.');
       return {
@@ -275,7 +377,7 @@ export default function ProductTechnicalSheetPage() {
       };
     });
 
-    if (items.length === 0) throw new Error('Adicione ao menos um insumo na ficha tecnica.');
+    if (items.length === 0) throw new Error('Adicione ao menos um componente na ficha tecnica.');
 
     return {
       name,
@@ -368,8 +470,8 @@ export default function ProductTechnicalSheetPage() {
         title="Ficha tecnica"
         subtitle={productName}
         right={
-          <Link href="/admin/menu">
-            <Button>Voltar ao catalogo</Button>
+          <Link href="/admin/technical-sheet">
+            <Button>Voltar para fichas</Button>
           </Link>
         }
       />
@@ -511,7 +613,13 @@ export default function ProductTechnicalSheetPage() {
           </label>
           <label>
             <span>Unidade</span>
-            <Input value={form.yieldUnit} onChange={(event) => setForm((current) => ({ ...current, yieldUnit: event.target.value }))} />
+            <Select value={form.yieldUnit} onChange={(event) => setForm((current) => ({ ...current, yieldUnit: event.target.value }))}>
+              {UNIT_OPTIONS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </Select>
           </label>
           <label>
             <span>Perda %</span>
@@ -525,29 +633,49 @@ export default function ProductTechnicalSheetPage() {
 
         <div className={styles.itemsHeader}>
           <div>
-            <h3>Insumos</h3>
-            <p>Informe o item de estoque, quantidade consumida e unidade usada na ficha.</p>
+            <h3>Componentes</h3>
+            <p>Informe se o componente e um insumo bruto ou subproduto preparado, a quantidade consumida e a unidade usada na ficha.</p>
           </div>
-          <Button onClick={addItem} disabled={stockItems.length === 0}>Adicionar insumo</Button>
+          <Button onClick={addItem} disabled={stockItems.length === 0}>Adicionar componente</Button>
         </div>
 
         <div className={styles.itemsList}>
           {form.items.length === 0 ? <div className={styles.emptyItems}>Nenhum insumo adicionado.</div> : null}
           {form.items.map((item, index) => {
             const selectedStock = stockItems.find((stockItem) => stockItem.id === item.stockItemId);
+            const componentOptions = item.componentType === 'SUBPRODUCT' ? subproductStockItems : ingredientStockItems;
+            const itemCost = calculateItemCost(item, selectedStock);
             return (
               <div className={styles.itemRow} key={`${item.stockItemId}-${index}`}>
+                <label className={styles.itemType}>
+                  <span>Tipo</span>
+                  <Select
+                    value={item.componentType}
+                    onChange={(event) => {
+                      const componentType = event.target.value as ComponentType;
+                      const nextStockItem = stockItemsForComponentType(stockItems, componentType)[0];
+                      updateItem(index, {
+                        componentType,
+                        stockItemId: nextStockItem?.id ?? '',
+                        unit: toSelectableUnit(nextStockItem?.stockUnit),
+                      });
+                    }}
+                  >
+                    <option value="INGREDIENT">Insumo</option>
+                    <option value="SUBPRODUCT">Subproduto</option>
+                  </Select>
+                </label>
                 <label className={styles.itemProduct}>
-                  <span>Insumo</span>
+                  <span>Componente</span>
                   <Select
                     value={item.stockItemId}
                     onChange={(event) => {
                       const stockItem = stockItems.find((candidate) => candidate.id === event.target.value);
-                      updateItem(index, { stockItemId: event.target.value, unit: stockItem?.stockUnit ?? item.unit ?? DEFAULT_UNIT });
+                      updateItem(index, { stockItemId: event.target.value, unit: toSelectableUnit(stockItem?.stockUnit ?? item.unit) });
                     }}
                   >
-                    <option value="">Selecione</option>
-                    {stockItems.map((stockItem) => (
+                    <option value="">{item.componentType === 'SUBPRODUCT' ? 'Selecione um subproduto' : 'Selecione um insumo'}</option>
+                    {componentOptions.map((stockItem) => (
                       <option key={stockItem.id} value={stockItem.id}>
                         {stockItem.name}{stockItem.code ? ` (${stockItem.code})` : ''}
                       </option>
@@ -560,7 +688,17 @@ export default function ProductTechnicalSheetPage() {
                 </label>
                 <label>
                   <span>Unidade</span>
-                  <Input value={item.unit} onChange={(event) => updateItem(index, { unit: event.target.value })} placeholder={selectedStock?.stockUnit ?? DEFAULT_UNIT} />
+                  <Select value={item.unit} onChange={(event) => updateItem(index, { unit: event.target.value })}>
+                    {UNIT_OPTIONS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label className={styles.itemValue}>
+                  <span>Valor</span>
+                  <Input value={formatMoney(itemCost)} readOnly title="Custo calculado pela quantidade consumida e custo medio do insumo." />
                 </label>
                 <div className={styles.itemChecks}>
                   <label><input type="checkbox" checked={item.affectsStock} onChange={(event) => updateItem(index, { affectsStock: event.target.checked })} /> Baixa estoque</label>

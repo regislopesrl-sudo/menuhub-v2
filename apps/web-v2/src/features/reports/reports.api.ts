@@ -17,7 +17,9 @@ export type ReportsSummary = {
   canceledRevenue: number;
   paidRevenue: number;
   averageTicket: number;
+  subtotal?: number;
   deliveryFee: number;
+  extraFee?: number;
   discount: number;
   completionRate: number;
   cancelRate: number;
@@ -79,6 +81,17 @@ export type BranchRankingRow = {
   percent: number;
 };
 
+export type NeighborhoodRankingRow = {
+  key: string;
+  label: string;
+  orders: number;
+  revenue: number;
+  deliveryFee: number;
+  averageTicket: number;
+  averageDeliveryFee: number;
+  percent: number;
+};
+
 export type FinancialBreakdownRow = {
   key: string;
   label: string;
@@ -132,6 +145,7 @@ export type ReportsOverview = {
     statuses: ReportBreakdownRow[];
     paymentStatuses: ReportBreakdownRow[];
     paymentMethods: ReportBreakdownRow[];
+    neighborhoods?: NeighborhoodRankingRow[];
     branches: BranchRankingRow[];
   };
   rankings: {
@@ -238,6 +252,59 @@ export type ReportsCmv = {
   notes: string[];
 };
 
+export type AbcClass = 'A' | 'B' | 'C';
+
+export type ReportsAbcStockItemRow = {
+  rank: number;
+  stockItemId: string;
+  name: string;
+  code: string | null;
+  categoryName: string;
+  unit: string | null;
+  quantity: number;
+  totalPurchased: number;
+  samples: number;
+  averageCost: number;
+  weightedAverageCost: number;
+  percent: number;
+  cumulativePercent: number;
+  abcClass: AbcClass;
+  suggestedAction: string;
+};
+
+export type ReportsAbcStockItems = {
+  generatedAt: string;
+  source: string;
+  summary: {
+    items: number;
+    totalPurchased: number;
+    classA: number;
+    classB: number;
+    classC: number;
+  };
+  items: ReportsAbcStockItemRow[];
+};
+
+export type ReportsAbcProductRow = CmvProductRow & {
+  percent: number;
+  cumulativePercent: number;
+  abcClass: AbcClass;
+  suggestedAction: string;
+};
+
+export type ReportsAbcProducts = {
+  generatedAt: string;
+  source: string;
+  summary: {
+    products: number;
+    revenue: number;
+    classA: number;
+    classB: number;
+    classC: number;
+  };
+  items: ReportsAbcProductRow[];
+};
+
 export type ReportsWaiter = {
   generatedAt: string;
   items: Array<{
@@ -250,27 +317,63 @@ export type ReportsWaiter = {
   }>;
 };
 
-function query(params?: { from?: string; to?: string; branchId?: string }) {
+export type ReportsQueryParams = {
+  from?: string;
+  to?: string;
+  branchId?: string;
+  channel?: string;
+};
+
+export type ReportsPremium = {
+  generatedAt: string;
+  period: ReportsPeriod;
+  scope: { companyId: string; branchId: string | null };
+  executive: ReportsSummary;
+  highlights: Record<string, unknown>;
+  operational: Record<string, unknown>;
+  sales: Record<string, unknown>;
+  inventory: ReportsInventory;
+  cmv: ReportsCmv;
+  financial: Record<string, unknown>;
+  branches: Record<string, unknown>;
+  operators: Record<string, unknown>;
+  sources: Record<string, boolean>;
+};
+
+function query(params?: ReportsQueryParams) {
   const search = new URLSearchParams();
   if (params?.from) search.set('from', params.from);
   if (params?.to) search.set('to', params.to);
   if (params?.branchId) search.set('branchId', params.branchId);
+  if (params?.channel && params.channel !== 'ALL') search.set('channel', params.channel);
   const value = search.toString();
   return value ? `?${value}` : '';
 }
 
-export function getReportsOverview(params?: { from?: string; to?: string; branchId?: string }) {
+export function getReportsOverview(params?: ReportsQueryParams) {
   return apiFetch<ReportsOverview>(`/v2/admin/reports/overview${query(params)}`, { method: 'GET' });
 }
 
-export function getReportsInventory(params?: { from?: string; to?: string; branchId?: string }) {
+export function getReportsPremium(params?: ReportsQueryParams) {
+  return apiFetch<ReportsPremium>(`/v2/admin/reports/premium${query(params)}`, { method: 'GET' });
+}
+
+export function getReportsInventory(params?: ReportsQueryParams) {
   return apiFetch<ReportsInventory>(`/v2/admin/reports/inventory${query(params)}`, { method: 'GET' });
 }
 
-export function getReportsCmv(params?: { from?: string; to?: string; branchId?: string }) {
+export function getReportsAbcStockItems(params?: ReportsQueryParams) {
+  return apiFetch<ReportsAbcStockItems>(`/v2/admin/reports/abc-stock-items${query(params)}`, { method: 'GET' });
+}
+
+export function getReportsAbcProducts(params?: ReportsQueryParams) {
+  return apiFetch<ReportsAbcProducts>(`/v2/admin/reports/abc-products${query(params)}`, { method: 'GET' });
+}
+
+export function getReportsCmv(params?: ReportsQueryParams) {
   return apiFetch<ReportsCmv>(`/v2/admin/reports/cmv${query(params)}`, { method: 'GET' });
 }
 
-export function getReportsByWaiter(params?: { from?: string; to?: string; branchId?: string }) {
+export function getReportsByWaiter(params?: ReportsQueryParams) {
   return apiFetch<ReportsWaiter>(`/v2/admin/reports/by-waiter${query(params)}`, { method: 'GET' });
 }

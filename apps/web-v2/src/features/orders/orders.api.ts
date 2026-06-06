@@ -121,6 +121,7 @@ export interface ListOrdersInput {
   channel?: string;
   paymentStatus?: string;
   activeOnly?: boolean;
+  closedOnly?: boolean;
   delayedOnly?: boolean;
   search?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
@@ -152,6 +153,7 @@ export async function listOrders(input: ListOrdersInput): Promise<OrdersListResp
   if (input.channel) params.set('channel', input.channel);
   if (input.paymentStatus) params.set('paymentStatus', input.paymentStatus);
   if (input.activeOnly !== undefined) params.set('activeOnly', String(input.activeOnly));
+  if (input.closedOnly !== undefined) params.set('closedOnly', String(input.closedOnly));
   if (input.delayedOnly !== undefined) params.set('delayedOnly', String(input.delayedOnly));
   if (input.search) params.set('search', input.search);
   if (input.sortBy) params.set('sortBy', input.sortBy);
@@ -247,4 +249,3 @@ export async function refundOrderMock(input: {
     }),
   });
 }
-

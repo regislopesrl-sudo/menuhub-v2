@@ -20,12 +20,6 @@ export class RecipesController {
     return this.recipesService.listCompanyRecipes(ctx);
   }
 
-  @Get(':recipeId')
-  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
-  getRecipe(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
-    return this.recipesService.getRecipeById(ctx, recipeId);
-  }
-
   @Post()
   @RequirePermissions(TENANT_PERMISSIONS.RECIPE_MANAGE)
   createRecipe(
@@ -37,6 +31,8 @@ export class RecipesController {
       yieldQuantity: number;
       yieldUnit: string;
       lossPercent?: number | null;
+      preparationSummary?: string | null;
+      notes?: string | null;
       items: Array<{
         stockItemId: string;
         quantity: number;
@@ -62,6 +58,8 @@ export class RecipesController {
       yieldQuantity: number;
       yieldUnit: string;
       lossPercent: number | null;
+      preparationSummary: string | null;
+      notes: string | null;
       active: boolean;
     }>,
   ) {
@@ -94,6 +92,17 @@ export class RecipesController {
     return this.recipesService.listProductCompositions(ctx);
   }
 
+  @Get('compositions/products/margins')
+  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
+  listProductMargins(
+    @CurrentContext() ctx: RequestContext,
+    @Query('minMarginPercent') minMarginPercent?: string,
+  ) {
+    return this.recipesService.listProductMargins(ctx, {
+      minMarginPercent: minMarginPercent ? Number(minMarginPercent) : undefined,
+    });
+  }
+
   @Get('compositions/products/:productId')
   @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
   getProductComposition(@CurrentContext() ctx: RequestContext, @Param('productId') productId: string) {
@@ -119,17 +128,6 @@ export class RecipesController {
   ) {
     return this.recipesService.getProductSoldCost(ctx, productId, {
       portionQuantity: portionQuantity ? Number(portionQuantity) : undefined,
-    });
-  }
-
-  @Get('compositions/products/margins')
-  @RequirePermissions(TENANT_PERMISSIONS.COST_READ, TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
-  listProductMargins(
-    @CurrentContext() ctx: RequestContext,
-    @Query('minMarginPercent') minMarginPercent?: string,
-  ) {
-    return this.recipesService.listProductMargins(ctx, {
-      minMarginPercent: minMarginPercent ? Number(minMarginPercent) : undefined,
     });
   }
 
@@ -206,6 +204,12 @@ export class RecipesController {
     return this.recipesService.listProductionLosses(ctx);
   }
 
+  @Get(':recipeId')
+  @RequirePermissions(TENANT_PERMISSIONS.RECIPE_READ, TENANT_PERMISSIONS.RECIPE_MANAGE)
+  getRecipe(@CurrentContext() ctx: RequestContext, @Param('recipeId') recipeId: string) {
+    return this.recipesService.getRecipeById(ctx, recipeId);
+  }
+
   @Post('production-orders/:orderId/loss')
   @RequirePermissions(TENANT_PERMISSIONS.PRODUCTION_MANAGE)
   registerProductionLoss(
@@ -264,4 +268,3 @@ export class RecipesController {
     );
   }
 }
-

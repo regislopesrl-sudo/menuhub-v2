@@ -12,6 +12,7 @@ export interface FindManyOrdersFilters {
   channel?: string;
   paymentStatus?: string;
   activeOnly?: boolean;
+  closedOnly?: boolean;
   delayedOnly?: boolean;
   search?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
@@ -331,13 +332,16 @@ export class OrderPrismaRepository {
   }
 
   async findMany(ctx: RequestContext, filters: FindManyOrdersFilters) {
+    const activeStatuses = ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION', 'READY', 'WAITING_PICKUP', 'WAITING_DISPATCH', 'OUT_FOR_DELIVERY'];
+    const closedStatuses = ['DELIVERED', 'FINALIZED', 'CANCELED', 'REFUNDED'];
     const where = {
       companyId: ctx.companyId,
       ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
       ...(filters.status ? { status: filters.status as any } : {}),
       ...(filters.channel ? { channel: filters.channel.toUpperCase() as any } : {}),
       ...(filters.paymentStatus ? { paymentStatus: filters.paymentStatus.toUpperCase() as any } : {}),
-      ...(filters.activeOnly && !filters.status ? { status: { in: ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION', 'READY', 'WAITING_PICKUP', 'WAITING_DISPATCH', 'OUT_FOR_DELIVERY'] as any[] } } : {}),
+      ...(filters.activeOnly && !filters.status && !filters.closedOnly ? { status: { in: activeStatuses as any[] } } : {}),
+      ...(filters.closedOnly && !filters.status ? { status: { in: closedStatuses as any[] } } : {}),
       ...(filters.search
         ? {
             OR: [
@@ -401,8 +405,16 @@ export class OrderPrismaRepository {
       },
       select: {
         id: true,
+        orderNumber: true,
+        orderType: true,
         totalAmount: true,
         internalNotes: true,
+        createdBy: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
         createdAt: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -794,9 +806,14 @@ export class OrderPrismaRepository {
               where: { affectsCost: true },
               select: {
                 quantity: true,
+                unit: true,
                 stockItem: {
                   select: {
                     averageCost: true,
+                    stockUnit: true,
+                    purchaseUnit: true,
+                    productionUnit: true,
+                    conversionFactor: true,
                   },
                 },
               },
@@ -814,7 +831,7 @@ export class OrderPrismaRepository {
         let itemsWithoutCost = 0;
         const grossCost = (recipe?.items ?? []).reduce((sum: number, item: any) => {
           const averageCost = Number(item.stockItem?.averageCost ?? 0);
-          const quantity = Number(item.quantity ?? 0);
+          const quantity = this.quantityInStockUnit(item.quantity, item.unit, item.stockItem);
           if (quantity > 0 && averageCost <= 0) itemsWithoutCost += 1;
           return sum + quantity * averageCost;
         }, 0);
@@ -844,6 +861,40 @@ export class OrderPrismaRepository {
   private resolveTheoreticalCostSnapshot(snapshot?: ProductCostSnapshot): number | undefined {
     if (!snapshot || snapshot.theoreticalUnitCost <= 0) return undefined;
     return snapshot.theoreticalUnitCost;
+  }
+
+  private quantityInStockUnit(quantityValue: unknown, unitValue: unknown, stockItem: any): number {
+    const quantity = Number(quantityValue ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+    const fromUnit = this.normalizeUnit(unitValue);
+    const stockUnit = this.normalizeUnit(stockItem?.stockUnit ?? stockItem?.productionUnit ?? stockItem?.purchaseUnit);
+    if (!fromUnit || !stockUnit || fromUnit === stockUnit) return quantity;
+
+    const converted = this.convertBasicUnit(quantity, fromUnit, stockUnit);
+    if (converted !== null) return converted;
+
+    const purchaseUnit = this.normalizeUnit(stockItem?.purchaseUnit);
+    const conversionFactor = Number(stockItem?.conversionFactor ?? 1);
+    if (purchaseUnit && fromUnit === purchaseUnit && Number.isFinite(conversionFactor) && conversionFactor > 0) {
+      return quantity * conversionFactor;
+    }
+
+    return quantity;
+  }
+
+  private convertBasicUnit(quantity: number, fromUnit: string, toUnit: string): number | null {
+    const mass: Record<string, number> = { mg: 0.001, g: 1, kg: 1000, t: 1000000 };
+    const volume: Record<string, number> = { ml: 1, l: 1000 };
+    const count: Record<string, number> = { un: 1, dz: 12 };
+    for (const group of [mass, volume, count]) {
+      if (group[fromUnit] && group[toUnit]) return (quantity * group[fromUnit]) / group[toUnit];
+    }
+    return null;
+  }
+
+  private normalizeUnit(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase();
   }
 
   private money(value: number): number {

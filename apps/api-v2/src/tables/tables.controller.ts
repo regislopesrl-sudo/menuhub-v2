@@ -25,7 +25,7 @@ export class TablesController {
   }
 
   @Patch(':id')
-  async update(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: { name?: string; capacity?: number; status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' }) {
+  async update(@CurrentContext() ctx: RequestContext, @Param('id') id: string, @Body() body: { name?: string; capacity?: number; status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'BLOCKED' }) {
     return this.tablesService.updateTable(ctx, id, body);
   }
 

@@ -1,47 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { getSmartMenuRecommendations } from '@/features/menu/menu-recommendations';
 import type { MenuProduct } from '@/features/menu/menu.mock';
-import { brl } from '../menu-view-model';
 import styles from '../page.module.css';
 
-type RecommendationCategoryRow = {
-  key: string;
-  label: string;
-  count: number;
-};
+const STORAGE_KEY = 'menuhub:smart-recommendations-enabled';
 
 export function RecommendationsPanel({ products }: { products: MenuProduct[] }) {
-  const [selectedCategory, setSelectedCategory] = useState('');
-
-  const categories = useMemo<RecommendationCategoryRow[]>(() => {
-    const map = new Map<string, RecommendationCategoryRow>();
-    products.forEach((product) => {
-      const key = product.categoryName || 'Sem categoria';
-      const current = map.get(key);
-      map.set(key, { key, label: key, count: (current?.count ?? 0) + 1 });
-    });
-    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [products]);
-
-  const activeCategory = selectedCategory || categories[0]?.key || '';
+  const [enabled, setEnabled] = useState(true);
 
   useEffect(() => {
-    if (categories.length === 0) {
-      if (selectedCategory) setSelectedCategory('');
-      return;
-    }
-    if (!categories.some((item) => item.key === selectedCategory)) {
-      setSelectedCategory(categories[0].key);
-    }
-  }, [categories, selectedCategory]);
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === 'false') setEnabled(false);
+  }, []);
 
-  const visibleProducts = useMemo(() => {
-    if (!activeCategory) return [];
-    return products.filter((product) => (product.categoryName || 'Sem categoria') === activeCategory);
-  }, [activeCategory, products]);
+  const eligibleProducts = useMemo(
+    () => products.filter((product) => product.available !== false && product.channels?.delivery !== false),
+    [products],
+  );
+
+  const toggleEnabled = () => {
+    const next = !enabled;
+    setEnabled(next);
+    window.localStorage.setItem(STORAGE_KEY, String(next));
+  };
 
   if (products.length === 0) {
     return <EmptyState title="Sem produtos" description="Cadastre produtos para a IA montar o Peca tambem." />;
@@ -49,60 +33,40 @@ export function RecommendationsPanel({ products }: { products: MenuProduct[] }) 
 
   return (
     <section className={styles.recommendationsHub}>
-      <Card className={styles.addonsHubHero}>
+      <Card className={styles.aiRecommendationPanel}>
         <div>
-          <span>Peça também</span>
-          <strong>IA automática de recomendações.</strong>
+          <span>Peca tambem</span>
+          <strong>Recomendacoes automaticas por inteligencia artificial</strong>
           <p>
-            O sistema escolhe sozinho os produtos que combinam com a sacola do cliente, considerando categoria,
-            preço, destaque, disponibilidade e relação entre itens.
+            A IA escolhe sozinha os itens exibidos ao cliente de acordo com a sacola, categoria, disponibilidade,
+            destaque, preco e relacao entre produtos. Nao e necessario selecionar produto ou categoria manualmente.
           </p>
         </div>
-        <div className={styles.addonsHubMetrics}>
-          <Badge>IA ativa</Badge>
-          <Badge>{products.filter((product) => product.available !== false).length} produtos elegiveis</Badge>
+
+        <div className={styles.aiRecommendationStatus}>
+          <Badge tone={enabled ? 'success' : 'warning'}>{enabled ? 'IA ativa' : 'IA desativada'}</Badge>
+          <Badge>{eligibleProducts.length} produtos elegiveis</Badge>
+          <Button variant={enabled ? 'danger' : 'primary'} onClick={toggleEnabled}>
+            {enabled ? 'Desativar Peca tambem' : 'Ativar Peca tambem'}
+          </Button>
         </div>
       </Card>
 
-      <div className={styles.addonProductMatrix}>
-        <Card className={styles.addonCategoryColumn}>
-          <strong>Categorias</strong>
-          <div className={styles.addonCategoryList}>
-            {categories.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={item.key === activeCategory ? styles.addonCategoryActive : ''}
-                onClick={() => setSelectedCategory(item.key)}
-              >
-                <span>{item.label}</span>
-                <Badge>{item.count}</Badge>
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card className={styles.addonProductsColumn}>
-          <strong>Prévia da IA por produto</strong>
-          <div className={styles.addonProductRows}>
-            {visibleProducts.map((product) => {
-              const suggestions = getSmartMenuRecommendations(products, { sourceProductId: product.id, limit: 4 });
-              return (
-                <div key={product.id} className={styles.recommendationProductRow}>
-                  <span>{product.name}</span>
-                  <small>
-                    {suggestions.length > 0
-                      ? suggestions.map((item) => item.name).join(' | ')
-                      : 'Sem sugestoes automaticas disponiveis'}
-                  </small>
-                  <Badge>{suggestions.length} IA</Badge>
-                  {suggestions[0] ? <strong>{brl(suggestions[0].deliveryPrice ?? suggestions[0].price)}</strong> : null}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </div>
+      <Card className={styles.aiRecommendationRules}>
+        <strong>Como o sistema decide</strong>
+        <div>
+          <span>1</span>
+          <p>Remove produtos indisponiveis e o que ja esta na sacola.</p>
+        </div>
+        <div>
+          <span>2</span>
+          <p>Prioriza combinacoes naturais: bebida, sobremesa, porcao, adicionais e itens da mesma linha.</p>
+        </div>
+        <div>
+          <span>3</span>
+          <p>Ordena por relevancia, destaque, preco e historico de configuracao do catalogo.</p>
+        </div>
+      </Card>
     </section>
   );
 }

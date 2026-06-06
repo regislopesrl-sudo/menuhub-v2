@@ -21,6 +21,8 @@ model StockItem {
   companyId          String        @map("company_id")
   categoryId         String?       @map("category_id")
   supplierId         String?       @map("supplier_id")
+  sector             String?       @map("sector")
+  notes              String?       @map("notes")
   name               String        @map("name")
   code               String?       @map("code")
   stockType          StockItemType @default(RAW_MATERIAL) @map("stock_type")

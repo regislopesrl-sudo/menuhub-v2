@@ -15,8 +15,10 @@ const DESSERT_TERMS = ['sobremesa', 'doce', 'doç', 'acai', 'açaí', 'sorvete',
 const SIDE_TERMS = ['porcao', 'porção', 'batata', 'frita', 'acompanhamento', 'molho'];
 const KIDS_TERMS = ['kids', 'infantil', 'crianca', 'criança'];
 const VEG_TERMS = ['veg', 'vegetariano', 'vegetariana', 'sem carne'];
+const STORAGE_KEY = 'menuhub:smart-recommendations-enabled';
 
 export function getSmartMenuRecommendations(products: MenuProduct[], options: RecommendationOptions = {}): MenuProduct[] {
+  if (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEY) === 'false') return [];
   const limit = Math.max(1, Math.min(Number(options.limit ?? 4), 8));
   const available = products.filter((product) => product.available !== false && product.channels?.delivery !== false);
   const selectedIds = new Set<string>();

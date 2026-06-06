@@ -120,7 +120,17 @@ export class PurchasesBackendService {
       if (!supplier) throw new NotFoundException('Fornecedor nao encontrado.');
     }
 
-    const normalizedItems = [];
+    const normalizedItems: Array<{
+      companyId: string;
+      branchId: string;
+      stockItemId: string | null;
+      description: string | null;
+      quantityReceived: number;
+      unitOfMeasure: string;
+      unitCost: number | null;
+      totalCost: number | null;
+      notes: string | null;
+    }> = [];
     for (const item of input.items) {
       const quantity = Number(item.quantityReceived);
       if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -150,20 +160,131 @@ export class PurchasesBackendService {
     }
 
     const totalReceivedAmount = normalizedItems.reduce((sum, item) => sum + Number(item.totalCost ?? 0), 0);
-    const receipt = await this.prisma.purchaseReceipt.create({
-      data: {
-        companyId: ctx.companyId,
-        branchId,
-        supplierId: input.supplierId ?? null,
-        purchaseOrderId: input.purchaseOrderId ?? null,
-        documentNumber: clean(input.documentNumber),
-        fiscalKey: clean(input.fiscalKey),
-        totalReceivedAmount: Number(totalReceivedAmount.toFixed(2)),
-        notes: clean(input.notes),
-        receivedByUserId: ctx.userId ?? null,
-        items: { create: normalizedItems },
-      },
-      include: { items: true },
+    const receivedAt = new Date();
+    const receipt = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.purchaseReceipt.create({
+        data: {
+          companyId: ctx.companyId,
+          branchId,
+          supplierId: input.supplierId ?? null,
+          purchaseOrderId: input.purchaseOrderId ?? null,
+          status: 'RECEIVED',
+          documentNumber: clean(input.documentNumber),
+          fiscalKey: clean(input.fiscalKey),
+          totalReceivedAmount: Number(totalReceivedAmount.toFixed(2)),
+          notes: clean(input.notes),
+          receivedByUserId: ctx.userId ?? null,
+          receivedAt,
+          items: { create: normalizedItems },
+        },
+        include: { items: true },
+      });
+
+      for (const item of created.items) {
+        if (!item.stockItemId) continue;
+        const quantityReceived = Number(item.quantityReceived);
+        if (!Number.isFinite(quantityReceived) || quantityReceived <= 0) continue;
+
+        const stockItem = await tx.inventoryItem.findFirst({
+          where: buildCompanyWhere(ctx, { id: item.stockItemId }) as any,
+          select: { id: true, averageCost: true },
+        });
+        if (!stockItem) throw new NotFoundException('Insumo nao encontrado.');
+
+        const currentBalance = await tx.inventoryStockBalance.findUnique({
+          where: {
+            companyId_branchId_stockItemId: {
+              companyId: ctx.companyId,
+              branchId,
+              stockItemId: item.stockItemId,
+            },
+          },
+          select: { quantity: true },
+        });
+        const previousQuantity = Number(currentBalance?.quantity ?? 0);
+        const nextQuantity = previousQuantity + quantityReceived;
+        const unitCost = item.unitCost == null ? null : Number(item.unitCost);
+        const previousAverageCost = stockItem.averageCost == null ? null : Number(stockItem.averageCost);
+        const nextAverageCost = unitCost == null
+          ? previousAverageCost
+          : this.calculateWeightedAverageCost(previousQuantity, previousAverageCost, quantityReceived, unitCost);
+        const totalCost = unitCost == null ? null : Number((quantityReceived * unitCost).toFixed(2));
+
+        await tx.inventoryStockBalance.upsert({
+          where: {
+            companyId_branchId_stockItemId: {
+              companyId: ctx.companyId,
+              branchId,
+              stockItemId: item.stockItemId,
+            },
+          },
+          update: {
+            quantity: { increment: quantityReceived },
+          },
+          create: {
+            companyId: ctx.companyId,
+            branchId,
+            stockItemId: item.stockItemId,
+            quantity: quantityReceived,
+            reservedQuantity: 0,
+          },
+        });
+
+        await tx.inventoryMovement.create({
+          data: {
+            companyId: ctx.companyId,
+            branchId,
+            stockItemId: item.stockItemId,
+            type: 'IN',
+            quantity: quantityReceived,
+            unitCost,
+            totalCost,
+            sourceType: 'PURCHASE_RECEIPT',
+            sourceId: created.id,
+            notes: item.notes ?? clean(input.notes) ?? 'Entrada por recebimento de compra.',
+            metadata: {
+              receiptId: created.id,
+              receiptItemId: item.id,
+              supplierId: input.supplierId ?? null,
+              purchaseOrderId: input.purchaseOrderId ?? null,
+              documentNumber: clean(input.documentNumber),
+              fiscalKey: clean(input.fiscalKey),
+              previousQuantity,
+              newQuantity: Number(nextQuantity.toFixed(4)),
+              previousAverageCost,
+              newAverageCost: nextAverageCost,
+            },
+            createdByUserId: ctx.userId ?? null,
+          },
+        });
+
+        if (nextAverageCost !== null && unitCost !== null) {
+          await tx.inventoryItem.update({
+            where: { id: item.stockItemId },
+            data: { averageCost: nextAverageCost },
+          });
+          await tx.averageCostHistory.create({
+            data: {
+              companyId: ctx.companyId,
+              branchId,
+              stockItemId: item.stockItemId,
+              previousCost: previousAverageCost,
+              newCost: nextAverageCost,
+              sourceType: 'PURCHASE_RECEIPT',
+              sourceId: created.id,
+              metadata: {
+                receiptId: created.id,
+                receiptItemId: item.id,
+                quantityReceived,
+                unitCost,
+                totalCost,
+              },
+            },
+          });
+        }
+      }
+
+      return created;
     });
 
     await this.auditLog.recordFromContext({
@@ -177,6 +298,7 @@ export class PurchasesBackendService {
         supplierId: input.supplierId,
         itemCount: normalizedItems.length,
         totalReceivedAmount,
+        stockLinkedItems: normalizedItems.filter((item) => item.stockItemId).length,
       },
     });
 
@@ -197,6 +319,22 @@ export class PurchasesBackendService {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+  }
+
+  private calculateWeightedAverageCost(
+    previousQuantity: number,
+    previousAverageCost: number | null,
+    entryQuantity: number,
+    entryUnitCost: number,
+  ) {
+    const previousQty = Number(previousQuantity ?? 0);
+    const entryQty = Number(entryQuantity ?? 0);
+    const unitCost = Number(entryUnitCost ?? 0);
+    const previousCost = previousAverageCost == null ? unitCost : Number(previousAverageCost);
+    const nextQuantity = previousQty + entryQty;
+    if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) return Number(unitCost.toFixed(4));
+    if (!Number.isFinite(previousCost)) return Number(unitCost.toFixed(4));
+    return Number(((previousQty * previousCost + entryQty * unitCost) / nextQuantity).toFixed(4));
   }
 }
 

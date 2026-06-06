@@ -144,6 +144,88 @@ describe('OrderPrismaRepository', () => {
     expect(createData.items.create[1].station).toBe('DRINKS');
   });
 
+  it('calcula snapshot teorico convertendo unidade da ficha para unidade de estoque', async () => {
+    const prismaMock = {
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'branch_a' }),
+      },
+      product: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 'p1', kitchenStation: 'FRYER' },
+            { id: 'p2', kitchenStation: 'DRINKS' },
+          ])
+          .mockResolvedValueOnce([
+            {
+              id: 'p1',
+              costPrice: null,
+              recipe: {
+                yieldQuantity: 1,
+                lossPercent: 0,
+                items: [
+                  {
+                    quantity: 40,
+                    unit: 'G',
+                    stockItem: {
+                      averageCost: 31.9,
+                      stockUnit: 'KG',
+                      purchaseUnit: 'KG',
+                      productionUnit: 'KG',
+                      conversionFactor: 1,
+                    },
+                  },
+                ],
+              },
+            },
+          ]),
+      },
+      order: {
+        create: jest.fn().mockResolvedValue({ id: 'order_db_1', items: [] }),
+      },
+    } as any;
+
+    const repo = new OrderPrismaRepository(prismaMock);
+    await repo.createOrder(checkoutResult, ctxBase);
+
+    expect(prismaMock.product.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        companyId: 'company_a',
+        id: { in: ['p1', 'p2'] },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        costPrice: true,
+        recipe: {
+          select: {
+            yieldQuantity: true,
+            lossPercent: true,
+            items: {
+              where: { affectsCost: true },
+              select: {
+                quantity: true,
+                unit: true,
+                stockItem: {
+                  select: {
+                    averageCost: true,
+                    stockUnit: true,
+                    purchaseUnit: true,
+                    productionUnit: true,
+                    conversionFactor: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const createData = prismaMock.order.create.mock.calls[0][0].data;
+    expect(createData.items.create[0].theoreticalCostSnapshot).toBe(1.28);
+    expect(createData.items.create[1].theoreticalCostSnapshot).toBeUndefined();
+  });
+
   it('bloqueia branch de outra empresa', async () => {
     const prismaMock = {
       branch: {

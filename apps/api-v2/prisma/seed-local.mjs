@@ -60,9 +60,17 @@ const BASIC_MODULES = [
   'payments',
   'admin_panel',
   'stock',
+  'cash',
   'procurement',
+  'production',
   'financial',
   'reports',
+  'logistics',
+  'crm',
+  'coupons',
+  'promotions',
+  'notifications',
+  'delivery_zones',
 ];
 const PREMIUM_PERMISSIONS = [
   ['*', 'Full tenant access wildcard'],

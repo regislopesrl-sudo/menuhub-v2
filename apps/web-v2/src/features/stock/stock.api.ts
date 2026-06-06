@@ -13,6 +13,9 @@ export type StockCategory = {
 export type StockItem = {
   id: string;
   categoryId?: string | null;
+  supplierId?: string | null;
+  sector?: string | null;
+  notes?: string | null;
   category?: StockCategory | null;
   name: string;
   code: string | null;
@@ -29,6 +32,7 @@ export type StockItem = {
   reorderPoint: number;
   averageCost: number;
   lastCost?: number;
+  standardCost?: number;
   leadTimeDays?: number;
   controlsStock?: boolean;
   controlsBatch: boolean;
@@ -75,6 +79,29 @@ export type StockMovement = {
   reasonCode: string | null;
   notes: string | null;
   createdAt: string;
+};
+
+
+export type StockOrderConsumptionReconcileResult = {
+  orderId: string;
+  orderNumber?: string;
+  status?: string;
+  action: 'consumed' | 'would_consume' | 'skip' | 'error';
+  reason?: string;
+  error?: string;
+  movementCount?: number;
+  totalCost?: number;
+};
+
+export type StockOrderConsumptionReconcileResponse = {
+  dryRun: boolean;
+  requested: number;
+  scanned: number;
+  consumed: number;
+  wouldConsume: number;
+  skipped: number;
+  errors: number;
+  results: StockOrderConsumptionReconcileResult[];
 };
 
 export type StockBreakageAlert = {
@@ -227,6 +254,9 @@ export function createStockItem(input: {
   name: string;
   code?: string;
   categoryId?: string | null;
+  supplierId?: string | null;
+  sector?: string | null;
+  notes?: string | null;
   stockType?: StockItemType;
   stockUnit?: string;
   purchaseUnit?: string;
@@ -258,6 +288,9 @@ export function updateStockItem(
     name: string;
     code: string;
     categoryId: string | null;
+    supplierId: string | null;
+    sector: string | null;
+    notes: string | null;
     stockType: StockItemType;
     stockUnit: string;
     purchaseUnit: string;
@@ -424,4 +457,17 @@ export function estimateStockConversion(input: { stockItemId: string; quantity: 
       body: JSON.stringify(input),
     },
   );
+}
+
+
+export function reconcileStockOrderConsumption(input: {
+  orderId?: string;
+  orderIds?: string[];
+  dryRun?: boolean;
+  limit?: number;
+}) {
+  return apiFetch<StockOrderConsumptionReconcileResponse>('/v2/admin/stock/orders/consumption/reconcile', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }

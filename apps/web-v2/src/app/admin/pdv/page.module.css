@@ -37,6 +37,65 @@
   justify-content: flex-end;
 }
 
+.cashShortcut {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+
+.cashNotice {
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.cashNotice div {
+  display: grid;
+  gap: 3px;
+}
+
+.cashNotice strong {
+  color: #172554;
+  font-size: 14px;
+}
+
+.cashNotice span {
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.cashNotice a {
+  min-height: 36px;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #1d4ed8;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .cashBox {
   padding: 16px;
   display: grid;
@@ -96,6 +155,11 @@
 .cart {
   position: sticky;
   top: 92px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 20px;
+  scrollbar-gutter: stable;
 }
 
 .menuHeading {
@@ -338,6 +402,55 @@
   font-weight: 750;
 }
 
+.checkoutChecklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.checkoutChecklist > div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+  background: #f8fafc;
+}
+
+.checkoutChecklist strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.checkoutChecklist span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.checkoutCheckOk {
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+}
+
+.checkoutCheckOk strong,
+.checkoutCheckOk span {
+  color: #166534 !important;
+}
+
+.checkoutCheckPending {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+}
+
+.checkoutCheckPending strong,
+.checkoutCheckPending span {
+  color: #9a3412 !important;
+}
+
 .checkbox {
   display: flex;
   align-items: center;
@@ -481,6 +594,8 @@
 
   .cart {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .products {
@@ -500,6 +615,11 @@
   .movementRow {
     grid-template-columns: 1fr 1fr;
   }
+
+  .cashNotice {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 700px) {
@@ -514,7 +634,8 @@
   }
 
   .products,
-  .summaryGrid {
+  .summaryGrid,
+  .checkoutChecklist {
     grid-template-columns: 1fr;
   }
 }

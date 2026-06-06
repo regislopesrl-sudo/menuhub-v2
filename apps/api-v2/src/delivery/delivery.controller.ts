@@ -38,16 +38,26 @@ export class DeliveryController {
     const address = await this.cepGeocodingService.geocodeByCep({
       cep: query.cep,
       number: query.number,
-    });
+    }).catch(() => null);
 
-    const quote = await this.deliveryQuoteService.quoteByAddress(ctx, {
-      address,
-      subtotal: query.subtotal,
-    });
+    const quote = await this.deliveryQuoteService.quoteByAddress(
+      ctx,
+      address
+        ? { address, subtotal: query.subtotal }
+        : { cep: query.cep, number: query.number, subtotal: query.subtotal },
+    );
 
     return {
       ...quote,
-      address,
+      address: address ?? {
+        cep: query.cep,
+        street: '',
+        neighborhood: '',
+        city: '',
+        state: '',
+        lat: quote.address.lat,
+        lng: quote.address.lng,
+      },
     };
   }
 

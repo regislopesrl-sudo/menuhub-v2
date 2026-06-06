@@ -24,6 +24,86 @@
   gap: 8px;
 }
 
+.sectionTabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sectionTab {
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(49, 85, 255, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  min-height: 82px;
+  min-width: 0;
+  padding: 11px 12px;
+  text-align: left;
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), transform 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.sectionTab:hover,
+.sectionTabActive {
+  border-color: rgba(49, 85, 255, 0.48);
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(245, 243, 255, 0.96));
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.sectionTabActive {
+  box-shadow: inset 0 0 0 1px rgba(49, 85, 255, 0.28), 0 16px 32px rgba(49, 85, 255, 0.1);
+}
+
+.sectionTab span {
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.sectionTab strong {
+  color: var(--text);
+  font-size: 25px;
+  line-height: 1;
+}
+
+.sectionTab small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.22;
+}
+
+.sectionContext {
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.sectionContext strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.sectionContext span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  text-align: right;
+}
+
 .stockTab {
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -92,6 +172,101 @@
   color: var(--text);
   font-size: 20px;
   line-height: 1.1;
+}
+
+.ingredientCadastroHero {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ingredientMetricCard {
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.13), transparent 40%),
+    rgba(255, 255, 255, 0.9);
+}
+
+.ingredientMetricCard span,
+.ingredientMetricCard small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.ingredientMetricCard span {
+  font-weight: 900;
+}
+
+.ingredientMetricCard strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.ingredientSheetHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.82);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.ingredientSheetTitle {
+  display: grid;
+  gap: 6px;
+}
+
+.ingredientSheetTitle span {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.ingredientSheetTitle h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.ingredientSheetActions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ingredientSearchField {
+  min-width: min(340px, 100%);
+  display: grid;
+  gap: 5px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ingredientSearchField input {
+  min-height: 36px;
+  border-radius: 7px;
+}
+
+.ingredientSheetCount {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  color: #6b7280;
+  background: rgba(255, 255, 255, 0.98);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .card {
@@ -264,6 +439,390 @@
   border-color: rgba(49, 85, 255, 0.42);
   background: linear-gradient(135deg, #3155ff, #7c3aed);
   color: #ffffff;
+}
+
+.productOpsSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.productOpsMetric {
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 14px;
+  padding: 11px 12px;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  background:
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.1), transparent 42%),
+    rgba(255, 255, 255, 0.82);
+}
+
+button.productOpsMetric {
+  cursor: pointer;
+}
+
+button.productOpsMetric:hover {
+  border-color: rgba(16, 185, 129, 0.42);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.productOpsMetric span,
+.productOpsMetric small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.productOpsMetric strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.cmvBoard {
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 16px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.95fr) minmax(260px, 1.05fr) repeat(3, minmax(180px, 1fr));
+  gap: 8px;
+  background:
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 0.82));
+}
+
+.cmvHero,
+.cmvMiniCard,
+.cmvColumn {
+  border: 1px solid rgba(203, 213, 225, 0.76);
+  border-radius: 14px;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.cmvHero {
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.cmvHero span,
+.cmvHero small,
+.cmvMiniCard span,
+.cmvMiniCard small,
+.cmvRow small,
+.cmvColumnHeader span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.cmvHero strong {
+  color: var(--text);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.cmvHeroMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cmvHeroMetrics span,
+.cmvRiskBadge {
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.cmvHeroMetrics span {
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: #166534;
+  background: rgba(240, 253, 244, 0.9);
+}
+
+.cmvMiniGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cmvMiniCard {
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+
+button.cmvMiniCard {
+  cursor: pointer;
+}
+
+button.cmvMiniCard:hover,
+.cmvRow:hover {
+  border-color: rgba(49, 85, 255, 0.42);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.07);
+}
+
+.cmvMiniCard strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.cmvColumn {
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.cmvColumnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cmvColumnHeader strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.18;
+}
+
+.cmvRow {
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 12px;
+  padding: 7px;
+  min-width: 0;
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  text-decoration: none;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+button.cmvRow {
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+
+.cmvRow strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.16;
+}
+
+.cmvRiskBadge {
+  justify-self: start;
+  text-transform: uppercase;
+}
+
+.cmvHealthy {
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  color: #166534;
+  background: rgba(220, 252, 231, 0.9);
+}
+
+.cmvHigh {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #92400e;
+  background: rgba(255, 251, 235, 0.92);
+}
+
+.cmvLoss {
+  border: 1px solid rgba(248, 113, 113, 0.48);
+  color: #991b1b;
+  background: rgba(254, 226, 226, 0.94);
+}
+
+.cmvUnknown {
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  color: #1d4ed8;
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.productOpsToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.productOpsList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.productOpsCard {
+  border: 1px solid rgba(203, 213, 225, 0.84);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  background:
+    radial-gradient(circle at top right, rgba(49, 85, 255, 0.08), transparent 42%),
+    rgba(255, 255, 255, 0.84);
+}
+
+.productOpsCardSelected {
+  border-color: rgba(49, 85, 255, 0.56);
+  box-shadow: inset 4px 0 0 rgba(49, 85, 255, 0.72);
+  background:
+    radial-gradient(circle at top right, rgba(49, 85, 255, 0.14), transparent 42%),
+    rgba(239, 246, 255, 0.9);
+}
+
+.productOpsMain {
+  display: grid;
+  gap: 5px;
+}
+
+.productOpsCard .productSelectBox {
+  gap: 6px;
+}
+
+.productOpsCard .productSelectBox input {
+  margin-top: 2px;
+}
+
+.productOpsTitle {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.productOpsTitle strong {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.productOpsTitle small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.productOpsStatusLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+}
+
+.productOpsNumbers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.productOpsNumbers div {
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 9px;
+  padding: 5px 6px;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  background: rgba(248, 250, 252, 0.74);
+}
+
+.productOpsNumbers span,
+.productOpsMeta span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.productOpsNumbers strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.productOpsMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 44px;
+  overflow: hidden;
+}
+
+.productOpsMeta span {
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 999px;
+  padding: 3px 6px;
+  background: rgba(248, 250, 252, 0.76);
+}
+
+.productOpsActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.productOpsActions .linkButton {
+  min-height: 30px;
+  border-radius: 9px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.productOpsActions button {
+  min-height: 30px;
+  border-radius: 9px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.productOpsCard .productAvailabilityGuidance {
+  display: none;
+}
+
+.productOpsCard .limitingIngredients {
+  max-height: 24px;
+  overflow: hidden;
+  gap: 3px;
+}
+
+.productOpsCard .limitingIngredients span {
+  padding: 3px 6px;
+  font-size: 9px;
 }
 
 .productAvailabilityGrid {
@@ -476,6 +1035,101 @@
   justify-content: flex-end;
 }
 
+
+
+.reconcilePanel {
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at top right, rgba(49, 85, 255, 0.09), transparent 38%),
+    linear-gradient(180deg, rgba(239, 246, 255, 0.84), rgba(255, 255, 255, 0.82));
+}
+
+.reconcileHeader {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.reconcileHeader > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.reconcileHeader span {
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.reconcileHeader strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.reconcileHeader p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.reconcileMetrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.reconcileMetrics span {
+  border: 1px solid rgba(203, 213, 225, 0.76);
+  border-radius: 12px;
+  color: var(--muted);
+  display: grid;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.reconcileMetrics strong {
+  color: var(--text);
+  font-size: 19px;
+  line-height: 1;
+}
+
+.reconcileResults {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reconcileResults span {
+  border: 1px solid rgba(203, 213, 225, 0.78);
+  border-radius: 12px;
+  color: #334155;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.reconcileResults strong {
+  color: var(--text);
+}
+
 .productAvailabilityMeta span,
 .limitingIngredients span {
   border: 1px solid rgba(203, 213, 225, 0.72);
@@ -525,6 +1179,11 @@
   align-items: start;
 }
 
+.ingredientCadastroWorkspace {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
 .stockListCard,
 .itemDetailCard {
   align-content: start;
@@ -533,6 +1192,202 @@
 .stockListCard {
   position: sticky;
   top: 12px;
+}
+
+.ingredientCadastroWorkspace .stockListCard {
+  position: static;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.productDetailFrame {
+  display: contents;
+}
+
+.ingredientDialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(3px);
+}
+
+.ingredientDialogBackdrop .itemDetailCard {
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 6px;
+  box-shadow: 0 22px 62px rgba(15, 23, 42, 0.22);
+}
+
+.ingredientRecordDialog {
+  gap: 0;
+  padding: 0;
+  background: #ffffff;
+}
+
+.ingredientRecordDialog .cardHeader {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.82);
+  background: #ffffff;
+}
+
+.ingredientRecordDialog .cardHeader h2 {
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+.ingredientRecordDialog .cardHeader p {
+  max-width: 760px;
+  font-size: 13px;
+}
+
+.ingredientRecordDialog .itemForm {
+  gap: 0;
+}
+
+.ingredientRecordTitle {
+  display: grid;
+  gap: 6px;
+}
+
+.ingredientRecordTitle span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.ingredientCloseButton {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f172a;
+  background: #ffffff;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ingredientRecordGrid {
+  padding: 18px 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 14px;
+}
+
+.ingredientField {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ingredientField span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ingredientFieldWide {
+  grid-column: 1 / -1;
+}
+
+.ingredientInput,
+.ingredientSelect,
+.ingredientTextarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #111827;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ingredientInput[readonly] {
+  color: #64748b;
+  background: #eef2f1;
+}
+
+.ingredientSelect {
+  min-height: 38px;
+}
+
+.ingredientTextarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.ingredientRecordFooter {
+  border-top: 1px solid rgba(203, 213, 225, 0.82);
+  padding: 14px 20px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+}
+
+.ingredientRecordFooter > div {
+  display: flex;
+  gap: 10px;
+}
+
+.ingredientRecordFooter > button {
+  border-color: rgba(239, 68, 68, 0.42);
+  color: #dc2626;
+  background: #ffffff;
+}
+
+.ingredientRecordFooter > div button:last-child {
+  border-color: #0f8f7c;
+  color: #ffffff;
+  background: #0f8f7c;
+}
+
+.ingredientRecordDialog .formSection {
+  border: 0;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 0;
+  padding: 16px 18px;
+  background: #ffffff;
+}
+
+.ingredientRecordDialog .formSection:last-of-type {
+  border-bottom: 0;
+}
+
+.ingredientRecordDialog .formActions {
+  padding: 16px 18px;
+  border-top: 1px solid rgba(203, 213, 225, 0.82);
+  background: rgba(248, 250, 252, 0.8);
+}
+
+.ingredientRecordDialog .categoryList {
+  gap: 6px;
+}
+
+.ingredientRecordDialog .categoryChip {
+  min-width: 128px;
+  border-radius: 8px;
+  background: rgba(240, 253, 244, 0.6);
 }
 
 .listToolbar {
@@ -548,6 +1403,101 @@
   max-height: 680px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.ingredientTableWrap {
+  border: 0;
+  border-radius: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: calc(100vh - 260px);
+  background: #ffffff;
+}
+
+.ingredientTable {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: var(--text);
+}
+
+.ingredientTable th,
+.ingredientTable td {
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  padding: 12px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ingredientTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: #002f2e;
+  background: #eaf5f2;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.ingredientTable td {
+  color: #263238;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ingredientTable th:nth-child(1),
+.ingredientTable td:nth-child(1) { width: 7%; }
+
+.ingredientTable th:nth-child(2),
+.ingredientTable td:nth-child(2) { width: 19%; }
+
+.ingredientTable th:nth-child(3),
+.ingredientTable td:nth-child(3) { width: 8%; }
+
+.ingredientTable th:nth-child(4),
+.ingredientTable td:nth-child(4) { width: 16%; }
+
+.ingredientTable th:nth-child(5),
+.ingredientTable td:nth-child(5) { width: 7%; }
+
+.ingredientTable th:nth-child(6),
+.ingredientTable td:nth-child(6) { width: 10%; }
+
+.ingredientTable th:nth-child(7),
+.ingredientTable td:nth-child(7) { width: 10%; }
+
+.ingredientTable th:nth-child(8),
+.ingredientTable td:nth-child(8) { width: 16%; }
+
+.ingredientTable th:nth-child(9),
+.ingredientTable td:nth-child(9) { width: 7%; }
+
+.ingredientNameButton {
+  border: 0;
+  padding: 0;
+  color: #0f766e;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 950;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.ingredientNameButton:hover {
+  color: #3155ff;
+}
+
+.selectedTableRow {
+  background: rgba(49, 85, 255, 0.07);
+  box-shadow: inset 4px 0 0 rgba(49, 85, 255, 0.7);
 }
 
 .itemCardRow {
@@ -971,6 +1921,20 @@
   font: inherit;
 }
 
+.textarea {
+  min-height: 92px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
 .meta {
   display: flex;
   gap: 5px 8px;
@@ -1006,13 +1970,20 @@
 }
 
 @media (max-width: 980px) {
+  .sectionTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .productOpsSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cmvBoard { grid-template-columns: 1fr; }
+  .productOpsToolbar { grid-template-columns: 1fr; }
+  .productOpsList { grid-template-columns: 1fr; }
   .kpiGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ingredientCadastroHero { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .alertGrid { grid-template-columns: 1fr; }
   .suggestionList { grid-template-columns: 1fr; }
   .productStatusStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .productPrioritySummary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .productAvailabilityGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stockWorkspace { grid-template-columns: 1fr; }
+  .ingredientCadastroWorkspace { grid-template-columns: 1fr; }
   .stockListCard { position: static; }
   .analysisGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid { grid-template-columns: 1fr; }
@@ -1024,6 +1995,19 @@
 }
 
 @media (max-width: 640px) {
+  .sectionTabs {
+    grid-template-columns: 1fr;
+  }
+  .sectionTab {
+    min-height: 68px;
+  }
+  .sectionContext {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .sectionContext span {
+    text-align: left;
+  }
   .stockTabs {
     gap: 6px;
   }
@@ -1048,11 +2032,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .listToolbar,
+  .ingredientCadastroHero,
   .itemCardRow,
   .itemRowMetrics,
+  .productOpsSummary,
+  .cmvMiniGrid,
+  .productOpsNumbers,
   .productStatusStrip,
   .productPrioritySummary,
   .bulkSanityBar,
+  .reconcileHeader,
+  .reconcileMetrics,
+  .reconcileResults,
   .productAvailabilityGrid,
   .productAvailabilityMetrics,
   .detailSummary,

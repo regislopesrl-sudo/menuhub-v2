@@ -4,7 +4,19 @@ export type AvailabilityFilter = 'all' | 'active' | 'inactive';
 export type ChannelFilter = 'all' | keyof NonNullable<MenuProduct['channels']>;
 export type AddonFilter = 'all' | 'with' | 'without';
 export type ModalMode = 'create' | 'edit' | 'addons' | 'variations' | 'recommendations';
-export type MenuTab = 'products' | 'categories' | 'addons' | 'combos' | 'featured' | 'import' | 'recommendations';
+export type MenuTab =
+  | 'products'
+  | 'categories'
+  | 'addons'
+  | 'options'
+  | 'combos'
+  | 'availability'
+  | 'media'
+  | 'deliveryPublication'
+  | 'featured'
+  | 'import'
+  | 'recommendations'
+  | 'audit';
 export type CategorySummary = { id?: string; name: string; count: number; active?: boolean; sortOrder?: number };
 export type MenuStats = { active: number; unavailable: number; categoryCount: number; featured: number; noPrice: number };
 

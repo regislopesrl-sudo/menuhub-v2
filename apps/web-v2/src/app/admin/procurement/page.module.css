@@ -5,313 +5,191 @@
   gap: 14px;
 }
 
-.grid {
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.errorBox,
+.successBox {
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.errorBox {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.successBox {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.metricGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metricCard {
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 102px;
+  padding: 16px;
+}
+
+.metricCard span,
+.metricCard small {
+  color: var(--muted);
+}
+
+.metricCard span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metricCard strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.metricCard small {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dataPanel {
+  border-radius: 8px;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.dataHeader {
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 340px);
+  padding: 18px;
+}
+
+.dataHeader h2 {
+  margin: 4px 0 0;
+}
+
+.dataHeader span,
+.searchBox span,
+.field span,
+.panelHeader span,
+.dialogHeader span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.searchBox,
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.dataStatus {
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  padding: 14px 18px;
+}
+
+.tableWrap,
+.itemsWrap {
+  overflow: auto;
+}
+
+.dataTable,
+.itemTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.dataTable {
+  min-width: 1020px;
+}
+
+.itemTable {
+  min-width: 960px;
+}
+
+.dataTable th,
+.dataTable td,
+.itemTable th,
+.itemTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dataTable th,
+.itemTable th {
+  background: #eaf4f0;
+  color: #073f3b;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.dataTable td,
+.itemTable td {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dataTable tbody tr:hover {
+  background: #f0fdfa;
+}
+
+.tableLink {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: #00685e;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.emptyCell {
+  color: var(--muted) !important;
+  padding: 34px !important;
+  text-align: center !important;
+}
+
+.supportGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.operationsGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.fiscalGrid {
-  display: grid;
-  grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.35fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.kpiGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.kpiCard {
-  padding: 14px;
-  display: grid;
-  gap: 6px;
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at top right, rgba(245, 158, 11, 0.16), transparent 38%),
-    rgba(255, 255, 255, 0.9);
-}
-
-.kpiCard span,
-.kpiCard small,
-.help {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.kpiCard strong {
-  color: var(--text);
-  font-size: 24px;
-}
-
-.card {
-  padding: 14px;
-  display: grid;
-  gap: 10px;
-  border-radius: 16px;
-}
-
-.page select {
-  width: 100%;
-  min-width: 0;
-  height: 48px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
+.supportPanel {
   border-radius: 8px;
-  padding: 0 34px 0 12px;
-  background:
-    linear-gradient(45deg, transparent 50%, #475569 50%) calc(100% - 18px) 20px / 6px 6px no-repeat,
-    linear-gradient(135deg, #475569 50%, transparent 50%) calc(100% - 13px) 20px / 6px 6px no-repeat,
-    rgba(255, 255, 255, 0.94);
-  color: var(--text);
-  font: inherit;
-  appearance: none;
-}
-
-.page select:focus {
-  border-color: rgba(59, 130, 246, 0.68);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
-  outline: 0;
-}
-
-.importCard,
-.reviewCard {
-  align-content: start;
-}
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
-}
-
-.sectionHeader h2 {
-  margin: 0;
-}
-
-.eyebrow {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.providerAlert,
-.realProviderAlert,
-.mockNotice {
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: rgba(245, 158, 11, 0.09);
-  color: #78350f;
-  display: grid;
-  gap: 4px;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.realProviderAlert {
-  border-color: rgba(34, 197, 94, 0.32);
-  background: rgba(34, 197, 94, 0.09);
-  color: #14532d;
-}
-
-.mockNotice {
-  border-color: rgba(59, 130, 246, 0.28);
-  background: rgba(59, 130, 246, 0.08);
-  color: #1e3a8a;
-}
-
-.importForm,
-.mappingBar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr) auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.field {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.field span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.accessPreview,
-.progressStrip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.accessPreview span,
-.progressStrip span {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 5px 9px;
-  background: rgba(248, 250, 252, 0.9);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.fiscalAssistBox {
-  border: 1px solid rgba(59, 130, 246, 0.26);
-  border-radius: 12px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  background: rgba(239, 246, 255, 0.72);
-}
-
-.fiscalAssistBox div {
-  display: grid;
-  gap: 3px;
-}
-
-.fiscalAssistBox strong {
-  color: var(--text);
-}
-
-.fiscalAssistBox span,
-.suggestionLine {
-  color: #1e40af !important;
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.documentList,
-.fiscalItems {
-  display: grid;
-  gap: 8px;
-  max-height: 410px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.documentButton {
-  appearance: none;
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.84);
-  color: inherit;
-  cursor: pointer;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  text-align: left;
-}
-
-.documentButton small {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.documentStats {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.documentStats em {
-  color: var(--muted);
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 700;
-}
-
-.documentSummary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.documentSummary div {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(248, 250, 252, 0.74);
-  display: grid;
-  gap: 3px;
-}
-
-.documentSummary small,
-.itemMain small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.documentSummary strong {
-  overflow-wrap: anywhere;
-}
-
-.fiscalItem {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(170px, 0.8fr) auto;
-  gap: 10px;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.86);
-}
-
-.itemMain {
-  display: grid;
-  gap: 5px;
-}
-
-.itemMain strong {
-  overflow-wrap: anywhere;
-}
-
-.itemNumbers {
-  display: grid;
-  gap: 3px;
-  justify-items: end;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.itemNumbers strong {
-  color: var(--text);
-  font-size: 16px;
-}
-
-.systemPanel {
-  gap: 14px;
   padding: 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)),
-    rgba(255, 255, 255, 0.96);
-  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.07);
 }
 
 .widePanel {
@@ -319,309 +197,421 @@
 }
 
 .panelHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
   align-items: flex-start;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .panelHeader h2 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.1;
-  letter-spacing: 0;
+  margin: 4px 0 0;
 }
 
-.panelMetric {
-  min-width: 112px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: rgba(248, 250, 252, 0.88);
+.receiptForm {
+  align-items: end;
   display: grid;
-  justify-items: end;
-  gap: 2px;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.6fr) auto;
 }
 
-.panelMetric strong {
-  font-size: 18px;
+.receiptLines,
+.entityList,
+.costGrid,
+.supplierList {
+  display: grid;
+  gap: 8px;
 }
 
-.panelMetric span,
-.panelHint {
+.receiptLines div,
+.entityRow,
+.costCard,
+.supplierRow {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.receiptLines div {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 120px 130px 130px;
+}
+
+.entityRow {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.entityRow > div,
+.entityRow > div:last-child,
+.costCard {
+  display: grid;
+  gap: 4px;
+}
+
+.entityRow span,
+.costCard span,
+.costCard small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.costGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.emptyBox {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  min-height: 96px;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.page select,
+.supplierDialog textarea {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
+.page select {
+  min-height: 42px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.supplierDialog textarea {
+  min-height: 90px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.page select:focus,
+.supplierDialog textarea:focus {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: 0;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 24, 39, 0.48);
+}
+
+.purchaseDialog,
+.supplierDialog {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  width: min(1120px, calc(100vw - 32px));
+}
+
+.supplierDialog {
+  width: min(940px, calc(100vw - 32px));
+}
+
+.dialogHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 18px 20px;
+}
+
+.dialogHeader h2 {
+  margin: 4px 0 0;
+}
+
+.closeButton {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 20px;
+  height: 36px;
+  width: 36px;
+}
+
+.dialogBody {
+  display: grid;
+  gap: 16px;
+  overflow: auto;
+  padding: 18px 20px;
+}
+
+.purchaseFields,
+.supplierGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.supplierGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wideField {
+  grid-column: 1 / -1;
+}
+
+.itemsToolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.itemsToolbar h3 {
+  margin: 0;
+}
+
+.removeButton {
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fff;
+  color: #dc2626;
+  cursor: pointer;
+  font-weight: 900;
+  height: 34px;
+  width: 34px;
+}
+
+.removeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.purchaseTotal {
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+}
+
+.dialogFooter {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px 18px;
+}
+
+.dialogFooter span {
+  flex: 1;
+}
+
+.dangerButton {
+  border: 1px solid #fca5a5;
+  border-radius: 7px;
+  background: #fff;
+  color: #dc2626;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.supplierRow {
+  align-items: center;
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 90px minmax(0, 1fr) 150px 130px auto;
+  text-align: left;
+  width: 100%;
+}
+
+
+.fiscalNotice {
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.fiscalNotice span {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.fiscalForm {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(190px, 1fr) minmax(170px, 0.8fr) 120px auto;
+}
+
+.documentRow {
+  align-items: center;
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto 110px 70px;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.documentRow:hover,
+.selectedRow {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.documentRow div,
+.itemMeta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.documentRow span,
+.itemMeta span,
+.reviewSummary span,
+.mappingStatus span,
+.confirmLine span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.compactForm,
-.purchaseForm,
-.receiptBox {
-  display: grid;
-  gap: 10px;
-  align-items: end;
-}
-
-.compactForm {
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.85fr) auto;
-}
-
-.purchaseForm {
-  grid-template-columns: minmax(132px, 1fr) minmax(132px, 1fr) minmax(96px, 0.72fr) minmax(108px, 0.72fr);
-}
-
-.purchaseForm > button {
-  grid-column: 1 / span 2;
-  justify-self: start;
-  min-width: 168px;
-}
-
-.receiptBox {
-  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.7fr) auto;
-  padding: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.7);
-}
-
-.receiptSummary {
-  display: grid;
-  gap: 2px;
-}
-
-.receiptSummary small {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.receiptSummary span {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.entityList {
-  display: grid;
-  gap: 8px;
-  max-height: 300px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.entityRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 8px;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.entityRow > div:first-child,
-.entityButton {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.entityRow span,
-.entityButton span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.selectedEntityRow {
-  border-color: rgba(59, 130, 246, 0.54);
-  box-shadow: inset 3px 0 0 rgba(59, 130, 246, 0.72);
-  background: rgba(239, 246, 255, 0.82);
-}
-
-.entityButton {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  padding: 0;
-  cursor: pointer;
-}
-
-.rowActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.rowActions strong {
+.documentRow div span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.emptyCompact {
-  border: 1px dashed rgba(100, 116, 139, 0.36);
-  border-radius: 8px;
-  padding: 18px;
-  min-height: 86px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 6px;
-  text-align: center;
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.72), rgba(241, 245, 249, 0.52));
-  color: var(--muted);
-}
-
-.emptyCompact strong {
-  color: var(--text);
-}
-
-.lineTable {
-  display: grid;
-  gap: 6px;
-}
-
-.lineRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 100px 110px 110px;
-  gap: 10px;
-  align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  padding: 9px 2px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.lineRow strong {
-  color: var(--text);
-}
-
-.costGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.costCard {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 8px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.82);
+.reviewSummary {
   display: grid;
   gap: 10px;
-}
-
-.costCard > strong {
-  min-height: 36px;
-}
-
-.costCard div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.costCard b {
-  color: var(--text);
-}
-
-.costCard small {
-  color: var(--muted);
-}
-
-.formRow {
-  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
 }
 
-.list {
-  display: grid;
-  gap: 8px;
-  max-height: 320px;
-  overflow: auto;
-}
-
-.row {
+.reviewSummary div {
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 8px;
+  background: #f8fafc;
   display: grid;
   gap: 6px;
+  padding: 12px;
 }
 
-.rowButton {
-  appearance: none;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
+.reviewSummary strong {
+  color: var(--text);
+  font-size: 18px;
 }
 
-.selectedRow {
-  border-color: rgba(245, 158, 11, 0.58);
-  background: rgba(245, 158, 11, 0.08);
-}
-
-.meta {
+.mappingStatus {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
-  color: var(--muted);
-  font-size: 12px;
+  gap: 8px;
 }
 
-.actions {
+.fiscalItemList {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.fiscalItemRow {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.itemMeta strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.itemControls {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.45fr) auto;
+}
+
+.inlineActions {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+.confirmLine {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-top: 12px;
 }
 
 @media (max-width: 980px) {
-  .kpiGrid { grid-template-columns: 1fr; }
-  .fiscalGrid { grid-template-columns: 1fr; }
-  .operationsGrid { grid-template-columns: 1fr; }
-  .costGrid { grid-template-columns: 1fr; }
-  .grid { grid-template-columns: 1fr; }
-  .formRow,
-  .compactForm,
-  .purchaseForm,
-  .receiptBox,
-  .fiscalAssistBox,
-  .importForm,
-  .mappingBar,
-  .documentSummary,
-  .fiscalItem,
-  .lineRow {
+  .dataHeader,
+  .metricGrid,
+  .supportGrid,
+  .purchaseFields,
+  .supplierGrid,
+  .receiptForm,
+  .fiscalForm,
+  .reviewSummary,
+  .itemControls,
+  .documentRow,
+  .receiptLines div,
+  .entityRow,
+  .costGrid,
+  .supplierRow {
     grid-template-columns: 1fr;
   }
-  .purchaseForm > button {
+
+  .widePanel,
+  .wideField {
     grid-column: auto;
-    justify-self: stretch;
-    min-width: 0;
   }
-  .entityRow {
-    grid-template-columns: 1fr;
-  }
-  .rowActions {
-    justify-content: flex-start;
-  }
-  .documentButton {
-    grid-template-columns: 1fr;
-  }
-  .documentStats,
-  .itemNumbers {
-    justify-items: start;
-    justify-content: flex-start;
+
+  .confirmLine,
+  .dialogFooter {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

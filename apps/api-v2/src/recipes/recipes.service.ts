@@ -52,6 +52,8 @@ export class RecipesService {
       yieldQuantity: number;
       yieldUnit: string;
       lossPercent?: number | null;
+      preparationSummary?: string | null;
+      notes?: string | null;
       items: RecipeItemInput[];
     },
   ) {
@@ -66,6 +68,8 @@ export class RecipesService {
         yieldQuantity: input.yieldQuantity,
         yieldUnit: input.yieldUnit.trim(),
         lossPercent: input.lossPercent ?? null,
+        preparationSummary: this.cleanNullable(input.preparationSummary),
+        notes: this.cleanNullable(input.notes),
         items: {
           create: input.items.map((item) => ({
             stockItemId: item.stockItemId,
@@ -96,6 +100,8 @@ export class RecipesService {
       yieldQuantity: number;
       yieldUnit: string;
       lossPercent: number | null;
+      preparationSummary: string | null;
+      notes: string | null;
       active: boolean;
     }>,
   ) {
@@ -122,6 +128,10 @@ export class RecipesService {
         ...(input.yieldQuantity !== undefined ? { yieldQuantity: input.yieldQuantity } : {}),
         ...(input.yieldUnit !== undefined ? { yieldUnit: input.yieldUnit.trim() } : {}),
         ...(input.lossPercent !== undefined ? { lossPercent: input.lossPercent } : {}),
+        ...(input.preparationSummary !== undefined
+          ? { preparationSummary: this.cleanNullable(input.preparationSummary) }
+          : {}),
+        ...(input.notes !== undefined ? { notes: this.cleanNullable(input.notes) } : {}),
         ...(input.active !== undefined ? { active: input.active } : {}),
       },
       include: {
@@ -131,7 +141,9 @@ export class RecipesService {
       },
     });
 
-    return this.mapRecipeWithCost(updated);
+    const mapped = this.mapRecipeWithCost(updated);
+    await this.syncProductsCostFromRecipe(ctx.companyId, recipeId, mapped.cost.costPerYieldUnit);
+    return mapped;
   }
 
   async replaceRecipeItems(ctx: RequestContext, recipeId: string, items: RecipeItemInput[]) {
@@ -160,7 +172,9 @@ export class RecipesService {
       });
     });
 
-    return this.getRecipeById(ctx, recipeId);
+    const updated = await this.getRecipeById(ctx, recipeId);
+    await this.syncProductsCostFromRecipe(ctx.companyId, recipeId, updated.cost.costPerYieldUnit);
+    return updated;
   }
 
   async listProductCompositions(ctx: RequestContext) {
@@ -245,11 +259,17 @@ export class RecipesService {
     if (recipeId) {
       const recipe = await this.prisma.recipe.findUnique({
         where: { id: recipeId },
-        select: { id: true, companyId: true },
+        include: {
+          items: {
+            include: { stockItem: true },
+          },
+        },
       });
       if (!recipe || recipe.companyId !== ctx.companyId) {
         throw new BadRequestException('recipeId invalido para a empresa atual.');
       }
+      const mapped = this.mapRecipeWithCost(recipe);
+      await this.syncProductsCostFromRecipe(ctx.companyId, recipeId, mapped.cost.costPerYieldUnit, [productId]);
     }
 
     await this.prisma.product.update({
@@ -754,7 +774,16 @@ export class RecipesService {
 
     const replacement = await this.prisma.stockItem.findUnique({
       where: { id: toStockItemId },
-      select: { id: true, companyId: true, name: true, averageCost: true },
+      select: {
+        id: true,
+        companyId: true,
+        name: true,
+        averageCost: true,
+        stockUnit: true,
+        purchaseUnit: true,
+        productionUnit: true,
+        conversionFactor: true,
+      },
     });
     if (!replacement || replacement.companyId !== ctx.companyId) {
       throw new BadRequestException('Insumo substituto invalido para a empresa atual.');
@@ -768,9 +797,11 @@ export class RecipesService {
     const current = this.mapRecipeWithCost(recipe);
     const currentGrossCost = current.cost.grossCost;
 
-    const currentItemCost = Number(item.quantity) * Number(item.stockItem?.averageCost ?? 0);
+    const currentItemQuantity = this.quantityInStockUnit(item.quantity, item.unit, item.stockItem);
+    const currentItemCost = currentItemQuantity * Number(item.stockItem?.averageCost ?? 0);
     const newQuantity = Number(item.quantity) * ratio;
-    const replacementItemCost = newQuantity * Number(replacement.averageCost ?? 0);
+    const replacementQuantity = this.quantityInStockUnit(newQuantity, item.unit, replacement);
+    const replacementItemCost = replacementQuantity * Number(replacement.averageCost ?? 0);
     const newGrossCost = currentGrossCost - currentItemCost + replacementItemCost;
     const lossMultiplier = 1 + Number(recipe.lossPercent ?? 0) / 100;
     const newTotalCost = newGrossCost * lossMultiplier;
@@ -910,11 +941,25 @@ export class RecipesService {
     }
   }
 
+  private async syncProductsCostFromRecipe(companyId: string, recipeId: string, costPerYieldUnit: number, productIds?: string[]) {
+    const parsedCost = Number(costPerYieldUnit ?? 0);
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) return;
+    const costPrice = Number(parsedCost.toFixed(2));
+    await this.prisma.product.updateMany({
+      where: {
+        companyId,
+        ...(productIds?.length ? { id: { in: productIds } } : { recipeId }),
+      },
+      data: { costPrice },
+    });
+  }
+
   private mapRecipeWithCost(recipe: any) {
-    const grossCost = recipe.items.reduce((acc: number, item: any) => {
+    const items = Array.isArray(recipe.items) ? recipe.items : [];
+    const grossCost = items.reduce((acc: number, item: any) => {
       if (!item.affectsCost) return acc;
       const avgCost = Number(item.stockItem?.averageCost ?? 0);
-      const quantity = Number(item.quantity ?? 0);
+      const quantity = this.quantityInStockUnit(item.quantity, item.unit, item.stockItem);
       return acc + avgCost * quantity;
     }, 0);
 
@@ -932,27 +977,90 @@ export class RecipesService {
       yieldQuantity: Number(recipe.yieldQuantity),
       yieldUnit: recipe.yieldUnit,
       lossPercent: recipe.lossPercent === null ? null : Number(recipe.lossPercent),
+      preparationSummary: recipe.preparationSummary ?? null,
+      notes: recipe.notes ?? null,
       active: recipe.active,
       cost: {
         grossCost,
         totalCost,
         costPerYieldUnit,
       },
-      items: recipe.items.map((item: any) => ({
+      items: items.map((item: any) => ({
         id: item.id,
         stockItemId: item.stockItemId,
         stockItemName: item.stockItem?.name ?? null,
         quantity: Number(item.quantity),
         unit: item.unit,
+        stockQuantity: this.quantityInStockUnit(item.quantity, item.unit, item.stockItem),
+        stockUnit: item.stockItem?.stockUnit ?? null,
         optional: item.optional,
         affectsStock: item.affectsStock,
         affectsCost: item.affectsCost,
         averageCost: Number(item.stockItem?.averageCost ?? 0),
-        totalCost: Number(item.quantity) * Number(item.stockItem?.averageCost ?? 0),
+        totalCost: this.quantityInStockUnit(item.quantity, item.unit, item.stockItem) * Number(item.stockItem?.averageCost ?? 0),
       })),
       createdAt: recipe.createdAt,
       updatedAt: recipe.updatedAt,
     };
   }
-}
 
+  private quantityInStockUnit(quantityValue: unknown, unitValue: unknown, stockItem: any) {
+    const quantity = Number(quantityValue ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+    const fromUnit = this.normalizeUnit(unitValue);
+    const stockUnit = this.normalizeUnit(stockItem?.stockUnit ?? stockItem?.productionUnit ?? stockItem?.purchaseUnit);
+    if (!fromUnit || !stockUnit || fromUnit === stockUnit) return quantity;
+
+    const converted = this.convertBasicUnit(quantity, fromUnit, stockUnit);
+    if (converted !== null) return converted;
+
+    const purchaseUnit = this.normalizeUnit(stockItem?.purchaseUnit);
+    const conversionFactor = Number(stockItem?.conversionFactor ?? 1);
+    if (purchaseUnit && fromUnit === purchaseUnit && Number.isFinite(conversionFactor) && conversionFactor > 0) {
+      return quantity * conversionFactor;
+    }
+
+    return quantity;
+  }
+
+  private convertBasicUnit(quantity: number, fromUnit: string, toUnit: string) {
+    const mass: Record<string, number> = { mg: 0.001, g: 1, kg: 1000, t: 1000000 };
+    const volume: Record<string, number> = { ml: 1, l: 1000 };
+    const count: Record<string, number> = { un: 1, dz: 12 };
+    for (const group of [mass, volume, count]) {
+      if (group[fromUnit] && group[toUnit]) return (quantity * group[fromUnit]) / group[toUnit];
+    }
+    return null;
+  }
+
+  private normalizeUnit(value: unknown) {
+    const unit = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const aliases: Record<string, string> = {
+      quilo: 'kg',
+      kilos: 'kg',
+      quilograma: 'kg',
+      quilogramas: 'kg',
+      grama: 'g',
+      gramas: 'g',
+      litro: 'l',
+      litros: 'l',
+      unidade: 'un',
+      unidades: 'un',
+      und: 'un',
+      duzia: 'dz',
+      duzias: 'dz',
+    };
+    return aliases[unit] ?? unit;
+  }
+
+  private cleanNullable(value: unknown) {
+    if (typeof value !== 'string') return null;
+    const cleaned = value.trim();
+    return cleaned ? cleaned : null;
+  }
+}

@@ -40,8 +40,9 @@ export function ProductFilters({
     <Card className={styles.filters}>
       <Input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar produto..." />
       <Select value={category} onChange={(event) => onCategoryChange(event.target.value)}>
+        {categories.length === 0 ? <option value="">Sem categorias</option> : null}
         {categories.map((item) => (
-          <option key={item.name} value={item.name}>{item.name === 'all' ? 'Todas categorias' : item.name}</option>
+          <option key={item.name} value={item.name}>{item.name}</option>
         ))}
       </Select>
       <Select value={availability} onChange={(event) => onAvailabilityChange(event.target.value as AvailabilityFilter)}>

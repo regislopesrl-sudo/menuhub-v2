@@ -47,6 +47,147 @@
   font-weight: 700;
 }
 
+.kdsCommandBar {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 46px minmax(240px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.homeButton {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #eef3f8;
+  color: #334155;
+  font-size: 22px;
+  font-weight: 950;
+  text-decoration: none;
+}
+
+.orderSearch {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 750;
+}
+
+.orderSearch::placeholder {
+  color: #94a3b8;
+}
+
+.kdsCounters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(68px, auto));
+  gap: 8px;
+}
+
+.kdsCounters span {
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.kdsCounters span:first-child {
+  background: #dcfce7;
+}
+
+.kdsCounters span:nth-child(2) {
+  background: #e0f2fe;
+}
+
+.kdsCounters span:nth-child(3) {
+  background: #fef3c7;
+}
+
+.kdsCounters strong {
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.queueFacets {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  border-radius: 12px;
+}
+
+.queueFacets button {
+  min-width: 0;
+  min-height: 62px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.queueFacets button:hover,
+.queueFacetActive {
+  border-color: #0f766e !important;
+  background: #ecfdf5 !important;
+  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
+}
+
+.queueFacets span {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.queueFacets strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queueFacets small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .errorBox {
   border: 1px solid #fca5a5;
   background: linear-gradient(135deg, #fff1f2, #fff7f7);
@@ -162,6 +303,10 @@
   gap: 14px;
 }
 
+.boardAligned .columnContent {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
 .column {
   padding: 16px;
   display: grid;
@@ -240,6 +385,43 @@
   font-size: 14px;
 }
 
+.flowChecklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.flowChecklist span {
+  min-width: 0;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  padding: 8px 9px;
+  display: grid;
+  gap: 2px;
+  background: #f8fafc;
+}
+
+.flowChecklist small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flowChecklist strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .slaTrack {
   height: 10px;
   overflow: hidden;
@@ -298,6 +480,14 @@
   font-weight: 700;
 }
 
+.actionHint {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .actionBtn {
   min-height: 52px;
   font-size: 16px;
@@ -309,7 +499,8 @@
     grid-template-columns: 1fr;
   }
 
-  .summaryGrid {
+  .summaryGrid,
+  .queueFacets {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -319,7 +510,13 @@
 }
 
 @media (max-width: 640px) {
-  .summaryGrid {
+  .summaryGrid,
+  .queueFacets,
+  .kdsCommandBar {
+    grid-template-columns: 1fr;
+  }
+
+  .kdsCounters {
     grid-template-columns: 1fr;
   }
 }
@@ -392,6 +589,105 @@
   margin-top: 14px;
 }
 
+.settingsBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 270;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.54);
+  backdrop-filter: blur(7px);
+}
+
+.settingsModal {
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 10px;
+  padding: 0;
+}
+
+.settingsHeader {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.settingsHeader h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.tipBox {
+  margin: 18px 20px;
+  border: 1px solid #67e8f9;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+  background: #ecfeff;
+  color: #155e75;
+}
+
+.tipBox strong {
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.settingsGroup {
+  padding: 10px 20px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.settingsGroup h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.settingsGroup p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  padding: 10px 13px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.chipActive {
+  border-color: #7dd3fc;
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+.settingsFooter {
+  border-top: 1px solid #e2e8f0;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media print {
   .page > :not(.ticketBackdrop),
   .ticketHeader button,
@@ -411,5 +707,23 @@
     max-height: none;
     box-shadow: none;
     border: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .kdsCommandBar {
+    grid-template-columns: 1fr;
+  }
+
+  .homeButton {
+    width: 100%;
+  }
+
+  .kdsCounters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .flowChecklist {
+    grid-template-columns: 1fr;
   }
 }

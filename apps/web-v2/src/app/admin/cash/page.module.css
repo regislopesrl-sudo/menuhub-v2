@@ -1,0 +1,742 @@
+.page {
+  width: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 12px 18px 40px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.headerStatus {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.commandBar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.commandBar a,
+.commandBar button {
+  min-width: 0;
+  min-height: 66px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  text-decoration: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.commandBar a:hover,
+.commandBar button:hover,
+.commandActive {
+  border-color: #0f766e !important;
+  background: #ecfdf5 !important;
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
+}
+
+.commandBar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+  transform: none;
+  box-shadow: none;
+}
+
+.commandBar strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commandBar small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionPanel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(420px, 1.8fr) auto;
+  gap: 12px;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, #fff 0%, #f8fbff 58%, #eef7f3 100%);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.sessionIntro {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+}
+
+.sessionIntro span,
+.panelTitle span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.sessionIntro h2,
+.panelTitle h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sessionIntro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.sessionStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sessionStats > div,
+.closeMetrics > div,
+.operatorBox {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sessionStats small,
+.closeMetrics small,
+.operatorBox span,
+.operatorBox small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sessionStats strong,
+.closeMetrics strong,
+.operatorBox strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openInline,
+.quickActions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.openInline label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.openInline input {
+  width: 180px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metricCard {
+  padding: 14px;
+  border-radius: 14px;
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+}
+
+.metricCard span,
+.sectionCard small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.metricCard strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.metricCard small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.workspace {
+  padding: 14px;
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.paymentSummaryPanel {
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.paymentSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.paymentSummaryGrid > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(15, 118, 110, 0.08), transparent 32%),
+    #ffffff;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.paymentSummaryGrid small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.paymentSummaryGrid strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paymentSummaryGrid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.summaryEmpty {
+  grid-column: 1 / -1;
+}
+
+.panelBlock,
+.closePanel {
+  display: grid;
+  gap: 12px;
+}
+
+.panelTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 220px 200px;
+  gap: 10px;
+  align-items: center;
+}
+
+.tabRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.tabRow button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 16px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.tabRow .activeTab {
+  color: #fff;
+  border-color: #0f766e;
+  background: #0f766e;
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.18);
+}
+
+.conferenceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.75fr);
+  gap: 12px;
+}
+
+.closePanel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.closeMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.closeChecklist {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.closeChecklist > div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #f8fafc;
+}
+
+.closeChecklist strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.closeChecklist span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.checklistOk {
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+}
+
+.checklistOk strong,
+.checklistOk span {
+  color: #166534 !important;
+}
+
+.checklistPending {
+  border-color: #fed7aa !important;
+  background: #fff7ed !important;
+}
+
+.checklistPending strong,
+.checklistPending span {
+  color: #9a3412 !important;
+}
+
+.closeBlockReason {
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.closePanel label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.closePanel textarea {
+  min-height: 94px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 750;
+}
+
+.closeActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.operationButtons,
+.openPanel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.openPanel {
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.openPanel h2,
+.sectionCard h2,
+.modalHeader h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.openPanel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.openPanel input {
+  max-width: 220px;
+}
+
+.tableShell {
+  width: 100%;
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.cashTable {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.cashTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 11px 12px;
+  background: #eaf5f1;
+  color: #073b36;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.cashTable td {
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 750;
+  vertical-align: middle;
+}
+
+.cashTable td strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.cashTable td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.emptyCell {
+  height: 120px;
+  text-align: center;
+  color: var(--muted) !important;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sectionCard {
+  padding: 14px;
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.paymentGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paymentGrid > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #fff;
+}
+
+.paymentGrid strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.neutralValue {
+  color: var(--text) !important;
+}
+
+.successValue {
+  color: #047857 !important;
+}
+
+.dangerValue {
+  color: #b91c1c !important;
+}
+
+.error {
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff1f2;
+  color: #9f1239;
+  font-weight: 900;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: min(760px, 92vh);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.24);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modalHeader button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.closeGrid {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.closeGrid label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.closeGrid textarea {
+  min-height: 92px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 750;
+}
+
+.closeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.closeRow span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.closeRow strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+@media (max-width: 1100px) {
+  .commandBar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sessionPanel,
+  .conferenceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sessionStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metricsGrid,
+  .detailGrid,
+  .paymentGrid,
+  .closeChecklist {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 10px;
+  }
+
+  .sessionStats,
+  .commandBar,
+  .closeMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .openInline,
+  .quickActions,
+  .closeActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .openInline input {
+    width: 100%;
+  }
+
+  .metricsGrid,
+  .detailGrid,
+  .paymentGrid,
+  .closeChecklist {
+    grid-template-columns: 1fr;
+  }
+
+  .openPanel {
+    align-items: stretch;
+  }
+
+  .openPanel input {
+    max-width: none;
+  }
+
+  .tabRow,
+  .operationButtons,
+  .modalActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

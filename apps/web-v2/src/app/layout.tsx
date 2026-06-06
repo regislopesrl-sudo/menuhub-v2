@@ -28,8 +28,14 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body className={inter.variable}>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={inter.variable} suppressHydrationWarning>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(() => { try { const embedded = window.self !== window.top || new URLSearchParams(window.location.search).get('embed') === '1'; if (embedded) { document.documentElement.classList.add('embedded-mode'); document.body.classList.add('embedded-mode'); } } catch (_) {} })();",
+          }}
+        />
         <PwaRegister />
         <AppShell>
           <TopNav />

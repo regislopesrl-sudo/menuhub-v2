@@ -184,18 +184,43 @@ describe('KdsService', () => {
     expect(ordersEventsMock.emitOrderStatusUpdated).toHaveBeenCalledTimes(1);
   });
 
-  it('updates status to FINALIZED on bump', async () => {
+  it('updates delivery order to WAITING_DISPATCH on bump', async () => {
+    (ordersServiceMock.getById as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'delivery',
+    });
     (ordersServiceMock.updateStatus as jest.Mock).mockResolvedValue({
       ...orderDetail,
-      status: 'FINALIZED',
+      status: 'WAITING_DISPATCH',
     });
 
     const result = await service.bumpOrder('ord-1', ctx);
 
-    expect(ordersServiceMock.updateStatus).toHaveBeenCalledWith('ord-1', 'FINALIZED', ctx, {
+    expect(ordersServiceMock.updateStatus).toHaveBeenCalledWith('ord-1', 'WAITING_DISPATCH', ctx, {
       emitEvent: false,
     });
-    expect(result.status).toBe('FINALIZED');
+    expect(result.status).toBe('WAITING_DISPATCH');
+    expect(ordersEventsMock.emitOrderStatusUpdated).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates counter order to WAITING_PICKUP on bump', async () => {
+    (ordersServiceMock.getById as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'PDV',
+      deliveryAddress: null,
+    });
+    (ordersServiceMock.updateStatus as jest.Mock).mockResolvedValue({
+      ...orderDetail,
+      channel: 'PDV',
+      status: 'WAITING_PICKUP',
+    });
+
+    const result = await service.bumpOrder('ord-1', ctx);
+
+    expect(ordersServiceMock.updateStatus).toHaveBeenCalledWith('ord-1', 'WAITING_PICKUP', ctx, {
+      emitEvent: false,
+    });
+    expect(result.status).toBe('WAITING_PICKUP');
     expect(ordersEventsMock.emitOrderStatusUpdated).toHaveBeenCalledTimes(1);
   });
 

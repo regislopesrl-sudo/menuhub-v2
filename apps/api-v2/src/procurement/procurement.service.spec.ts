@@ -13,11 +13,11 @@ describe('ProcurementService', () => {
     stockItem: { findUnique: jest.fn(), update: jest.fn() },
     stockBatch: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     stockLocationBalance: { upsert: jest.fn() },
-    stockMovement: { create: jest.fn(), findFirst: jest.fn() },
+    stockMovement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     purchaseDocument: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     purchaseDocumentItem: { update: jest.fn(), findMany: jest.fn() },
     supplierItemMapping: { create: jest.fn() },
-    accountsPayable: { create: jest.fn(), findMany: jest.fn() },
+    accountsPayable: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
     $transaction: jest.fn(),
   } as any;
   const service = new ProcurementService(prisma);
@@ -289,6 +289,81 @@ describe('ProcurementService', () => {
     });
   });
 
+  it('calcula custo medio usando entradas fiscais e recebimentos confirmados', async () => {
+    prisma.stockItem.findUnique.mockResolvedValue({
+      id: 'st1',
+      companyId: 'company-demo',
+      name: 'Queijo mussarela',
+      averageCost: 12,
+    });
+    prisma.stockMovement.findMany.mockResolvedValue([
+      { stockItemId: 'st1', quantity: 2, unitCost: 10, totalCost: 20 },
+      { stockItemId: 'st1', quantity: 3, unitCost: 14, totalCost: 42 },
+    ]);
+
+    const result = await service.getAverageCost(ctx, 'st1');
+
+    expect(result).toEqual({
+      stockItemId: 'st1',
+      stockItemName: 'Queijo mussarela',
+      currentAverageCost: 12,
+      weightedAverageCost: 12.4,
+      samples: 2,
+    });
+    expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        branchId: 'branch-demo',
+        movementType: 'ENTRY',
+        sourceModule: { in: ['procurement_receipt', 'purchase_fiscal_document'] },
+      }),
+    }));
+  });
+
+  it('resume historico de custos com nota fiscal confirmada', async () => {
+    const fiscalCreatedAt = new Date('2026-05-20T10:00:00.000Z');
+    prisma.stockMovement.findMany.mockResolvedValue([
+      {
+        stockItemId: 'st1',
+        quantity: 5,
+        unitCost: 8,
+        totalCost: 40,
+        createdAt: fiscalCreatedAt,
+        sourceModule: 'purchase_fiscal_document',
+        sourceId: 'pd1',
+        stockItem: { id: 'st1', name: 'Farinha', code: 'FAR', stockUnit: 'KG', purchaseUnit: 'KG' },
+      },
+    ]);
+    prisma.goodsReceipt.findMany.mockResolvedValue([]);
+    prisma.purchaseDocument.findMany.mockResolvedValue([
+      {
+        id: 'pd1',
+        supplierId: 'sup1',
+        issuerName: 'Fornecedor Fiscal',
+        accessKey: '35260512345678000190650010000012341000012345',
+        emittedAt: fiscalCreatedAt,
+        confirmedAt: fiscalCreatedAt,
+        createdAt: fiscalCreatedAt,
+      },
+    ]);
+    prisma.supplier.findMany.mockResolvedValue([{ id: 'sup1', name: 'Fornecedor A' }]);
+
+    const result = await service.getPurchaseHistorySummary(ctx, 'st1');
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        stockItemId: 'st1',
+        stockItemName: 'Farinha',
+        stockUnit: 'KG',
+        samples: 1,
+        totalQuantity: 5,
+        totalCost: 40,
+        weightedAverageCost: 8,
+        lastSupplierName: 'Fornecedor A',
+        lastReceivedAt: fiscalCreatedAt,
+      }),
+    ]);
+  });
+
   it('bloqueia confirmacao com item nao mapeado', async () => {
     prisma.purchaseDocument.findFirst.mockResolvedValue({
       id: 'pd1',
@@ -300,4 +375,3 @@ describe('ProcurementService', () => {
     await expect(service.confirmPurchaseDocumentStockEntry(ctx, 'pd1')).rejects.toBeInstanceOf(BadRequestException);
   });
 });
-

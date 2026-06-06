@@ -24,6 +24,7 @@ describe('RecipesService', () => {
         findMany: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       productionOrder: {
         findMany: jest.fn(),
@@ -37,6 +38,7 @@ describe('RecipesService', () => {
       },
       $transaction: jest.fn(async (fn: any) => fn(prisma)),
     } as any;
+    prisma.product.updateMany.mockResolvedValue({ count: 0 });
 
     return { prisma, service: new RecipesService(prisma) };
   }
@@ -448,4 +450,3 @@ describe('RecipesService', () => {
     expect(result.items[0].health).toBe('critical');
   });
 });
-

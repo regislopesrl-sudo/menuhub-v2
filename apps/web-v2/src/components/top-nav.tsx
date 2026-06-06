@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import styles from './top-nav.module.css';
-import { useModules } from '@/features/modules/use-modules';
 import { getAuthSession } from '@/lib/auth-session';
 import { logoutCurrentSession } from '@/lib/auth-api';
 import { readJwtPayload } from '@/lib/auth-claims';
@@ -23,24 +22,29 @@ type TopNavLink = {
   external?: boolean;
 };
 
+const ADMIN_ENTRY_HREF = '/admin/stock?section=alerts';
+
 export function TopNav() {
   const pathname = usePathname();
   const isPublicDeliveryRoute = pathname === '/delivery' || pathname.startsWith('/delivery/');
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
   const [mounted, setMounted] = useState(false);
+  const [isEmbedded, setIsEmbedded] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [userLabel, setUserLabel] = useState('');
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
-  const modules = useModules({ companyId, branchId, userRole: 'admin' });
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    setIsEmbedded(window.self !== window.top || new URLSearchParams(window.location.search).get('embed') === '1');
+  }, [pathname]);
 
   const session = mounted ? getAuthSession() : null;
+  const showAdminChrome = isAdminRoute || Boolean(session?.accessToken);
   const tokenContext = useMemo(() => {
     if (!session?.accessToken) {
-      return { companyId, branchId, role: 'user' };
+      return { companyId, branchId, role: isAdminRoute ? 'admin' : 'user' };
     }
     const payload = readJwtPayload(session.accessToken);
     return {
@@ -48,11 +52,13 @@ export function TopNav() {
       branchId: String(payload?.branchId ?? branchId ?? ''),
       role: String(payload?.role ?? 'user'),
     };
-  }, [branchId, companyId, session?.accessToken]);
+  }, [branchId, companyId, isAdminRoute, session?.accessToken]);
 
   useEffect(() => {
-    if (!mounted || !session?.accessToken) {
-      setUserLabel('');
+    if (!mounted) return;
+
+    if (!session?.accessToken) {
+      setUserLabel(isAdminRoute ? 'Usuario: Admin MenuHub' : '');
       setStoreName('');
       return;
     }
@@ -80,33 +86,35 @@ export function TopNav() {
     return () => {
       cancelled = true;
     };
-  }, [mounted, session?.accessToken, tokenContext]);
+  }, [isAdminRoute, mounted, session?.accessToken, tokenContext]);
 
   const contextLabel = useMemo(() => {
-    if (!session?.accessToken) return null;
+    if (!showAdminChrome) return null;
     const company = tokenContext.companyId || '-';
     const branch = tokenContext.branchId || '-';
     const role = tokenContext.role || 'user';
     return `Empresa: ${company} | Filial: ${branch} | Perfil: ${role}`;
-  }, [session?.accessToken, tokenContext]);
+  }, [showAdminChrome, tokenContext]);
 
-  const links = useMemo(
+  const links = useMemo<TopNavLink[]>(
     () =>
-      [
-    { href: '/admin', label: 'Painel' },
-    mounted && modules.isEnabled('pdv') ? { href: '/admin/pdv', label: 'PDV' } : null,
-    mounted && modules.isEnabled('delivery') ? { href: '/delivery', label: 'Delivery', external: true } : null,
-    session?.accessToken ? { href: '/admin/context', label: 'Contexto' } : null,
-      ].filter(Boolean) as TopNavLink[],
-    [mounted, modules, session?.accessToken],
+      showAdminChrome
+        ? [
+            { href: ADMIN_ENTRY_HREF, label: 'Admin' },
+            { href: '/admin/pdv', label: 'PDV' },
+            { href: '/delivery', label: 'Delivery', external: true },
+            { href: '/admin/context', label: 'Contexto' },
+          ]
+        : [{ href: ADMIN_ENTRY_HREF, label: 'Admin' }],
+    [showAdminChrome],
   );
 
-  if (isPublicDeliveryRoute) return null;
+  if (pathname === '/' || isPublicDeliveryRoute || isAdminRoute || !mounted || isEmbedded) return null;
 
   return (
-    <header className={styles.wrap}>
+    <header className={styles.wrap} data-top-nav="true">
       <nav className={styles.nav}>
-        <Link href="/admin" className={styles.brand}>
+        <Link href={ADMIN_ENTRY_HREF} className={styles.brand}>
           <span>MenuHub</span>
           {storeName ? <small>{storeName}</small> : null}
         </Link>
@@ -123,7 +131,7 @@ export function TopNav() {
               {item.label}
             </Link>
           ))}
-          {session?.accessToken ? (
+          {showAdminChrome ? (
             <button
               type="button"
               className={styles.link}
@@ -143,4 +151,3 @@ export function TopNav() {
     </header>
   );
 }
-

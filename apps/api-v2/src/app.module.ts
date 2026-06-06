@@ -21,12 +21,22 @@ import { ProcurementModule } from './procurement/procurement.module';
 import { TablesModule } from './tables/tables.module';
 import { FinanceModule } from './finance/finance.module';
 import { ReportsModule } from './reports/reports.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { LogisticsModule } from './logistics/logistics.module';
+import { CrmModule } from './crm/crm.module';
+import { PromotionsModule } from './promotions/promotions.module';
+import { CouponsModule } from './coupons/coupons.module';
+import { JobsModule } from './jobs/jobs.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { LocalPlatformModule } from './local/local-platform.module';
 import { HealthController } from './health.controller';
 import { AuthModuleV2 } from './auth/auth.module';
 import { AuthGuardV2 } from './common/auth.guard';
 import { PermissionGuardV2 } from './common/permission.guard';
+import { LocalRateLimitGuard } from './common/local-rate-limit.guard';
 import { RequireAdminGuard } from './common/require-admin.guard';
 import { RequireDeveloperGuard } from './common/require-developer.guard';
+import { PrismaService } from './database/prisma.service';
 
 @Module({
   imports: [
@@ -52,10 +62,20 @@ import { RequireDeveloperGuard } from './common/require-developer.guard';
     TablesModule,
     FinanceModule,
     ReportsModule,
+    NotificationsModule,
+    LogisticsModule,
+    CrmModule,
+    PromotionsModule,
+    CouponsModule,
+    JobsModule,
+    IntegrationsModule,
+    LocalPlatformModule,
   ],
   controllers: [HealthController],
   providers: [
+    PrismaService,
     { provide: APP_GUARD, useClass: AuthGuardV2 },
+    { provide: APP_GUARD, useClass: LocalRateLimitGuard },
     { provide: APP_GUARD, useClass: PermissionGuardV2 },
     RequireAdminGuard,
     RequireDeveloperGuard,

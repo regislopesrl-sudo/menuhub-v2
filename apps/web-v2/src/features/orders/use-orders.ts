@@ -22,6 +22,7 @@ export interface OrdersFilters {
   channel?: string;
   paymentStatus?: string;
   activeOnly?: boolean;
+  closedOnly?: boolean;
   delayedOnly?: boolean;
   search?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
@@ -85,6 +86,7 @@ export function useOrders(headers: OrdersHeaders) {
           channel: nextFilters.channel,
           paymentStatus: nextFilters.paymentStatus,
           activeOnly: nextFilters.activeOnly,
+          closedOnly: nextFilters.closedOnly,
           delayedOnly: nextFilters.delayedOnly,
           search: nextFilters.search,
           sortBy: nextFilters.sortBy,

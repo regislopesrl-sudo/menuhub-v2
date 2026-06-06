@@ -445,6 +445,7 @@ export class OrdersService {
       channel?: string;
       paymentStatus?: string;
       activeOnly?: boolean;
+      closedOnly?: boolean;
       delayedOnly?: boolean;
       search?: string;
       sortBy?: 'createdAt' | 'updatedAt' | 'total' | 'status';
@@ -457,14 +458,15 @@ export class OrdersService {
   ): Promise<OrderListResponseDto> {
     const page = Math.max(1, Number(query.page ?? 1) || 1);
     const limit = Math.min(100, Math.max(1, Number(query.limit ?? 20) || 20));
-    const createdFrom = query.createdFrom ? new Date(query.createdFrom) : undefined;
-    const createdTo = query.createdTo ? new Date(query.createdTo) : undefined;
+    const createdFrom = query.createdFrom ? this.parseDateBoundary(query.createdFrom, 'start') : undefined;
+    const createdTo = query.createdTo ? this.parseDateBoundary(query.createdTo, 'end') : undefined;
 
     const filters: FindManyOrdersFilters = {
       status: query.status,
       channel: query.channel,
       paymentStatus: query.paymentStatus,
       activeOnly: query.activeOnly,
+      closedOnly: query.closedOnly,
       delayedOnly: query.delayedOnly,
       search: query.search,
       sortBy: query.sortBy,
@@ -506,8 +508,8 @@ export class OrdersService {
     ctx: RequestContext,
     query: { dateFrom?: string; dateTo?: string; channel?: string },
   ) {
-    const createdFrom = query.dateFrom ? new Date(query.dateFrom) : new Date(new Date().setHours(0, 0, 0, 0));
-    const createdTo = query.dateTo ? new Date(query.dateTo) : new Date();
+    const createdFrom = query.dateFrom ? this.parseDateBoundary(query.dateFrom, 'start') : new Date(new Date().setHours(0, 0, 0, 0));
+    const createdTo = query.dateTo ? this.parseDateBoundary(query.dateTo, 'end') : new Date();
     const result = await this.orderRepository.findMany(ctx, {
       page: 1,
       limit: 100,
@@ -556,6 +558,18 @@ export class OrdersService {
     const activeDelayed = ['DRAFT', 'PENDING_CONFIRMATION', 'CONFIRMED', 'IN_PREPARATION'].includes(order.status);
     const delayLevel = activeDelayed && elapsedMinutes >= 45 ? 'urgent' : activeDelayed && elapsedMinutes >= 25 ? 'attention' : 'none';
     return { elapsedMinutes, isDelayed: delayLevel !== 'none', delayLevel } as const;
+  }
+
+  private parseDateBoundary(value: string, boundary: 'start' | 'end') {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`Data invalida: '${value}'.`);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      if (boundary === 'start') parsed.setHours(0, 0, 0, 0);
+      if (boundary === 'end') parsed.setHours(23, 59, 59, 999);
+    }
+    return parsed;
   }
 
   private resolveStatusUpdatedAt(order: any) {

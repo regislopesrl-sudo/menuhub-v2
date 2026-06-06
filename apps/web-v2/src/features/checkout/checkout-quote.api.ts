@@ -10,8 +10,17 @@ export interface CheckoutQuoteResponse {
   deliveryQuote: {
     available: boolean;
     areaId: string | null;
+    deliveryZoneId?: string | null;
     areaName: string | null;
     fee: number;
+    estimatedMinutesMin?: number | null;
+    estimatedMinutesMax?: number | null;
+    minimumOrder?: number | null;
+    courierFee?: number | null;
+    missingAmount?: number | null;
+    dynamicPricingApplied?: boolean;
+    dynamicPricingRuleName?: string | null;
+    requiresManualNegotiation?: boolean;
     distanceMeters: number | null;
     distanceKm: number | null;
     durationSeconds: number | null;
@@ -108,4 +117,3 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
-

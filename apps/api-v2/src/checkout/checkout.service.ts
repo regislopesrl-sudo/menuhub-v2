@@ -293,6 +293,18 @@ export class CheckoutService {
       pdvOrderType,
       commandReference: input.commandReference,
     });
+    const persistedPayment = !isDeferredPdvPayment && payment.status === 'APPROVED' && payment.method !== 'PIX'
+      ? await this.materializeImmediatePdvPayment(
+          {
+            orderId: persisted.id,
+            orderNumber: persisted.orderNumber,
+            branchId: persisted.branchId,
+            amount: checkoutResult.order.totals.total,
+            payment,
+          },
+          ctx,
+        )
+      : null;
     try {
       await this.ordersEvents.emitOrderCreated(
         {
@@ -312,7 +324,17 @@ export class CheckoutService {
       order: {
         ...checkoutResult.order,
         id: persisted.id,
+        orderNumber: persisted.orderNumber,
       },
+      payment: persistedPayment
+        ? {
+            ...checkoutResult.payment,
+            id: persistedPayment.id,
+            provider: persistedPayment.provider,
+            providerPaymentId: persistedPayment.providerTransactionId,
+            status: 'APPROVED',
+          }
+        : checkoutResult.payment,
     };
 
     if (!isDeferredPdvPayment && input.paymentMethod?.toUpperCase() === 'PIX') {
@@ -342,6 +364,164 @@ export class CheckoutService {
     }
 
     return response;
+  }
+
+  private async materializeImmediatePdvPayment(
+    input: {
+      orderId: string;
+      orderNumber: string;
+      branchId: string;
+      amount: number;
+      payment: CheckoutResult['payment'];
+    },
+    ctx: RequestContext,
+  ): Promise<{ id: string; provider: string; providerTransactionId: string }> {
+    const amount = Number(input.amount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Valor do pagamento PDV invalido.');
+    }
+
+    const paidAt = new Date();
+    const method = this.mapPersistedPdvPaymentMethod((input.payment as { method?: string }).method);
+    const settlementMethod = this.mapPdvSettlementMethod(method);
+    const transactionReference =
+      (input.payment as { transactionId?: string }).transactionId ?? `pdv_txn_${input.orderId}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const existingPayment = await tx.orderPayment.findFirst({
+        where: {
+          orderId: input.orderId,
+          provider: 'pdv-local',
+          transactionReference,
+        },
+        select: {
+          id: true,
+          provider: true,
+          providerTransactionId: true,
+        },
+      });
+
+      const payment = existingPayment ?? await tx.orderPayment.create({
+        data: {
+          orderId: input.orderId,
+          requestId: ctx.requestId,
+          paymentMethod: method,
+          amount,
+          status: 'PAID',
+          transactionReference,
+          provider: 'pdv-local',
+          providerTransactionId: transactionReference,
+          authorizedAt: paidAt,
+          capturedAt: paidAt,
+          paidAt,
+          metadata: {
+            channel: 'pdv',
+            source: 'checkout',
+          },
+        },
+        select: {
+          id: true,
+          provider: true,
+          providerTransactionId: true,
+        },
+      });
+
+      await tx.order.update({
+        where: { id: input.orderId },
+        data: {
+          paidAmount: amount,
+          paymentStatus: 'PAID',
+        },
+      });
+
+      const existingReceivable = await tx.accountsReceivable.findFirst({
+        where: {
+          orderId: input.orderId,
+          paymentId: payment.id,
+        },
+        select: { id: true },
+      });
+
+      if (!existingReceivable) {
+        const receivable = await tx.accountsReceivable.create({
+          data: {
+            branchId: input.branchId,
+            orderId: input.orderId,
+            paymentId: payment.id,
+            createdById: ctx.userId ?? null,
+            description: `Venda PDV ${input.orderNumber}`,
+            amount,
+            paidAmount: amount,
+            dueDate: paidAt,
+            expectedSettlementDate: paidAt,
+            settledAt: paidAt,
+            originType: 'PAYMENT',
+            originId: payment.id,
+            externalReference: transactionReference,
+            reasonCode: 'pdv_sale',
+            reasonText: 'Venda PDV presencial',
+            status: 'PAID',
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        const settlement = await tx.receivableSettlement.create({
+          data: {
+            accountsReceivableId: receivable.id,
+            branchId: input.branchId,
+            paymentId: payment.id,
+            createdById: ctx.userId ?? null,
+            settlementMethod,
+            amount,
+            settledAt: paidAt,
+            externalReference: transactionReference,
+            reasonCode: 'pdv_sale',
+            reasonText: 'Pagamento recebido no PDV',
+            requestId: ctx.requestId,
+            idempotencyKey: `pdv-receivable-settlement:${payment.id}`,
+            metadata: {
+              orderId: input.orderId,
+              paymentMethod: method,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        await tx.financialLedgerEntry.create({
+          data: {
+            branchId: input.branchId,
+            actorUserId: ctx.userId ?? null,
+            entryType: 'REVENUE',
+            status: 'POSTED',
+            originType: 'PAYMENT',
+            originId: payment.id,
+            accountsReceivableId: receivable.id,
+            receivableSettlementId: settlement.id,
+            paymentId: payment.id,
+            orderId: input.orderId,
+            amount,
+            reasonCode: 'pdv_sale',
+            reasonText: 'Venda PDV presencial',
+            requestId: ctx.requestId,
+            idempotencyKey: `pdv-ledger:${payment.id}`,
+            metadata: {
+              orderNumber: input.orderNumber,
+              paymentMethod: method,
+            },
+          },
+        });
+      }
+
+      return {
+        id: payment.id,
+        provider: payment.provider ?? 'pdv-local',
+        providerTransactionId: payment.providerTransactionId ?? transactionReference,
+      };
+    });
   }
 
   private async consumeStockIfCreatedInOperationalStatus(
@@ -599,5 +779,20 @@ export class CheckoutService {
     if (value === 'PIX') return 'PIX';
     if (value === 'CARD' || value === 'CREDIT_CARD') return 'CREDIT_CARD';
     return 'CASH';
+  }
+
+  private mapPersistedPdvPaymentMethod(method: string | undefined): 'PIX' | 'CARD' | 'CASH' | 'EXTERNAL' {
+    const value = method?.toUpperCase();
+    if (value === 'PIX') return 'PIX';
+    if (value === 'CARD' || value === 'CREDIT_CARD') return 'CARD';
+    if (value === 'CASH') return 'CASH';
+    return 'EXTERNAL';
+  }
+
+  private mapPdvSettlementMethod(method: 'PIX' | 'CARD' | 'CASH' | 'EXTERNAL'): 'PIX' | 'CARD' | 'CASH' | 'EXTERNAL' {
+    if (method === 'PIX') return 'PIX';
+    if (method === 'CARD') return 'CARD';
+    if (method === 'CASH') return 'CASH';
+    return 'EXTERNAL';
   }
 }

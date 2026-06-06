@@ -10,9 +10,10 @@ import { PrismaService } from '../database/prisma.service';
 import { InMemoryRouteDistanceProvider, RouteDistanceService } from './route-distance.service';
 import { BranchLocationService } from './branch-location.service';
 import { SettingsModule } from '../settings/settings.module';
+import { DeliveryZonesModule } from '../delivery-zones/delivery-zones.module';
 
 @Module({
-  imports: [ModulesModule, SettingsModule],
+  imports: [ModulesModule, SettingsModule, DeliveryZonesModule],
   controllers: [DeliveryController],
   providers: [
     DeliveryService,
