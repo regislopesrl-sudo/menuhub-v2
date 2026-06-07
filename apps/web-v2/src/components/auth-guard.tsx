@@ -56,7 +56,7 @@ export function AuthGuard({ scope, children }: { scope: Scope; children: ReactNo
   }, [pathname, router, scope]);
 
   if (!ready) {
-    return <main style={{ padding: 24 }}>Validando sessao...</main>;
+    return <main data-auth-loading="true" style={{ padding: 24 }}>Validando sessao...</main>;
   }
 
   return <>{children}</>;

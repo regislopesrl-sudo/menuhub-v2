@@ -15,7 +15,7 @@
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -132,6 +132,16 @@
   color: #1d4ed8;
 }
 
+.categoryEmpty {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 10px;
+  text-align: center;
+}
+
 .content {
   display: grid;
   gap: 12px;
@@ -145,10 +155,336 @@
   gap: 8px;
 }
 
+.bulkToolbar {
+  align-items: center;
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 0.28fr) minmax(0, 1fr);
+  padding: 12px;
+}
+
+.bulkToolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.bulkToolbar span,
+.issueHero span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bulkToolbar strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.bulkToolbar small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.bulkActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 10px;
+}
+
+.productTablePanel {
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.productTableHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.productTableHeader div {
+  display: grid;
+  gap: 2px;
+}
+
+.productTableHeader span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.productTableHeader strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.productTableWrap {
+  max-height: 64vh;
+  overflow: auto;
+}
+
+.productTable {
+  border-collapse: collapse;
+  min-width: 1080px;
+  width: 100%;
+}
+
+.productTable th {
+  background: #eef8f5;
+  border-bottom: 1px solid var(--line);
+  color: #003c3c;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 10px 12px;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.productTable td {
+  border-bottom: 1px solid var(--line);
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 11px 12px;
+  vertical-align: middle;
+}
+
+.productTable tbody tr {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.productTable tbody tr:hover,
+.productTableRowSelected {
+  background: #eff6ff;
+}
+
+.catalogProductsPanel {
+  border-radius: 12px;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.catalogCategoryHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.catalogCategoryHeader span {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.catalogCategoryHeader strong {
+  color: var(--text);
+  display: block;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.catalogCategoryHeader p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 5px 0 0;
+}
+
+.catalogCategoryActions,
+.catalogRowActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.catalogProductList {
+  display: grid;
+  max-height: 66vh;
+  overflow: auto;
+}
+
+.catalogProductRow {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 58px minmax(260px, 1fr) 110px 92px auto auto;
+  padding: 11px 14px;
+}
+
+.catalogProductRow:hover,
+.catalogProductSelected {
+  background: #eff6ff;
+}
+
+.catalogProductPhoto {
+  align-items: center;
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #eef2ff, #fdf2f8);
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  color: #991b1b;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 950;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  width: 58px;
+}
+
+.catalogProductPhoto img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.catalogProductInfo {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.catalogProductName {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.2;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalogProductName:hover,
+.catalogProductName:focus-visible {
+  color: #00635f;
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.catalogProductInfo p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalogProductMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.catalogProductMeta span {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  color: #334155;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  padding: 5px 7px;
+}
+
+.catalogPriceBox {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.catalogPriceBox span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.catalogPriceBox strong {
+  color: var(--text);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.tableCheck {
+  accent-color: #2557f6;
+  inline-size: 15px;
+  block-size: 15px;
+}
+
+.productNameButton {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: #00635f;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.productNameButton:hover,
+.productNameButton:focus-visible {
+  color: #0f766e;
+  outline: none;
+}
+
+.productSubtext {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  margin-top: 3px;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .productCard {
@@ -202,6 +538,26 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.productSelect {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.productSelect input {
+  accent-color: #2557f6;
+  flex: 0 0 auto;
+  height: 15px;
+  margin: 1px 0 0;
+  width: 15px;
+}
+
+.productSelect h2 {
+  min-width: 0;
 }
 
 .productTop p {
@@ -377,6 +733,38 @@
   gap: 12px;
 }
 
+.categoryManagementList {
+  display: grid;
+  gap: 8px;
+}
+
+.categoryManagementRow {
+  align-items: center;
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 12px 14px;
+}
+
+.categoryManagementInfo {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.categoryManagementInfo strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.categoryManagementInfo span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .managementCard {
   padding: 14px;
   display: grid;
@@ -402,9 +790,491 @@
   justify-content: flex-start;
 }
 
+.issueWorkspace,
+.auditWorkspace {
+  display: grid;
+  gap: 14px;
+}
+
+.issueHero {
+  align-items: center;
+  background:
+    radial-gradient(circle at top right, rgba(37, 87, 246, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.82));
+  border-radius: 22px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 16px;
+}
+
+.issueHero strong {
+  color: var(--text);
+  display: block;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.issueHero p {
+  color: var(--muted);
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+
+.issueGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+}
+
+.issueCard {
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.issueCardHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.issueCardHeader strong {
+  color: var(--text);
+  display: block;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.issueCardHeader span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 750;
+  margin-top: 3px;
+}
+
+.issueFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.issueFacts span {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 6px 8px;
+}
+
+.auditCards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.auditTable {
+  border-radius: 20px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.auditRow {
+  align-items: center;
+  background: rgba(248, 250, 252, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(150px, 0.8fr) repeat(4, minmax(110px, 0.7fr));
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.auditRow:hover {
+  border-color: rgba(37, 87, 246, 0.36);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+
+.auditRow strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auditRow span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .addonsHub {
   display: grid;
   gap: 14px;
+}
+
+.addonsHeaderPanel {
+  align-items: center;
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.42fr);
+  padding: 16px;
+}
+
+.addonsHeaderPanel span,
+.addonListHeader span,
+.addonCatalogCard span,
+.addonEditorPanel p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.addonsHeaderPanel strong {
+  color: var(--text);
+  display: block;
+  font-size: 24px;
+  line-height: 1.12;
+}
+
+.addonsHeaderPanel p {
+  color: var(--muted);
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+
+.addonsHeaderActions {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.addonMetricRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.addonsWorkspace {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(320px, 0.34fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.addonCatalogList,
+.addonEditorPanel {
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.addonCatalogList {
+  max-height: 74vh;
+  overflow: auto;
+}
+
+.addonListHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.addonListHeader strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.addonCardsList,
+.addonOptionsEditor,
+.addonOptionsTable {
+  display: grid;
+  gap: 8px;
+}
+
+.addonCatalogCard {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  text-align: left;
+}
+
+.addonCatalogCard:hover,
+.addonCatalogCardActive {
+  border-color: rgba(37, 87, 246, 0.45);
+  background: #eff6ff;
+}
+
+.addonCatalogCard div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.addonCatalogCard strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.addonCatalogCard p {
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.addonCatalogCard div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.addonDraftGrid {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.72);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 0.8fr) repeat(2, minmax(92px, 0.36fr)) minmax(150px, 0.6fr) auto;
+  padding: 12px;
+}
+
+.addonDraftGrid label {
+  color: #334155;
+  display: grid;
+  font-size: 12px;
+  font-weight: 850;
+  gap: 6px;
+}
+
+.addonCheckRow {
+  align-items: center;
+  align-self: end;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex !important;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.addonCheckRow input {
+  accent-color: #2557f6;
+}
+
+.addonOptionCreateRow {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) minmax(90px, 0.3fr) auto;
+}
+
+.addonOptionRow {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
+  padding: 10px;
+}
+
+.addonOptionRow > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.addonOptionRow strong {
+  color: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addonOptionRow span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.optionsHub {
+  display: grid;
+  gap: 14px;
+}
+
+.optionsHeaderPanel {
+  align-items: center;
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.42fr);
+  padding: 16px;
+}
+
+.optionsHeaderPanel span,
+.optionsTableHeader span,
+.optionPrimaryInfo span,
+.optionCreatePanel span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.optionsHeaderPanel strong {
+  color: var(--text);
+  display: block;
+  font-size: 24px;
+  line-height: 1.12;
+}
+
+.optionsHeaderPanel p {
+  color: var(--muted);
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+
+.optionsHeaderActions {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.optionCreatePanel {
+  align-items: end;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(100px, 0.35fr) auto;
+  padding: 12px;
+}
+
+.optionCreatePanel > div {
+  align-self: center;
+  display: grid;
+  gap: 2px;
+}
+
+.optionCreatePanel strong,
+.optionsTableHeader strong {
+  color: var(--text);
+}
+
+.optionsTablePanel {
+  border-radius: 12px;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.optionsTableHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.optionsList {
+  display: grid;
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.optionListRow {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.84);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1fr) minmax(104px, 0.22fr) auto auto;
+  padding: 12px 14px;
+}
+
+.optionListRow:hover {
+  background: #eff6ff;
+}
+
+.optionPrimaryInfo {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.optionPrimaryInfo strong {
+  color: var(--text);
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comboWorkspace {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(340px, 0.4fr) minmax(0, 1fr);
+}
+
+.comboBuilder {
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.comboItemsEditor {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.72);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.comboItemRow {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) minmax(84px, 0.24fr) auto;
+}
+
+.comboItemsSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comboItemsSummary span {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 6px 8px;
 }
 
 .addonsHubHero,
@@ -635,6 +1505,39 @@
   margin: 0;
 }
 
+.addonBulkActions {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(37, 87, 246, 0.06), rgba(255, 255, 255, 0.92));
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 10px;
+}
+
+.addonBulkActions > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.addonBulkActions strong {
+  color: var(--text);
+}
+
+.addonBulkActions span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.addonBulkActions > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .importPanel {
   padding: 16px;
   display: grid;
@@ -830,6 +1733,82 @@
 .recommendationsHub {
   display: grid;
   gap: 14px;
+}
+
+.aiRecommendationPanel {
+  align-items: center;
+  border-radius: 22px;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 18px;
+}
+
+.aiRecommendationPanel span,
+.aiRecommendationPanel p,
+.aiRecommendationRules p {
+  color: var(--muted);
+}
+
+.aiRecommendationPanel strong {
+  color: var(--text);
+  display: block;
+  font-size: 22px;
+  line-height: 1.15;
+  margin-top: 3px;
+}
+
+.aiRecommendationPanel p {
+  line-height: 1.45;
+  margin: 8px 0 0;
+  max-width: 760px;
+}
+
+.aiRecommendationStatus {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.aiRecommendationRules {
+  border-radius: 22px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.aiRecommendationRules > strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.aiRecommendationRules div {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  padding: 10px;
+}
+
+.aiRecommendationRules span {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 950;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.aiRecommendationRules p {
+  margin: 0;
 }
 
 .recommendationProductRow {
@@ -1078,6 +2057,30 @@
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .bulkToolbar,
+  .auditRow,
+  .catalogProductRow {
+    grid-template-columns: 1fr;
+  }
+
+  .bulkActions {
+    justify-content: flex-start;
+  }
+
+  .catalogProductPhoto {
+    width: 72px;
+  }
+
+  .catalogCategoryHeader,
+  .catalogRowActions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .auditCards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -1086,6 +2089,7 @@
   .toggleGrid,
   .recommendationPicker,
   .recommendationModalGrid,
+  .auditCards,
   .metrics {
     grid-template-columns: 1fr;
   }
@@ -1097,6 +2101,11 @@
   .schemaNotice {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .issueHero {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
   }
 
   .pricePanel {
@@ -1112,10 +2121,32 @@
   }
 
   .addonsConfigurator,
+  .addonsWorkspace,
+  .addonsHeaderPanel,
+  .addonsHeaderActions,
+  .addonMetricRow,
+  .addonDraftGrid,
+  .addonOptionCreateRow,
+  .addonOptionRow,
+  .optionsHeaderPanel,
+  .optionsHeaderActions,
+  .optionCreatePanel,
+  .optionListRow,
   .addonProductMatrix,
   .addonProductRow,
-  .recommendationProductRow {
+  .recommendationProductRow,
+  .categoryManagementRow,
+  .aiRecommendationPanel {
     grid-template-columns: 1fr;
+  }
+
+  .addonBulkActions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .aiRecommendationStatus {
+    justify-items: start;
   }
 
   .addonForm,

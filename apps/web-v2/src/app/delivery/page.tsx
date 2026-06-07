@@ -1305,7 +1305,17 @@ export default function DeliveryPage() {
                     <strong>{quoteLoading ? 'Calculando frete...' : quote ? `Frete ${brl(deliveryFee)}` : 'Preencha CEP e número'}</strong>
                     {cepLookupLoading ? <span>Buscando endereco pelo CEP...</span> : null}
                     {cepLookupMessage ? <span>{cepLookupMessage}</span> : null}
-                    <span>{quote ? `Tempo estimado: ${Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)} min` : 'A cotação será feita automaticamente.'}</span>
+                    <span>
+                      {quote
+                        ? `Tempo estimado: ${
+                            quote.deliveryQuote.estimatedMinutesMin && quote.deliveryQuote.estimatedMinutesMax
+                              ? `${quote.deliveryQuote.estimatedMinutesMin}-${quote.deliveryQuote.estimatedMinutesMax}`
+                              : Math.ceil((quote.deliveryQuote.durationSeconds ?? 0) / 60)
+                          } min`
+                        : 'A cotação será feita automaticamente.'}
+                    </span>
+                    {quote?.deliveryQuote.dynamicPricingApplied ? <span>Preço dinâmico aplicado: {quote.deliveryQuote.dynamicPricingRuleName}</span> : null}
+                    {quote?.deliveryQuote.requiresManualNegotiation ? <span>Entrega negociada pelo WhatsApp.</span> : null}
                   </div>
                   {quoteError ? <div className={styles.feedbackError}>{quoteError}</div> : null}
                   <Button variant="primary" className={styles.continueButton} onClick={() => setCheckoutView('fulfillment')} disabled={!hasAddress}>Salvar endereço</Button>

@@ -87,6 +87,33 @@ export interface PdvSessionDivergence {
   closureNotes?: string;
 }
 
+export interface PdvSessionListItem {
+  id: string;
+  branchId: string;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: string;
+  closedAt?: string;
+  openingBalance: number;
+  expectedCashAmount: number;
+  declaredCashAmount: number | null;
+  cashDifference: number | null;
+  movementsCount: number;
+}
+
+export interface PdvCashLedgerEntry {
+  id: string;
+  sessionId: string;
+  branchId: string;
+  createdAt: string;
+  description: string;
+  amount: number;
+  paymentMethod: string;
+  type: PdvMovementType;
+  userLabel: string;
+  orderId?: string;
+  orderNumber?: string;
+}
+
 @Injectable()
 export class PdvService {
   constructor(
@@ -423,6 +450,124 @@ export class PdvService {
     return this.listMovements(open.id, ctx);
   }
 
+  async listSessions(ctx: RequestContext): Promise<PdvSessionListItem[]> {
+    const branchId = await this.resolveBranchId(ctx);
+    const sessions = await this.prisma.cashRegister.findMany({
+      where: { branchId },
+      orderBy: { openedAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        branchId: true,
+        status: true,
+        openedAt: true,
+        closedAt: true,
+        openingBalance: true,
+        expectedClosingBalance: true,
+        declaredClosingBalance: true,
+        differenceAmount: true,
+        _count: {
+          select: {
+            movements: true,
+          },
+        },
+      },
+    });
+
+    return sessions.map((session) => ({
+      id: session.id,
+      branchId: session.branchId,
+      status: session.status === 'OPEN' ? 'OPEN' : 'CLOSED',
+      openedAt: session.openedAt.toISOString(),
+      closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
+      openingBalance: Number(session.openingBalance),
+      expectedCashAmount:
+        session.expectedClosingBalance !== null && session.expectedClosingBalance !== undefined
+          ? Number(session.expectedClosingBalance)
+          : Number(session.openingBalance),
+      declaredCashAmount:
+        session.declaredClosingBalance !== null && session.declaredClosingBalance !== undefined
+          ? Number(session.declaredClosingBalance)
+          : null,
+      cashDifference:
+        session.differenceAmount !== null && session.differenceAmount !== undefined
+          ? Number(session.differenceAmount)
+          : null,
+      movementsCount: session._count.movements,
+    }));
+  }
+
+  async getSessionLedger(id: string, ctx: RequestContext): Promise<PdvCashLedgerEntry[]> {
+    const session = await this.findSessionOrThrow(id, ctx);
+    const [orders, movements] = await Promise.all([
+      this.orderRepository.findPdvOrdersForSession({
+        companyId: ctx.companyId,
+        branchId: session.branchId,
+        sessionId: session.id,
+        openedAt: session.openedAt,
+        closedAt: session.closedAt,
+      }),
+      this.prisma.cashMovement.findMany({
+        where: {
+          cashRegisterId: session.id,
+          branchId: session.branchId,
+          reversedAt: null,
+        },
+        select: {
+          id: true,
+          cashRegisterId: true,
+          branchId: true,
+          movementType: true,
+          amount: true,
+          notes: true,
+          createdAt: true,
+          createdBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const orderEntries: PdvCashLedgerEntry[] = orders.map((order) => {
+      const orderType = this.orderTypeLabel(String(order.orderType ?? 'PDV'));
+      return {
+        id: `order:${order.id}`,
+        sessionId: session.id,
+        branchId: session.branchId,
+        createdAt: order.createdAt.toISOString(),
+        description: `Pedido Nº ${order.orderNumber} (${orderType})`,
+        amount: Number(order.totalAmount),
+        paymentMethod: this.paymentMethodLabel(this.extractPaymentMethod(order.internalNotes)),
+        type: 'SALE',
+        userLabel: order.createdBy?.name ?? order.createdBy?.email ?? 'Sistema',
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+      };
+    });
+
+    const movementEntries: PdvCashLedgerEntry[] = movements.map((movement) => {
+      const type = this.mapMovement(movement).type;
+      return {
+        id: `movement:${movement.id}`,
+        sessionId: movement.cashRegisterId,
+        branchId: movement.branchId,
+        createdAt: movement.createdAt.toISOString(),
+        description: movement.notes ?? this.movementTypeLabel(type),
+        amount: Number(movement.amount),
+        paymentMethod: type === 'SALE' ? 'Dinheiro' : '-',
+        type,
+        userLabel: movement.createdBy?.name ?? movement.createdBy?.email ?? 'Sistema',
+      };
+    });
+
+    return [...orderEntries, ...movementEntries].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
+
   async getOperatorSummary(
     id: string,
     ctx: RequestContext,
@@ -587,6 +732,33 @@ export class PdvService {
     } catch {
       return 'CASH';
     }
+  }
+
+  private paymentMethodLabel(method: string): string {
+    const normalized = method.toUpperCase();
+    if (normalized === 'PIX') return 'Pix';
+    if (normalized === 'PIX_ONLINE') return 'Pix online';
+    if (normalized === 'CREDIT_CARD' || normalized === 'CARD') return 'Cartao de credito';
+    if (normalized === 'DEBIT_CARD') return 'Cartao de debito';
+    if (normalized === 'CREDIT_CARD_ONLINE') return 'Cartao online';
+    if (normalized === 'IFOOD') return 'iFood';
+    return 'Dinheiro';
+  }
+
+  private orderTypeLabel(orderType: string): string {
+    const normalized = orderType.toUpperCase();
+    if (normalized === 'TABLE' || normalized === 'DINE_IN') return 'Mesa/Comanda';
+    if (normalized === 'DELIVERY') return 'Delivery';
+    if (normalized === 'PICKUP') return 'Retirada';
+    if (normalized === 'COUNTER') return 'Balcao';
+    return 'PDV';
+  }
+
+  private movementTypeLabel(type: PdvMovementType): string {
+    if (type === 'SUPPLY') return 'Suprimento';
+    if (type === 'WITHDRAWAL') return 'Sangria';
+    if (type === 'SALE') return 'Venda manual';
+    return 'Ajuste';
   }
 
   private mapMovementType(type: PdvMovementType):

@@ -76,7 +76,13 @@ export interface StockItemOption {
   id: string;
   name: string;
   code: string | null;
+  stockType?: 'PRODUCT' | 'RAW_MATERIAL' | 'ADDON';
+  category?: { id: string; name: string } | null;
+  notes?: string | null;
   stockUnit?: string | null;
+  purchaseUnit?: string | null;
+  productionUnit?: string | null;
+  conversionFactor?: number | null;
   currentQuantity?: number;
   averageCost?: number;
 }

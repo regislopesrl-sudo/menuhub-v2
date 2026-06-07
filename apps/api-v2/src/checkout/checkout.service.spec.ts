@@ -31,6 +31,29 @@ describe('CheckoutService', () => {
   }
 
   function build(menuPort: MenuPort, quoteService: any, repo?: any, paymentsService?: any, stockService?: any) {
+    const prismaTransaction = {
+      orderPayment: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'pay_1',
+          provider: 'pdv-local',
+          providerTransactionId: 'pdv_txn_ord_1',
+        }),
+      },
+      order: {
+        update: jest.fn().mockResolvedValue({ id: 'order_db' }),
+      },
+      accountsReceivable: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ar_1' }),
+      },
+      receivableSettlement: {
+        create: jest.fn().mockResolvedValue({ id: 'settlement_1' }),
+      },
+      financialLedgerEntry: {
+        create: jest.fn().mockResolvedValue({ id: 'ledger_1' }),
+      },
+    };
     const prisma = {
       customer: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -42,6 +65,7 @@ describe('CheckoutService', () => {
         create: jest.fn().mockResolvedValue({ id: 'addr_1' }),
         update: jest.fn().mockResolvedValue({ id: 'addr_1' }),
       },
+      $transaction: jest.fn((callback) => callback(prismaTransaction)),
     };
     return new CheckoutService(
       menuPort,
@@ -57,6 +81,7 @@ describe('CheckoutService', () => {
         createOrder: jest.fn().mockResolvedValue({
           id: 'order_db',
           orderNumber: 'V2-1',
+          branchId: 'branch_1',
           status: 'CONFIRMED',
           publicTrackingToken: 'trk_public_1',
         }),
@@ -159,7 +184,7 @@ describe('CheckoutService', () => {
     };
 
     const repo = {
-      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-1', status: 'CONFIRMED' }),
+      createOrder: jest.fn().mockResolvedValue({ id: 'order_db', orderNumber: 'V2-1', branchId: 'branch_1', status: 'CONFIRMED' }),
       attachPaymentIntent: jest.fn().mockResolvedValue({ id: 'order_db' }),
     };
     const service = build(menuPort, { quoteByAddress: jest.fn() }, repo);
@@ -175,9 +200,12 @@ describe('CheckoutService', () => {
     );
 
     expect(result.order.id).toBe('order_db');
+    expect(result.order.orderNumber).toBe('V2-1');
     expect(result.order.status).toBe('CONFIRMED');
     expect(result.order.totals.deliveryFee).toBe(0);
     expect(result.payment.status).toBe('APPROVED');
+    expect(result.payment.id).toBe('pay_1');
+    expect(result.payment.provider).toBe('pdv-local');
     expect(repo.createOrder).toHaveBeenCalledWith(
       expect.anything(),
       ctx,

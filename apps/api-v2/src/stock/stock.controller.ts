@@ -32,6 +32,15 @@ export class StockController {
     return this.stockService.listProductAvailability(ctx);
   }
 
+  @Post('orders/consumption/reconcile')
+  @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_MANAGE)
+  reconcileOrderConsumption(
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { orderId?: string; orderIds?: string[]; dryRun?: boolean; limit?: number },
+  ) {
+    return this.stockService.reconcileOrderConsumption(ctx, body);
+  }
+
   @Get('categories')
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
   listCategories(@CurrentContext() ctx: RequestContext, @Query('includeInactive') includeInactive?: string) {
@@ -82,6 +91,9 @@ export class StockController {
       name: string;
       code?: string;
       categoryId?: string | null;
+      supplierId?: string | null;
+      sector?: string | null;
+      notes?: string | null;
       stockType?: 'PRODUCT' | 'RAW_MATERIAL' | 'ADDON';
       purchaseUnit?: string;
       stockUnit?: string;

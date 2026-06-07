@@ -14,6 +14,8 @@ export type RecipeItem = {
   stockItemName: string | null;
   quantity: number;
   unit: string;
+  stockQuantity?: number | null;
+  stockUnit?: string | null;
   optional: boolean;
   affectsStock: boolean;
   affectsCost: boolean;
@@ -29,6 +31,8 @@ export type Recipe = {
   yieldQuantity: number;
   yieldUnit: string;
   lossPercent: number | null;
+  preparationSummary: string | null;
+  notes: string | null;
   active: boolean;
   cost: RecipeCost;
   items: RecipeItem[];
@@ -59,6 +63,8 @@ export type RecipeCreatePayload = {
   yieldQuantity: number;
   yieldUnit: string;
   lossPercent?: number | null;
+  preparationSummary?: string | null;
+  notes?: string | null;
   items: RecipeItemPayload[];
 };
 
@@ -68,6 +74,8 @@ export type RecipeUpdatePayload = Partial<{
   yieldQuantity: number;
   yieldUnit: string;
   lossPercent: number | null;
+  preparationSummary: string | null;
+  notes: string | null;
   active: boolean;
 }>;
 

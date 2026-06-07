@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import styles from './page.module.css';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { saveAuthSession } from '@/lib/auth-session';
 import { apiFetch } from '@/lib/api-fetch';
 import { readRoleFromAccessToken } from '@/lib/auth-claims';
@@ -42,6 +40,7 @@ export default function HomePage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [apiStatus, setApiStatus] = useState<'checking' | 'up' | 'down'>('checking');
   const [wsStatus, setWsStatus] = useState<'checking' | 'up' | 'down'>('checking');
@@ -126,58 +125,73 @@ export default function HomePage() {
 
   return (
     <main className={styles.page}>
-      <Card className={styles.loginCard}>
-        <div className={styles.brandLine}>MenuHub Platform</div>
-        <h1 className={styles.title}>Entrar na plataforma</h1>
-        <p className={styles.subtitle}>Gestão operacional para restaurante, PDV, cozinha e delivery</p>
-
-        <div className={styles.badgeRow}>
-          <Badge tone={environmentLabel === 'Ambiente Local' ? 'success' : 'warning'}>{environmentLabel}</Badge>
-          <small className={styles.statusText}>
-            API: {apiStatus === 'up' ? 'online' : apiStatus === 'down' ? 'offline' : 'verificando'} | WS:{' '}
-            {wsStatus === 'up' ? 'conectado' : wsStatus === 'down' ? 'desconectado' : 'verificando'}
-          </small>
+      <section className={styles.loginCard} aria-label="Acesso MenuHub">
+        <div className={styles.brandBlock}>
+          <span className={styles.brandMark}>MH</span>
+          <span className={styles.brandName}>MenuHub</span>
         </div>
+        <h1 className={styles.title}>Acesse sua conta</h1>
 
         <form className={styles.form} onSubmit={onSubmit}>
           <label className={styles.field}>
-            <span>E-mail ou usuário</span>
+            <span>E-mail ou usuario *</span>
             <input
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               autoComplete="username"
-              placeholder="seu.usuario@menuhub"
+              placeholder="usuario@menuhub"
             />
           </label>
 
           <label className={styles.field}>
-            <span>Senha</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="••••••••"
-            />
+            <span>Senha *</span>
+            <div className={styles.passwordWrap}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Senha"
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                {showPassword ? 'Ocultar' : 'Ver'}
+              </button>
+            </div>
           </label>
 
           {error ? <p className={styles.error}>{error}</p> : null}
 
           <button type="submit" className={styles.submitButton} disabled={isSubmitting}>
-            {isSubmitting ? 'Entrando...' : 'Entrar'}
+            {isSubmitting ? 'Entrando...' : 'ENTRAR'}
           </button>
         </form>
 
-        <div className={styles.linksRow}>
-          <Link href="/delivery" className={styles.secondaryLink}>
-            Acessar cardápio online
-          </Link>
-          <Link href="/developer-login" className={styles.secondaryLink}>
-            Acesso tecnico
-          </Link>
+        <Link href="mailto:suporte@menuhub.local?subject=Recuperar acesso MenuHub" className={styles.forgotLink}>
+          Esqueci minha senha
+        </Link>
+
+        <div className={styles.supportBox}>
+          <span>Precisa de ajuda?</span>
+          <Link href="mailto:suporte@menuhub.local?subject=Suporte MenuHub">Fale com o suporte.</Link>
         </div>
-      </Card>
+
+        <div className={styles.footerLinks}>
+          <Link href="/delivery">Cardapio online</Link>
+          <Link href="/developer-login">Acesso tecnico</Link>
+        </div>
+
+        <div className={styles.statusLine} aria-label="Status do ambiente">
+          <span>{environmentLabel}</span>
+          <span>API {apiStatus === 'up' ? 'online' : apiStatus === 'down' ? 'offline' : 'verificando'}</span>
+          <span>WS {wsStatus === 'up' ? 'conectado' : wsStatus === 'down' ? 'offline' : 'verificando'}</span>
+        </div>
+      </section>
     </main>
   );
 }

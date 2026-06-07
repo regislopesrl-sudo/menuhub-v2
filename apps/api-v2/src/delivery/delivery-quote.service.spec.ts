@@ -52,6 +52,7 @@ describe('DeliveryQuoteService', () => {
         routeDistance,
         branchLocation,
         { geocodeByCep: jest.fn() } as any,
+        { validateForCheckout: jest.fn().mockResolvedValue({ configured: false }) } as any,
       ),
       routeDistance,
       branchLocation,

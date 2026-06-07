@@ -22,6 +22,8 @@ export type PurchaseOrder = {
   branchId: string;
   totalAmount: number;
   createdAt: string;
+  notes?: string | null;
+  expectedDeliveryDate?: string | null;
   supplier?: { id: string; name: string };
   items?: Array<{
     id: string;
@@ -198,7 +200,7 @@ export function ignorePurchaseFiscalDocumentItem(documentId: string, itemId: str
 }
 
 export function confirmPurchaseFiscalDocumentStockEntry(documentId: string) {
-  return apiFetch<{ documentId: string; confirmed: boolean; movementsCreated?: number; reason?: string }>(
+  return apiFetch<{ documentId: string; confirmed: boolean; movementsCreated?: number; payableId?: string | null; reason?: string }>(
     `/v2/admin/procurement/fiscal-documents/${documentId}/confirm-stock-entry`,
     { method: 'POST' },
   );

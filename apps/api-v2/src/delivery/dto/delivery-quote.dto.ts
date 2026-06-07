@@ -1,7 +1,14 @@
 import { Transform } from 'class-transformer';
 import { IsNumber, IsOptional, IsString, Length, Min } from 'class-validator';
 
-export type DeliveryQuoteReason = 'OUT_OF_DELIVERY_AREA' | 'BELOW_MINIMUM_ORDER';
+export type DeliveryQuoteReason =
+  | 'OUT_OF_DELIVERY_AREA'
+  | 'BELOW_MINIMUM_ORDER'
+  | 'AREA_BLOCKED'
+  | 'MANUAL_NEGOTIATION_REQUIRED'
+  | 'ZONE_INACTIVE'
+  | 'ZONE_NOT_VISIBLE_ON_SITE'
+  | 'ADDRESS_INVALID';
 
 export type DeliveryQuoteInput = {
   lat: number;
@@ -9,11 +16,15 @@ export type DeliveryQuoteInput = {
   distanceMeters?: number;
   durationSeconds?: number;
   subtotal?: number;
+  postalCode?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 };
 
 export type DeliveryQuoteAddressSnapshot = {
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
 };
 
 export type DeliveryQuoteResponse = {
@@ -21,9 +32,17 @@ export type DeliveryQuoteResponse = {
   quoteId: string;
   requestId: string;
   areaId: string | null;
+  deliveryZoneId?: string | null;
   fee: number;
   estimatedMinutes: number;
+  estimatedMinutesMin?: number | null;
+  estimatedMinutesMax?: number | null;
   minimumOrder: number | null;
+  courierFee?: number | null;
+  missingAmount?: number | null;
+  dynamicPricingApplied?: boolean;
+  dynamicPricingRuleName?: string | null;
+  requiresManualNegotiation?: boolean;
   areaName: string | null;
   reason: DeliveryQuoteReason | null;
   message: string | null;
@@ -40,8 +59,8 @@ export type DeliveryQuoteHttpResponse = DeliveryQuoteResponse & {
     neighborhood: string;
     city: string;
     state: string;
-    lat: number;
-    lng: number;
+    lat: number | null;
+    lng: number | null;
   };
 };
 

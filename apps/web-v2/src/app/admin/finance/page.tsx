@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -55,6 +56,7 @@ const today = new Date().toISOString().slice(0, 10);
 const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
 
 export default function AdminFinancePage() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settling, setSettling] = useState(false);
@@ -130,6 +132,13 @@ export default function AdminFinancePage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab') as FinanceTab | null;
+    if (requestedTab && tabs.some((tab) => tab.key === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams]);
 
   async function onCreateEntry(event: FormEvent) {
     event.preventDefault();

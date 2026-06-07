@@ -1,273 +1,451 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import styles from './page.module.css';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
-import { ActionTile } from '@/components/ui/ActionTile';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { StatusPill } from '@/components/ui/StatusPill';
-import { useModules } from '@/features/modules/use-modules';
-import { connectOrdersSocket, type SocketConnectionStatus } from '@/features/orders/orders.socket';
-import { apiFetch, getApiBase } from '@/lib/api-fetch';
-import type { OrderListItem, OrdersHeaders, OrdersListResponse } from '@/features/orders/orders.api';
+import {
+  getBranchSettings,
+  getCompanySettings,
+  patchBranchSettings,
+  patchCompanySettings,
+  type BranchSettingsResponse,
+  type CompanySettingsResponse,
+  type SettingsHeaders,
+} from '@/features/settings/settings.api';
+import {
+  createAdminUser,
+  deleteAdminUser,
+  listAdminBranches,
+  listAdminRoles,
+  listAdminUsers,
+  updateAdminUser,
+  updateAdminUserStatus,
+  type AdminBranch,
+  type AdminRole,
+  type AdminUser,
+} from '@/features/admin-users/admin-users.api';
+import { readJwtPayload } from '@/lib/auth-claims';
+import { getAuthSession } from '@/lib/auth-session';
+import styles from './page.module.css';
 
-type DashboardKpis = {
-  ordersToday: number;
-  activeOrders: number;
-  inPreparation: number;
-  ready: number;
-  revenue: number;
-  averageTicket: number;
+type CompanyForm = {
+  tradeName: string;
+  legalName: string;
+  email: string;
+  phone: string;
+  responsible: string;
+  operationType: string;
+  referenceMonth: string;
+  kitchenCmvGoal: string;
+  barCmvGoal: string;
+  address: string;
 };
 
-type OpenSessionResponse = {
+type UserForm = {
   id: string;
-  branchId: string;
-  status: string;
-  openedAt: string;
-  openingBalance: number;
-} | null;
-
-const ZERO_KPIS: DashboardKpis = {
-  ordersToday: 0,
-  activeOrders: 0,
-  inPreparation: 0,
-  ready: 0,
-  revenue: 0,
-  averageTicket: 0,
+  name: string;
+  email: string;
+  profile: string;
+  password: string;
+  isActive: boolean;
 };
 
-const PREPARATION_STATUSES = new Set(['CONFIRMED', 'IN_PREPARATION', 'WAITING_DISPATCH']);
-const READY_STATUSES = new Set(['READY', 'WAITING_PICKUP']);
-const ACTIVE_STATUSES = new Set([
-  'DRAFT',
-  'PENDING_CONFIRMATION',
-  'CONFIRMED',
-  'IN_PREPARATION',
-  'READY',
-  'WAITING_PICKUP',
-  'WAITING_DISPATCH',
-  'OUT_FOR_DELIVERY',
-]);
+type AdminPageHeaders = SettingsHeaders & {
+  userRole?: 'admin' | 'master' | 'developer';
+};
 
-export default function AdminDashboardPage() {
-  const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
-  const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
-  const modules = useModules({ companyId, branchId, userRole: 'admin' });
+const INITIAL_COMPANY_FORM: CompanyForm = {
+  tradeName: '',
+  legalName: '',
+  email: '',
+  phone: '',
+  responsible: '',
+  operationType: '',
+  referenceMonth: '',
+  kitchenCmvGoal: '',
+  barCmvGoal: '',
+  address: '',
+};
 
-  const [kpis, setKpis] = useState<DashboardKpis>(ZERO_KPIS);
-  const [cashStatus, setCashStatus] = useState<'ABERTO' | 'FECHADO' | 'INDISPONIVEL'>('INDISPONIVEL');
-  const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>('connecting');
-  const [ordersError, setOrdersError] = useState<string | null>(null);
-  const [lastUpdateAt, setLastUpdateAt] = useState<string>('');
-  const refreshInFlightRef = useRef(false);
+const INITIAL_USER_FORM: UserForm = {
+  id: '',
+  name: '',
+  email: '',
+  profile: '',
+  password: '',
+  isActive: true,
+};
 
-  const headers = useMemo<OrdersHeaders>(
-    () => ({
-      companyId,
-      branchId,
-      userRole: 'admin',
-    }),
-    [branchId, companyId],
-  );
+function resolveHeaders(): AdminPageHeaders {
+  const fallbackCompanyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
+  const fallbackBranchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID ?? 'branch-demo';
+  const session = getAuthSession();
+  if (!session?.accessToken) {
+    return { companyId: fallbackCompanyId, branchId: fallbackBranchId };
+  }
+  const payload = readJwtPayload(session.accessToken);
+  const role = String(payload?.role ?? 'admin');
+  return {
+    companyId: String(payload?.companyId ?? fallbackCompanyId),
+    branchId: String(payload?.branchId ?? fallbackBranchId),
+    userRole: role === 'master' || role === 'developer' ? role : 'admin',
+  };
+}
 
-  const refreshDashboard = useCallback(async () => {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
-    const requestHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-company-id': headers.companyId,
-      ...(headers.branchId ? { 'x-branch-id': headers.branchId } : {}),
-    };
+function companyFormFromSettings(company: CompanySettingsResponse | null, branch: BranchSettingsResponse | null): CompanyForm {
+  const address = [branch?.street, branch?.number, branch?.district, branch?.city, branch?.state]
+    .filter(Boolean)
+    .join(', ');
+  return {
+    tradeName: company?.tradeName ?? '',
+    legalName: company?.legalName ?? '',
+    email: company?.email ?? branch?.email ?? '',
+    phone: company?.phone ?? branch?.phone ?? '',
+    responsible: branch?.responsible ?? '',
+    operationType: company?.publicDescription ?? '',
+    referenceMonth: new Date().toISOString().slice(0, 7),
+    kitchenCmvGoal: '',
+    barCmvGoal: '',
+    address,
+  };
+}
 
+function userFormFromUser(user: AdminUser): UserForm {
+  return {
+    id: user.id,
+    name: user.name ?? '',
+    email: user.email ?? '',
+    profile: user.roles[0]?.id ?? '',
+    password: '',
+    isActive: user.isActive,
+  };
+}
+
+function formatDate(value: string | null) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+}
+
+export default function AdminRootPage() {
+  const [headers, setHeaders] = useState<AdminPageHeaders | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [companyForm, setCompanyForm] = useState<CompanyForm>(INITIAL_COMPANY_FORM);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [roles, setRoles] = useState<AdminRole[]>([]);
+  const [branches, setBranches] = useState<AdminBranch[]>([]);
+  const [userForm, setUserForm] = useState<UserForm>(INITIAL_USER_FORM);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const defaultRoleId = useMemo(() => roles[0]?.id ?? '', [roles]);
+  const defaultBranchId = useMemo(() => branches[0]?.id ?? headers?.branchId ?? null, [branches, headers?.branchId]);
+
+  async function load() {
+    const resolvedHeaders = resolveHeaders();
+    setHeaders(resolvedHeaders);
+    setLoading(true);
+    setError(null);
     try {
-      const [ordersRes, pdvSession] = await Promise.all([
-        apiFetch<OrdersListResponse>('/v2/orders?limit=200', {
-          method: 'GET',
-          headers: requestHeaders,
-        }),
-        apiFetch<OpenSessionResponse>('/v2/pdv/sessions/current/open', {
-          method: 'GET',
-          headers: requestHeaders,
-        }).catch(() => null),
+      const [company, branch, usersData, rolesData, branchesData] = await Promise.all([
+        getCompanySettings(resolvedHeaders).catch(() => null),
+        getBranchSettings(resolvedHeaders).catch(() => null),
+        listAdminUsers(resolvedHeaders).catch(() => ({ items: [], total: 0 })),
+        listAdminRoles(resolvedHeaders).catch(() => ({ items: [], total: 0 })),
+        listAdminBranches(resolvedHeaders).catch(() => ({ items: [], total: 0 })),
       ]);
-
-      const rows = Array.isArray(ordersRes?.data) ? ordersRes.data : [];
-      setKpis(computeKpis(rows));
-      setCashStatus(pdvSession ? 'ABERTO' : 'FECHADO');
-      setOrdersError(null);
-      setLastUpdateAt(new Date().toLocaleTimeString('pt-BR'));
+      setCompanyForm(companyFormFromSettings(company, branch));
+      setUsers(usersData.items ?? []);
+      setRoles(rolesData.items ?? []);
+      setBranches(branchesData.items ?? []);
+      setUserForm((prev) => ({ ...prev, profile: prev.profile || rolesData.items?.[0]?.id || '' }));
     } catch (err) {
-      setKpis(ZERO_KPIS);
-      setCashStatus('INDISPONIVEL');
-      setOrdersError(err instanceof Error ? err.message : 'Falha ao carregar indicadores.');
+      setError(err instanceof Error ? err.message : 'Falha ao carregar Inicio.');
     } finally {
-      refreshInFlightRef.current = false;
+      setLoading(false);
     }
-  }, [headers]);
+  }
 
   useEffect(() => {
-    void refreshDashboard();
-    const intervalId = window.setInterval(() => {
-      void refreshDashboard();
-    }, 2000);
-
-    return () => window.clearInterval(intervalId);
-  }, [refreshDashboard]);
-
-  useEffect(() => {
-    const socket = connectOrdersSocket({
-      headers,
-      onConnectionStatus: setSocketStatus,
-      onEvent: () => {
-        void refreshDashboard();
-      },
-    });
-
-    return () => {
-      socket.disconnect();
-      setSocketStatus('disconnected');
-    };
-  }, [headers, refreshDashboard]);
-
-  const environmentLabel = useMemo(() => {
-    const base = getApiBase().toLowerCase();
-    if (base.includes('hml')) return 'Ambiente HML';
-    if (base.includes('localhost') || base.includes('127.0.0.1')) return 'Ambiente Local';
-    return 'Ambiente Operacional';
+    void load();
   }, []);
 
-  if (modules.loading) {
+  async function onSaveCompany() {
+    if (!headers) return;
+    setSaving('company');
+    setError(null);
+    setMessage(null);
+    try {
+      await patchCompanySettings(headers, {
+        tradeName: companyForm.tradeName,
+        legalName: companyForm.legalName,
+        email: companyForm.email,
+        phone: companyForm.phone,
+        publicDescription: companyForm.operationType,
+      });
+      await patchBranchSettings(headers, {
+        responsible: companyForm.responsible,
+      });
+      setMessage('Empresa salva.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar empresa.');
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function onSaveUser() {
+    if (!headers) return;
+    if (!userForm.name.trim()) {
+      setError('Informe o nome do usuario.');
+      return;
+    }
+    if (!userForm.id && !userForm.password.trim()) {
+      setError('Informe uma senha para novo usuario.');
+      return;
+    }
+    setSaving('user');
+    setError(null);
+    setMessage(null);
+    try {
+      if (userForm.id) {
+        await updateAdminUser(headers, userForm.id, {
+          name: userForm.name,
+          email: userForm.email || null,
+          password: userForm.password || undefined,
+          isActive: userForm.isActive,
+        });
+        await updateAdminUserStatus(headers, userForm.id, userForm.isActive);
+      } else {
+        await createAdminUser(headers, {
+          name: userForm.name,
+          email: userForm.email || null,
+          password: userForm.password,
+          isActive: userForm.isActive,
+          roleIds: [userForm.profile || defaultRoleId].filter(Boolean),
+          branchIds: defaultBranchId ? [defaultBranchId] : [],
+          defaultBranchId,
+        });
+      }
+      setUserForm({ ...INITIAL_USER_FORM, profile: defaultRoleId });
+      setMessage('Usuario salvo.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar usuario.');
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function onDeleteUser() {
+    if (!headers || !userForm.id) return;
+    const confirmed = window.confirm('Excluir este usuario?');
+    if (!confirmed) return;
+    setSaving('user-delete');
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteAdminUser(headers, userForm.id);
+      setUserForm({ ...INITIAL_USER_FORM, profile: defaultRoleId });
+      setMessage('Usuario excluido.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao excluir usuario.');
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function confirmCleanup(label: string) {
+    const confirmed = window.confirm(`${label}: esta rotina exige bloco controlado para preservar historico fiscal e financeiro. Deseja apenas registrar a solicitacao?`);
+    if (confirmed) setMessage(`${label} registrada para execucao controlada.`);
+  }
+
+  if (loading) {
     return (
       <main className={styles.page}>
-        <LoadingState label="Carregando painel operacional..." />
+        <LoadingState label="Carregando configuracoes..." />
       </main>
     );
   }
 
-  const canPdv = modules.isEnabled('pdv');
-  const canKds = modules.isEnabled('kds');
-  const canOrders = modules.isEnabled('orders');
-  const canDelivery = modules.isEnabled('delivery');
-  const canMenu = modules.isEnabled('menu');
-
   return (
     <main className={styles.page}>
-      <section className={styles.hero}>
-        <div>
-          <h1 className={styles.title}>Painel Operacional</h1>
-          <p className={styles.sub}>Controle em tempo real do restaurante</p>
-          {lastUpdateAt ? <p className={styles.lastUpdate}>Atualizado as {lastUpdateAt}</p> : null}
-        </div>
-
-        <div className={styles.rightHeader}>
-          <div className={styles.statusRow}>
-            <StatusPill tone={modules.isApiHealthy ? 'success' : 'warning'} pulse={modules.isApiHealthy}>
-              {modules.isApiHealthy ? 'Sistema Online' : 'Sistema Instavel'}
-            </StatusPill>
-            <StatusPill tone="violet">{environmentLabel}</StatusPill>
-            <StatusPill tone={socketStatus === 'connected' ? 'success' : socketStatus === 'connecting' ? 'warning' : 'danger'} pulse={socketStatus === 'connected'}>
-              Realtime {socketStatus === 'connected' ? 'Conectado' : socketStatus === 'connecting' ? 'Conectando' : 'Offline'}
-            </StatusPill>
-            <StatusPill tone={cashStatus === 'ABERTO' ? 'success' : cashStatus === 'FECHADO' ? 'warning' : 'danger'}>
-              Caixa {cashStatus === 'ABERTO' ? 'Aberto' : cashStatus === 'FECHADO' ? 'Fechado' : 'Indisponivel'}
-            </StatusPill>
+      <section className={styles.dataPanel}>
+        <header className={styles.panelHeader}>
+          <div>
+            <span>Inicio</span>
+            <h1>Configuracoes</h1>
           </div>
-        </div>
-      </section>
+          <strong>SISTEMA DE GESTAO</strong>
+        </header>
 
-      <section className={styles.kpiGrid}>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Pedidos hoje</p>
-          <strong className={styles.kpiValue}>{kpis.ordersToday}</strong>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Pedidos ativos</p>
-          <strong className={styles.kpiValue}>{kpis.activeOrders}</strong>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Em preparo</p>
-          <strong className={styles.kpiValue}>{kpis.inPreparation}</strong>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Prontos</p>
-          <strong className={styles.kpiValue}>{kpis.ready}</strong>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Faturamento do dia</p>
-          <strong className={styles.kpiValue}>R$ {formatCurrency(kpis.revenue)}</strong>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <p className={styles.kpiLabel}>Ticket medio</p>
-          <strong className={styles.kpiValue}>R$ {formatCurrency(kpis.averageTicket)}</strong>
-        </Card>
-      </section>
+        {error ? <div className={styles.error}>{error}</div> : null}
+        {message ? <div className={styles.success}>{message}</div> : null}
 
-      <section className={styles.dashboardWorkspace}>
-        <aside className={styles.categoryPanel}>
-          <div className={styles.categoryHeader}>
-            <span>Operacao</span>
-            <strong>Categorias</strong>
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionTitle}>
+            <h2>Cadastro da Empresa</h2>
+            <p>Dados principais usados em cardapio, compras, estoque e relatorios.</p>
           </div>
-
-        <section className={styles.quickActions}>
-          {canPdv ? <ActionTile href="/admin/pdv" title="Novo Pedido PDV" description="Venda rapida no balcao" tone="blue" /> : null}
-          {canKds ? <ActionTile href="/admin/kds" title="Ver Cozinha" description="Fila de preparo ao vivo" tone="orange" /> : null}
-          {canOrders ? <ActionTile href="/admin/orders" title="Ver Pedidos" description="Gestao de status e detalhes" tone="green" /> : null}
-          {canMenu ? <ActionTile href="/admin/menu" title="Gerenciar Cardapio" description="Produtos, adicionais e destaques" tone="violet" /> : null}
-          <ActionTile href="/admin/users" title="Usuarios" description="Acessos, roles e filiais" tone="green" />
-          <ActionTile href="/admin/settings" title="Configuracoes" description="Empresa, filial, operacao e pagamentos" tone="blue" />
-          <ActionTile href="/admin/billing" title="Assinatura e cobranca" description="Plano, limites e status da assinatura SaaS" tone="violet" />
-          <ActionTile href="/admin/stock" title="Estoque" description="Itens, entrada e saida manual de estoque" tone="orange" />
-          <ActionTile href="/admin/procurement" title="Compras e fornecedores" description="Fornecedores, pedidos, recebimento e contas a pagar" tone="blue" />
-          <ActionTile href="/admin/production" title="Producao Interna" description="Ordens de preparo, execucao e finalizacao por filial" tone="orange" />
-          <ActionTile href="/admin/tables" title="Mesas e Comandas" description="Salao, consumo local, transferencias e fechamento" tone="green" />
-          <ActionTile href="/admin/payments" title="Pagamentos" description="PIX mock, webhooks e conciliacao operacional" tone="violet" />
-          <ActionTile href="/admin/notifications" title="Notificacoes" description="Eventos operacionais em tempo real" tone="blue" />
-          <ActionTile href="/admin/finance" title="Financeiro" description="Fluxo de caixa, DRE e conciliacao local" tone="green" />
-          <ActionTile href="/admin/reports" title="Relatorios" description="Vendas, canais, financeiro e indicadores gerenciais" tone="violet" />
-          {canDelivery ? <ActionTile href="/delivery" title="Cardapio Online" description="Experiencia do cliente" tone="red" /> : null}
+          <div className={styles.formGrid}>
+            <label>
+              Nome do estabelecimento
+              <Input value={companyForm.tradeName} onChange={(e) => setCompanyForm((p) => ({ ...p, tradeName: e.target.value }))} />
+            </label>
+            <label>
+              Responsavel / Consultor
+              <Input value={companyForm.responsible} onChange={(e) => setCompanyForm((p) => ({ ...p, responsible: e.target.value }))} />
+            </label>
+            <label>
+              Tipo de operacao
+              <Input value={companyForm.operationType} onChange={(e) => setCompanyForm((p) => ({ ...p, operationType: e.target.value }))} />
+            </label>
+            <label>
+              Mes / Ano de referencia
+              <Input type="month" value={companyForm.referenceMonth} onChange={(e) => setCompanyForm((p) => ({ ...p, referenceMonth: e.target.value }))} />
+            </label>
+            <label>
+              Meta CMV Cozinha
+              <Input value={companyForm.kitchenCmvGoal} onChange={(e) => setCompanyForm((p) => ({ ...p, kitchenCmvGoal: e.target.value }))} placeholder="Ex.: 32%" />
+            </label>
+            <label>
+              Meta CMV Bar
+              <Input value={companyForm.barCmvGoal} onChange={(e) => setCompanyForm((p) => ({ ...p, barCmvGoal: e.target.value }))} placeholder="Ex.: 28%" />
+            </label>
+            <label className={styles.wide}>
+              Endereco
+              <Input value={companyForm.address} onChange={(e) => setCompanyForm((p) => ({ ...p, address: e.target.value }))} />
+            </label>
+          </div>
+          <div className={styles.actions}>
+            <Button variant="primary" onClick={() => void onSaveCompany()} disabled={saving === 'company'}>
+              {saving === 'company' ? 'Salvando...' : 'Salvar Empresa'}
+            </Button>
+          </div>
         </section>
-          {ordersError ? (
-            <Card className={styles.warningCard}>
-              <Badge tone="warning">Falha de dados</Badge>
-              <p className={styles.warningText}>Nao foi possivel atualizar indicadores agora. Exibindo fallback seguro com zero.</p>
-            </Card>
-          ) : null}
-        </aside>
+
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionTitle}>
+            <h2>Importacoes</h2>
+            <p>Atalhos para entrada de produtos, insumos e vendas historicas.</p>
+          </div>
+          <div className={styles.importGrid}>
+            <Link href="/admin/menu?tab=import">Importar Produtos</Link>
+            <Link href="/admin/stock?section=ingredients">Importar Insumos</Link>
+            <Link href="/admin/reports?view=imports">Importar Vendas</Link>
+          </div>
+        </section>
+
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionTitle}>
+            <h2>Configuracao de Usuarios</h2>
+            <p>Cadastro e manutencao dos acessos internos.</p>
+          </div>
+          <div className={styles.usersGrid}>
+            <div className={styles.tableWrap}>
+              <table className={styles.usersTable}>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Login</th>
+                    <th>Perfil</th>
+                    <th>Ativo</th>
+                    <th>Ultimo login</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>Nenhum usuario cadastrado.</td>
+                    </tr>
+                  ) : (
+                    users.map((user) => (
+                      <tr key={user.id}>
+                        <td>{user.id.slice(0, 8)}</td>
+                        <td>
+                          <button type="button" className={styles.cellLink} onClick={() => setUserForm(userFormFromUser(user))}>
+                            {user.name || 'Abrir usuario'}
+                          </button>
+                        </td>
+                        <td>{user.email || '-'}</td>
+                        <td>{user.roles.map((role) => role.name).join(', ') || '-'}</td>
+                        <td>{user.isActive ? 'Sim' : 'Nao'}</td>
+                        <td>{formatDate(user.lastLoginAt)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className={styles.userForm}>
+              <label>
+                ID
+                <Input value={userForm.id || 'Automatico'} disabled />
+              </label>
+              <label>
+                Nome
+                <Input value={userForm.name} onChange={(e) => setUserForm((p) => ({ ...p, name: e.target.value }))} />
+              </label>
+              <label>
+                Login/e-mail
+                <Input value={userForm.email} onChange={(e) => setUserForm((p) => ({ ...p, email: e.target.value }))} />
+              </label>
+              <label>
+                Perfil
+                <select value={userForm.profile} onChange={(e) => setUserForm((p) => ({ ...p, profile: e.target.value }))}>
+                  <option value="">Selecione...</option>
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Senha
+                <Input type="password" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} />
+              </label>
+              <label>
+                Ativo
+                <select value={userForm.isActive ? 'yes' : 'no'} onChange={(e) => setUserForm((p) => ({ ...p, isActive: e.target.value === 'yes' }))}>
+                  <option value="yes">Sim</option>
+                  <option value="no">Nao</option>
+                </select>
+              </label>
+              <div className={styles.actions}>
+                <Button onClick={() => setUserForm({ ...INITIAL_USER_FORM, profile: defaultRoleId })}>Novo Usuario</Button>
+                {userForm.id ? (
+                  <Button variant="danger" onClick={() => void onDeleteUser()} disabled={saving === 'user-delete'}>
+                    Excluir Usuario
+                  </Button>
+                ) : null}
+                <Button variant="primary" onClick={() => void onSaveUser()} disabled={saving === 'user'}>
+                  {saving === 'user' ? 'Salvando...' : 'Salvar Usuario'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.sectionBlock}>
+          <div className={styles.sectionTitle}>
+            <h2>Limpeza de Movimentacoes</h2>
+            <p>Rotinas sensiveis ficam protegidas por confirmacao e devem ser executadas em bloco controlado.</p>
+          </div>
+          <div className={styles.cleanupGrid}>
+            {['Limpeza estoque', 'Limpeza Compras', 'Limpeza de Vendas', 'Limpeza de Produto', 'Limpeza de Insumo'].map((label) => (
+              <button key={label} type="button" onClick={() => confirmCleanup(label)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
       </section>
     </main>
   );
-}
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function computeKpis(orders: OrderListItem[]): DashboardKpis {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const d = today.getDate();
-
-  const todayOrders = (orders ?? []).filter((order) => {
-    const created = new Date(order?.createdAt ?? '');
-    return created.getFullYear() === y && created.getMonth() === m && created.getDate() === d;
-  });
-
-  const activeOrders = todayOrders.filter((o) => ACTIVE_STATUSES.has(String(o?.status ?? ''))).length;
-  const inPreparation = todayOrders.filter((o) => PREPARATION_STATUSES.has(String(o?.status ?? ''))).length;
-  const ready = todayOrders.filter((o) => READY_STATUSES.has(String(o?.status ?? ''))).length;
-  const revenue = todayOrders.reduce((acc, order) => acc + Number(order?.total ?? 0), 0);
-  const averageTicket = todayOrders.length > 0 ? revenue / todayOrders.length : 0;
-
-  return {
-    ordersToday: todayOrders.length,
-    activeOrders,
-    inPreparation,
-    ready,
-    revenue,
-    averageTicket,
-  };
 }

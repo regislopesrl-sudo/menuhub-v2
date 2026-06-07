@@ -40,6 +40,13 @@ type PeakHourRow = {
   revenue: number | { toString(): string };
 };
 
+type NeighborhoodRow = {
+  district: string | null;
+  orders: number | bigint;
+  revenue: number | { toString(): string };
+  deliveryFee: number | { toString(): string };
+};
+
 type CmvRow = {
   cogs: number | { toString(): string };
   grossSales: number | { toString(): string };
@@ -77,6 +84,7 @@ const PAID_PAYMENT_STATUSES: OrderPaymentSummaryStatus[] = [
 
 const IMPORTED_CANCELED_STATUSES = ['CANCELED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'FAILED'];
 const IMPORTED_COMPLETED_STATUSES = ['COMPLETED'];
+const PURCHASE_ENTRY_REPORT_SOURCE_MODULES = ['procurement_receipt', 'purchase_fiscal_document'] as const;
 
 @Injectable()
 export class ReportsService {
@@ -100,6 +108,62 @@ export class ReportsService {
         alerts: this.buildDashboardAlerts(overview),
       },
       permissions: overview.permissions,
+    };
+  }
+
+  async getPremium(ctx: RequestContext, query: ReportsOverviewQuery = {}) {
+    const [
+      dashboard,
+      operational,
+      salesByPeriod,
+      salesByChannel,
+      topProducts,
+      averageTicket,
+      peakHours,
+      inventory,
+      cmv,
+      financial,
+      byBranch,
+      byOperator,
+    ] = await Promise.all([
+      this.getDashboard(ctx, query),
+      this.getOperational(ctx, query),
+      this.getSalesByPeriod(ctx, query),
+      this.getSalesByChannel(ctx, query),
+      this.getTopProductsReport(ctx, query),
+      this.getAverageTicket(ctx, query),
+      this.getPeakHoursReport(ctx, query),
+      this.getInventory(ctx, query),
+      this.getCmv(ctx, query),
+      this.getFinancial(ctx, query),
+      this.getByBranch(ctx, query),
+      this.getByOperator(ctx, query),
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      period: dashboard.period,
+      scope: dashboard.scope,
+      executive: dashboard.cards,
+      highlights: dashboard.highlights,
+      operational,
+      sales: {
+        byPeriod: salesByPeriod,
+        byChannel: salesByChannel,
+        topProducts,
+        averageTicket,
+        peakHours,
+      },
+      inventory,
+      cmv,
+      financial,
+      branches: byBranch,
+      operators: byOperator,
+      sources: {
+        liveOrders: true,
+        importedHistory: true,
+        snapshots: true,
+      },
     };
   }
 
@@ -451,6 +515,160 @@ export class ReportsService {
     };
   }
 
+  async getAbcStockItems(ctx: RequestContext, query: ReportsOverviewQuery = {}) {
+    const { period, scope } = await this.resolveReportBase(ctx, query);
+    const rows = await this.prisma.stockMovement.findMany({
+      where: {
+        stockItem: { companyId: ctx.companyId, stockType: 'RAW_MATERIAL' },
+        ...(scope.branchId ? { branchId: scope.branchId } : {}),
+        movementType: 'ENTRY',
+        sourceModule: { in: [...PURCHASE_ENTRY_REPORT_SOURCE_MODULES] },
+        createdAt: { gte: period.from, lte: period.to },
+      },
+      include: {
+        stockItem: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            stockUnit: true,
+            averageCost: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20000,
+    });
+
+    const grouped = new Map<
+      string,
+      {
+        stockItemId: string;
+        name: string;
+        code: string | null;
+        categoryName: string;
+        unit: string | null;
+        quantity: number;
+        totalPurchased: number;
+        samples: number;
+        averageCost: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const current = grouped.get(row.stockItemId) ?? {
+        stockItemId: row.stockItemId,
+        name: row.stockItem?.name ?? row.stockItemId,
+        code: row.stockItem?.code ?? null,
+        categoryName: row.stockItem?.category?.name ?? 'Sem categoria',
+        unit: row.stockItem?.stockUnit ?? null,
+        quantity: 0,
+        totalPurchased: 0,
+        samples: 0,
+        averageCost: Number(row.stockItem?.averageCost ?? 0),
+      };
+      const quantity = Number(row.quantity ?? 0);
+      const recordedTotal = Number(row.totalCost ?? 0);
+      current.quantity = this.money(current.quantity + quantity);
+      current.totalPurchased = this.money(current.totalPurchased + (recordedTotal > 0 ? recordedTotal : quantity * Number(row.unitCost ?? 0)));
+      current.samples += 1;
+      grouped.set(row.stockItemId, current);
+    }
+
+    const sorted = Array.from(grouped.values()).sort((left, right) => right.totalPurchased - left.totalPurchased);
+    const totalPurchased = this.money(sorted.reduce((sum, row) => sum + row.totalPurchased, 0));
+    let accumulated = 0;
+    const items = sorted.map((row, index) => {
+      accumulated += row.totalPurchased;
+      const percent = this.share(row.totalPurchased, totalPurchased);
+      const cumulativePercent = this.share(accumulated, totalPurchased);
+      const abcClass = this.abcClass(cumulativePercent);
+      return {
+        rank: index + 1,
+        ...row,
+        weightedAverageCost: row.quantity > 0 ? this.money(row.totalPurchased / row.quantity) : row.averageCost,
+        percent,
+        cumulativePercent,
+        abcClass,
+        suggestedAction: this.abcStockAction(abcClass),
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      period: this.mapPeriod(period),
+      scope: this.mapScope(ctx, scope),
+      source: 'STOCK_PURCHASE_ENTRIES',
+      summary: {
+        items: sorted.length,
+        totalPurchased,
+        classA: items.filter((row) => row.abcClass === 'A').length,
+        classB: items.filter((row) => row.abcClass === 'B').length,
+        classC: items.filter((row) => row.abcClass === 'C').length,
+      },
+      items,
+    };
+  }
+
+  async getAbcProducts(ctx: RequestContext, query: ReportsOverviewQuery = {}) {
+    const { period, scope, soldWhere } = await this.resolveReportBase(ctx, query);
+    const rows = await this.prisma.orderItem.findMany({
+      where: {
+        status: { not: 'CANCELED' },
+        order: soldWhere,
+      },
+      select: {
+        productId: true,
+        productNameSnapshot: true,
+        quantity: true,
+        totalPrice: true,
+        costSnapshot: true,
+        theoreticalCostSnapshot: true,
+        product: {
+          select: {
+            costPrice: true,
+            category: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20000,
+    });
+
+    const products = this.buildCmvProductRows(rows);
+    const totalRevenue = this.money(products.reduce((sum, row) => sum + row.revenue, 0));
+    let accumulated = 0;
+    const items = products.map((row) => {
+      accumulated += row.revenue;
+      const percent = this.share(row.revenue, totalRevenue);
+      const cumulativePercent = this.share(accumulated, totalRevenue);
+      const abcClass = this.abcClass(cumulativePercent);
+      return {
+        ...row,
+        percent,
+        cumulativePercent,
+        abcClass,
+        suggestedAction: this.abcProductAction(abcClass, row.grossMarginPercent, row.lossMaking),
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      period: this.mapPeriod(period),
+      scope: this.mapScope(ctx, scope),
+      source: 'ORDER_ITEMS',
+      summary: {
+        products: items.length,
+        revenue: totalRevenue,
+        classA: items.filter((row) => row.abcClass === 'A').length,
+        classB: items.filter((row) => row.abcClass === 'B').length,
+        classC: items.filter((row) => row.abcClass === 'C').length,
+      },
+      items,
+    };
+  }
+
   private buildCmvProductRows(
     orderItems: Array<{
       productId: string | null;
@@ -600,6 +818,25 @@ export class ReportsService {
     return { unitCost: 0, source: 'MISSING', dataStatus: 'NO_DATA' as const };
   }
 
+  private abcClass(cumulativePercent: number): 'A' | 'B' | 'C' {
+    if (cumulativePercent <= 80) return 'A';
+    if (cumulativePercent <= 95) return 'B';
+    return 'C';
+  }
+
+  private abcStockAction(abcClass: 'A' | 'B' | 'C') {
+    if (abcClass === 'A') return 'Priorizar negociacao, cobertura e acompanhamento de preco.';
+    if (abcClass === 'B') return 'Monitorar reposicao e variacao de custo semanalmente.';
+    return 'Comprar sob demanda e evitar excesso de estoque.';
+  }
+
+  private abcProductAction(abcClass: 'A' | 'B' | 'C', grossMarginPercent: number, lossMaking: boolean) {
+    if (lossMaking) return 'Revisar preco, ficha tecnica e custo antes de promover.';
+    if (abcClass === 'A') return grossMarginPercent < 30 ? 'Produto forte com margem baixa: revisar custo e preco.' : 'Proteger disponibilidade e destaque no cardapio.';
+    if (abcClass === 'B') return 'Monitorar margem e testar destaque em campanhas.';
+    return 'Reavaliar posicionamento, foto, descricao ou permanencia no cardapio.';
+  }
+
   async getFinancial(ctx: RequestContext, query: ReportsOverviewQuery = {}) {
     const { period, scope } = await this.resolveReportBase(ctx, query);
     const finance = await this.getFinance(ctx, period, scope);
@@ -689,6 +926,7 @@ export class ReportsService {
       statuses,
       paymentStatuses,
       paymentMethods,
+      neighborhoods,
       salesByDay,
       peakHours,
       topProducts,
@@ -710,7 +948,7 @@ export class ReportsService {
           ],
         },
       }),
-      this.prisma.order.aggregate({ where: baseWhere, _sum: { totalAmount: true, deliveryFee: true, discountAmount: true } }),
+      this.prisma.order.aggregate({ where: baseWhere, _sum: { subtotal: true, totalAmount: true, deliveryFee: true, extraFee: true, discountAmount: true } }),
       this.prisma.order.aggregate({
         where: {
           ...baseWhere,
@@ -729,6 +967,7 @@ export class ReportsService {
       this.getStatuses(baseWhere),
       this.getPaymentStatuses(baseWhere),
       this.getCombinedPaymentMethods(ctx, period, scope, query, baseWhere),
+      this.getDeliveryNeighborhoods(ctx, period, scope, query),
       this.getSalesByDay(ctx, period, scope, query),
       this.getPeakHours(ctx, period, scope, query),
       this.getTopProducts(soldWhere, 10),
@@ -774,7 +1013,9 @@ export class ReportsService {
         canceledRevenue,
         paidRevenue,
         averageTicket,
+        subtotal: this.money(grossAggregate._sum.subtotal),
         deliveryFee: this.money(this.money(grossAggregate._sum.deliveryFee) + importedOverview.deliveryFee),
+        extraFee: this.money(grossAggregate._sum.extraFee),
         discount: this.money(this.money(grossAggregate._sum.discountAmount) + importedOverview.discountAmount),
         completionRate,
         cancelRate,
@@ -789,6 +1030,7 @@ export class ReportsService {
         statuses,
         paymentStatuses,
         paymentMethods,
+        neighborhoods,
         branches: branchRanking,
       },
       rankings: {
@@ -1194,6 +1436,43 @@ export class ReportsService {
     const items = Array.from(byKey.values()).sort((a, b) => b.amount - a.amount);
     const total = items.reduce((sum, row) => sum + row.payments, 0);
     return items.map((row) => ({ ...row, percent: this.share(row.payments, total) }));
+  }
+
+  private async getDeliveryNeighborhoods(
+    ctx: RequestContext,
+    period: Period,
+    scope: BranchScope,
+    query: ReportsOverviewQuery,
+  ) {
+    const rows = await this.prisma.$queryRaw<NeighborhoodRow[]>(Prisma.sql`
+      SELECT COALESCE(NULLIF(TRIM(ca.district), ''), 'Sem bairro') AS district,
+             COUNT(*)::int AS orders,
+             COALESCE(SUM(o.total_amount), 0)::numeric AS revenue,
+             COALESCE(SUM(o.delivery_fee), 0)::numeric AS "deliveryFee"
+        FROM orders o
+        LEFT JOIN customer_addresses ca ON ca.id = o.customer_address_id
+       WHERE ${this.rawOrderConditions(ctx, period, scope, query)}
+         AND o.order_type::text IN ('DELIVERY', 'WHATSAPP')
+       GROUP BY 1
+       ORDER BY revenue DESC, orders DESC
+       LIMIT 12
+    `);
+    const totalOrders = rows.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
+    return rows.map((row) => {
+      const orders = Number(row.orders ?? 0);
+      const revenue = this.money(row.revenue);
+      const deliveryFee = this.money(row.deliveryFee);
+      return {
+        key: row.district ?? 'Sem bairro',
+        label: row.district ?? 'Sem bairro',
+        orders,
+        revenue,
+        deliveryFee,
+        averageTicket: orders > 0 ? this.money(revenue / orders) : 0,
+        averageDeliveryFee: orders > 0 ? this.money(deliveryFee / orders) : 0,
+        percent: this.share(orders, totalOrders),
+      };
+    });
   }
 
   private async getSalesByDay(ctx: RequestContext, period: Period, scope: BranchScope, query: ReportsOverviewQuery) {

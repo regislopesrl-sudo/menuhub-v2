@@ -1,12 +1,13 @@
 ﻿import { apiFetch } from '@/lib/api-fetch';
 
-export type TableStatus = 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING';
+export type TableStatus = 'FREE' | 'OCCUPIED' | 'RESERVED' | 'BLOCKED';
 
 export type TableItem = {
   id: string;
   name: string;
   capacity: number;
   status: TableStatus;
+  qrCode?: string | null;
   sessions?: Array<{ id: string; guestCount: number; openedAt: string }>;
 };
 

@@ -23,6 +23,15 @@ const MODULE_META: Record<ModuleKey, { name: string; description: string; enable
   stock: { name: 'Estoque', description: 'Controle de estoque.', enabledByDefault: false, adminOnly: true },
   fiscal: { name: 'Fiscal', description: 'Rotinas fiscais.', enabledByDefault: false, adminOnly: true },
   financial: { name: 'Financeiro', description: 'Fluxo financeiro.', enabledByDefault: false, adminOnly: true },
+  cash: { name: 'Caixa', description: 'Abertura, fechamento e movimentacoes de caixa.', enabledByDefault: false, adminOnly: true },
+  procurement: { name: 'Compras e Fornecedores', description: 'Compras, fornecedores, recebimento e custos.', enabledByDefault: false, adminOnly: true },
+  production: { name: 'Producao Interna', description: 'Pre-preparo, producao e lotes internos.', enabledByDefault: false, adminOnly: true },
+  logistics: { name: 'Logistica', description: 'Entregadores, atribuicao e acompanhamento de entregas.', enabledByDefault: false, adminOnly: true },
+  crm: { name: 'CRM', description: 'Clientes, historico, fidelidade e relacionamento.', enabledByDefault: false, adminOnly: true },
+  coupons: { name: 'Cupons', description: 'Cupons de desconto e validacao promocional.', enabledByDefault: false, adminOnly: true },
+  promotions: { name: 'Promocoes', description: 'Campanhas promocionais e regras comerciais.', enabledByDefault: false, adminOnly: true },
+  notifications: { name: 'Notificacoes', description: 'Eventos internos e canais de comunicacao mock.', enabledByDefault: false, adminOnly: true },
+  delivery_zones: { name: 'Areas de Entrega', description: 'Bairros, CEPs, taxas, horarios e preco dinamico.', enabledByDefault: false, adminOnly: true },
 };
 
 @Injectable()

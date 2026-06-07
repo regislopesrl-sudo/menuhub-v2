@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -45,10 +45,10 @@ import {
 } from '@/features/menu/menu.api';
 import type { MenuCombo, MenuProduct, MenuRecommendationConfig } from '@/features/menu/menu.mock';
 import { useModuleAccess } from '@/features/modules/use-module-access';
+import { AddonOptionsPanel } from './components/AddonOptionsPanel';
 import { AddonsManagementPanel } from './components/AddonsManagementPanel';
 import { FeaturedProductsPanel } from './components/FeaturedProductsPanel';
 import { ImportProductsPanel } from './components/ImportProductsPanel';
-import { ProductCard } from './components/ProductCard';
 import { ProductFilters } from './components/ProductFilters';
 import { ProductModal } from './components/ProductModal';
 import { RecommendationsPanel } from './components/RecommendationsPanel';
@@ -64,20 +64,67 @@ import {
   type ModalMode,
 } from './menu-view-model';
 
-const MENU_TABS: Array<{ key: MenuTab; label: string }> = [
+const CATALOG_TABS: Array<{ key: MenuTab; label: string }> = [
   { key: 'products', label: 'Produtos' },
   { key: 'categories', label: 'Categorias' },
-  { key: 'addons', label: 'Adicionais' },
+  { key: 'addons', label: 'Complementos' },
+  { key: 'options', label: 'Opcoes' },
   { key: 'combos', label: 'Combos' },
   { key: 'featured', label: 'Destaques' },
   { key: 'import', label: 'Importacao' },
   { key: 'recommendations', label: 'Peca tambem' },
+  { key: 'audit', label: 'Filtros avancados' },
 ];
+
+const ALL_MENU_TABS: MenuTab[] = [
+  'products',
+  'categories',
+  'addons',
+  'options',
+  'combos',
+  'availability',
+  'media',
+  'deliveryPublication',
+  'featured',
+  'import',
+  'recommendations',
+  'audit',
+];
+
+const KITCHEN_STATION_LABELS: Record<NonNullable<MenuProduct['kitchenStation']>, string> = {
+  FRYER: 'Fritadeira',
+  DRINKS: 'Bar',
+  DESSERTS: 'Sobremesas',
+  EXPEDITION: 'Expedicao',
+};
+
+function productCode(product: MenuProduct) {
+  return product.sku?.trim() || product.id.slice(0, 8);
+}
+
+function productSector(product: MenuProduct) {
+  return product.kitchenStation ? KITCHEN_STATION_LABELS[product.kitchenStation] : 'Geral';
+}
+
+function productFinancials(product: MenuProduct) {
+  const price = primaryPrice(product);
+  const cost = Number(product.costPrice ?? 0);
+  const hasCost = cost > 0;
+  const margin = price > 0 && hasCost ? ((price - cost) / price) * 100 : null;
+  const cmv = price > 0 && hasCost ? (cost / price) * 100 : null;
+  return { price, cost, margin, cmv };
+}
+
+function percent(value: number | null) {
+  if (value === null || Number.isNaN(value)) return '-';
+  return `${value.toFixed(1).replace('.', ',')}%`;
+}
 
 export default function AdminMenuPage() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const access = useModuleAccess({ companyId, branchId, userRole: 'admin' }, 'menu');
 
   const [products, setProducts] = useState<MenuProduct[]>([]);
@@ -105,6 +152,7 @@ export default function AdminMenuPage() {
   const [categoryDraftName, setCategoryDraftName] = useState('');
   const [categoryDraftSortOrder, setCategoryDraftSortOrder] = useState('0');
   const [editingCategory, setEditingCategory] = useState<AdminMenuCategory | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
   const load = async () => {
     if (access.loading || !access.allowed) {
@@ -138,6 +186,13 @@ export default function AdminMenuPage() {
   }, [access.allowed, access.loading, branchId, companyId]);
 
   useEffect(() => {
+    const requestedTab = searchParams.get('tab') as MenuTab | null;
+    if (requestedTab && ALL_MENU_TABS.includes(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const id = setTimeout(() => setDebouncedQuery(query), 250);
     return () => clearTimeout(id);
   }, [query]);
@@ -164,11 +219,30 @@ export default function AdminMenuPage() {
     ];
   }, [categoryRecords, products]);
 
+  const productCategories = useMemo(() => categories.filter((item) => item.name !== 'all'), [categories]);
+  const selectedProductCategory = productCategories.some((item) => item.name === category) ? category : productCategories[0]?.name ?? '';
+
+  useEffect(() => {
+    if (activeTab !== 'products') return;
+    if (productCategories.length === 0) {
+      if (category) setCategory('');
+      return;
+    }
+    if (!productCategories.some((item) => item.name === category)) {
+      setCategory(productCategories[0].name);
+    }
+  }, [activeTab, category, productCategories]);
+
+  useEffect(() => {
+    setSelectedProductIds((current) => current.filter((id) => products.some((product) => product.id === id)));
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();
+    if (!selectedProductCategory) return [];
     return products.filter((product) => {
       const matchesSearch = !q || product.name.toLowerCase().includes(q) || (product.description ?? '').toLowerCase().includes(q);
-      const matchesCategory = category === 'all' || product.categoryName === category;
+      const matchesCategory = (product.categoryName ?? 'Sem categoria') === selectedProductCategory;
       const matchesAvailability =
         availability === 'all' ||
         (availability === 'active' && product.available !== false) ||
@@ -187,20 +261,23 @@ export default function AdminMenuPage() {
         (max === undefined || Number.isNaN(max) || price <= max);
       return matchesSearch && matchesCategory && matchesAvailability && matchesChannel && matchesAddons && matchesPrice;
     });
-  }, [addonFilter, availability, category, channel, debouncedQuery, maxPrice, minPrice, products]);
-
-  const stats = useMemo(() => {
-    const active = products.filter((product) => product.available !== false).length;
-    const categoryCount = new Set(products.map((product) => product.categoryName ?? 'Sem categoria')).size;
-    const featured = products.filter((product) => product.featured).length;
-    const noPrice = products.filter((product) => Number(product.salePrice ?? product.price ?? 0) <= 0).length;
-    return { active, unavailable: products.length - active, categoryCount, featured, noPrice };
-  }, [products]);
+  }, [addonFilter, availability, channel, debouncedQuery, maxPrice, minPrice, products, selectedProductCategory]);
 
   const featuredProducts = useMemo(
     () => products.filter((product) => product.featured).sort((a, b) => (a.featuredSortOrder ?? 0) - (b.featuredSortOrder ?? 0)),
     [products],
   );
+
+  const hiddenDeliveryProducts = useMemo(() => products.filter((product) => product.channels?.delivery === false), [products]);
+  const productsWithoutImage = useMemo(() => products.filter((product) => !product.imageUrl?.trim()), [products]);
+  const productsWithoutDescription = useMemo(() => products.filter((product) => !product.description?.trim()), [products]);
+  const productsWithoutTechnicalSheet = useMemo(() => products.filter((product) => !hasTechnicalSheet(product)), [products]);
+  const unavailableProducts = useMemo(() => products.filter((product) => product.available === false), [products]);
+  const selectedProducts = useMemo(
+    () => products.filter((product) => selectedProductIds.includes(product.id)),
+    [products, selectedProductIds],
+  );
+  const selectedCategoryRecord = productCategories.find((item) => item.name === selectedProductCategory);
 
   if (access.loading) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
@@ -430,6 +507,76 @@ export default function AdminMenuPage() {
     }
   };
 
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds((current) =>
+      current.includes(productId) ? current.filter((id) => id !== productId) : [...current, productId],
+    );
+  };
+
+  const selectFilteredProducts = () => {
+    setSelectedProductIds(filteredProducts.map((product) => product.id));
+  };
+
+  const bulkAvailability = async (available: boolean) => {
+    if (!selectedProducts.length) {
+      setActionError('Selecione ao menos um produto para aplicar a acao.');
+      return;
+    }
+    setSavingAction('bulk-availability');
+    setActionError(null);
+    try {
+      const updated = await Promise.all(
+        selectedProducts.map((product) =>
+          updateAdminMenuProductAvailability({
+            companyId,
+            branchId,
+            productId: product.id,
+            available,
+            channels: product.channels,
+          }),
+        ),
+      );
+      updated.forEach(upsertProduct);
+      setNotice(`${updated.length} produtos ${available ? 'ativados' : 'desativados'}.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao aplicar disponibilidade em massa.');
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
+  const updateDeliveryVisibilityForProducts = async (productsToUpdate: MenuProduct[], visible: boolean) => {
+    if (!productsToUpdate.length) {
+      setActionError('Selecione ao menos um produto para aplicar a acao.');
+      return;
+    }
+    setSavingAction('bulk-delivery');
+    setActionError(null);
+    try {
+      const updated = await Promise.all(
+        productsToUpdate.map((product) =>
+          updateAdminMenuProductAvailability({
+            companyId,
+            branchId,
+            productId: product.id,
+            available: product.available !== false,
+            channels: { ...product.channels, delivery: visible },
+          }),
+        ),
+      );
+      updated.forEach(upsertProduct);
+      setNotice(`${updated.length} produtos ${visible ? 'visiveis no delivery' : 'ocultos no delivery'}.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Falha ao atualizar publicacao no delivery.');
+    } finally {
+      setSavingAction(null);
+    }
+  };
+
+  const bulkDeliveryVisibility = async (visible: boolean) => {
+    await updateDeliveryVisibilityForProducts(selectedProducts, visible);
+  };
+
   const moveFeatured = async (productId: string, direction: -1 | 1) => {
     const current = featuredProducts.map((product) => product.id);
     const index = current.indexOf(productId);
@@ -478,7 +625,7 @@ export default function AdminMenuPage() {
 
   const openTechnicalSheet = (product: MenuProduct) => {
     setModal(null);
-    router.push(`/admin/menu/products/${product.id}/ficha-tecnica`);
+    router.push(`/admin/technical-sheet/${product.id}`);
   };
 
   const openRecommendations = async (product: MenuProduct) => {
@@ -547,28 +694,16 @@ export default function AdminMenuPage() {
     <main className={styles.page}>
       <PageHeader
         title="Catalogo"
-        subtitle="Gerencie produtos, categorias, precos e adicionais"
+        subtitle="Produtos, categorias, complementos, combos e IA do cardapio"
         right={
           <div className={styles.headerActions}>
             <Badge tone={loadError ? 'warning' : 'success'}>{loadError ? 'Fallback local' : 'API conectada'}</Badge>
             <Button variant="primary" onClick={() => setModal({ mode: 'create' })}>Novo produto</Button>
-            <Button onClick={() => openCategoryModal()}>Nova categoria</Button>
-            <Button onClick={() => setActiveTab('import')}>Importar produtos</Button>
-            <Button onClick={() => setActiveTab('addons')}>Gerenciar adicionais</Button>
-            <Button onClick={() => void load()}>Atualizar</Button>
           </div>
         }
       />
 
-      <section className={styles.metrics}>
-        <Card className={styles.metric}><span>Total</span><strong>{products.length}</strong></Card>
-        <Card className={styles.metric}><span>Ativos</span><strong>{stats.active}</strong></Card>
-        <Card className={styles.metric}><span>Destacados</span><strong>{stats.featured}</strong></Card>
-        <Card className={styles.metric}><span>Sem preco</span><strong>{stats.noPrice}</strong></Card>
-        <Card className={styles.metric}><span>Indisponiveis</span><strong>{stats.unavailable}</strong></Card>
-      </section>
-
-      <SectionTabs tabs={MENU_TABS} active={activeTab} onChange={setActiveTab} />
+      <SectionTabs tabs={CATALOG_TABS} active={activeTab} onChange={setActiveTab} />
 
       {notice ? (
         <div className={styles.notice}>
@@ -596,11 +731,12 @@ export default function AdminMenuPage() {
         <section className={styles.workspace}>
           <aside className={styles.categories}>
             <div className={styles.sidebarTitle}>Categorias</div>
-            {categories.filter((item) => item.name !== 'all').map((item) => (
+            {productCategories.length === 0 ? <span className={styles.categoryEmpty}>Sem categorias</span> : null}
+            {productCategories.map((item) => (
               <button
                 type="button"
                 key={item.name}
-                className={`${styles.categoryButton} ${category === item.name ? styles.categoryActive : ''}`.trim()}
+                className={`${styles.categoryButton} ${selectedProductCategory === item.name ? styles.categoryActive : ''}`.trim()}
                 onClick={() => setCategory(item.name)}
               >
                 <span>{item.name}</span>
@@ -613,7 +749,7 @@ export default function AdminMenuPage() {
             <ProductFilters
               query={query}
               onQueryChange={setQuery}
-              category={category}
+              category={selectedProductCategory}
               onCategoryChange={setCategory}
               availability={availability}
               onAvailabilityChange={setAvailability}
@@ -625,38 +761,122 @@ export default function AdminMenuPage() {
               onMinPriceChange={setMinPrice}
               maxPrice={maxPrice}
               onMaxPriceChange={setMaxPrice}
-              categories={categories}
+              categories={productCategories}
+            />
+
+            <BulkProductToolbar
+              selectedCount={selectedProducts.length}
+              filteredCount={filteredProducts.length}
+              saving={savingAction === 'bulk-availability' || savingAction === 'bulk-delivery'}
+              onSelectFiltered={selectFilteredProducts}
+              onClear={() => setSelectedProductIds([])}
+              onActivate={() => void bulkAvailability(true)}
+              onDeactivate={() => void bulkAvailability(false)}
+              onShowDelivery={() => void bulkDeliveryVisibility(true)}
+              onHideDelivery={() => void bulkDeliveryVisibility(false)}
             />
 
             {loading ? <LoadingState label="Carregando catalogo..." /> : null}
             {!loading && filteredProducts.length === 0 ? <EmptyState title="Nenhum produto encontrado" description="Ajuste os filtros ou cadastre um novo produto." /> : null}
             {!loading && filteredProducts.length > 0 ? (
-              <section className={styles.grid}>
-                {filteredProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onEdit={() => setModal({ mode: 'edit', product })}
-                  />
-                ))}
-              </section>
+              <Card className={styles.catalogProductsPanel}>
+                <div className={styles.catalogCategoryHeader}>
+                  <div>
+                    <span>Categoria selecionada</span>
+                    <strong>{selectedProductCategory || 'Produtos'}</strong>
+                    <p>{filteredProducts.length} produto(s) nesta categoria. A lista sempre mostra apenas a categoria aberta.</p>
+                  </div>
+                  <div className={styles.catalogCategoryActions}>
+                    <Button onClick={selectFilteredProducts} disabled={filteredProducts.length === 0}>Edicao em massa</Button>
+                    <Button
+                      onClick={() => selectedCategoryRecord?.id ? openCategoryModal(selectedCategoryRecord as AdminMenuCategory) : openCategoryModal()}
+                    >
+                      Editar categoria
+                    </Button>
+                  </div>
+                </div>
+                <div className={styles.catalogProductList}>
+                  {filteredProducts.map((product) => {
+                    const financials = productFinancials(product);
+                    const selected = selectedProductIds.includes(product.id);
+                    const initials = product.name
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((part) => part[0])
+                      .join('')
+                      .slice(0, 3)
+                      .toUpperCase();
+                    return (
+                      <article
+                        key={product.id}
+                        className={`${styles.catalogProductRow} ${selected ? styles.catalogProductSelected : ''}`.trim()}
+                      >
+                        <input
+                          className={styles.tableCheck}
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleProductSelection(product.id)}
+                          aria-label={`Selecionar produto ${product.name}`}
+                        />
+                        <button
+                          type="button"
+                          className={styles.catalogProductPhoto}
+                          onClick={() => setModal({ mode: 'edit', product })}
+                          aria-label={`Editar produto ${product.name}`}
+                        >
+                          {product.imageUrl ? <img src={product.imageUrl} alt="" /> : <span>{initials || productCode(product).slice(0, 2)}</span>}
+                        </button>
+                        <div className={styles.catalogProductInfo}>
+                          <button type="button" className={styles.catalogProductName} onClick={() => setModal({ mode: 'edit', product })}>
+                            {product.name}
+                          </button>
+                          <p>{product.description || 'Produto sem descricao cadastrada.'}</p>
+                          <div className={styles.catalogProductMeta}>
+                            <span>{product.categoryName ?? 'Sem categoria'}</span>
+                            <span>SKU {productCode(product)}</span>
+                            <span>{productSector(product)}</span>
+                          </div>
+                        </div>
+                        <div className={styles.catalogPriceBox}>
+                          <span>Preco</span>
+                          <strong>{brl(financials.price)}</strong>
+                        </div>
+                        <div className={styles.catalogPriceBox}>
+                          <span>CMV</span>
+                          <strong>{percent(financials.cmv)}</strong>
+                        </div>
+                        <Badge tone={product.available === false ? 'danger' : 'success'}>
+                          {product.available === false ? 'Inativo' : 'Ativo'}
+                        </Badge>
+                        <div className={styles.catalogRowActions}>
+                          <Button onClick={() => setModal({ mode: 'edit', product })}>Editar</Button>
+                          <Button onClick={() => void toggleAvailability(product)} disabled={savingAction === `toggle-${product.id}`}>
+                            {product.available === false ? 'Ativar' : 'Desativar'}
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </Card>
             ) : null}
           </section>
         </section>
       ) : null}
 
       {activeTab === 'categories' ? (
-        <section className={styles.simpleGrid}>
-          {categories.filter((item) => item.name !== 'all').length === 0 ? (
+        <section className={styles.categoryManagementList}>
+          {productCategories.length === 0 ? (
             <EmptyState title="Sem categorias" description="Crie a primeira categoria para organizar o catalogo." />
           ) : null}
-          {categories.filter((item) => item.name !== 'all').map((item, index, list) => (
-            <Card key={item.name} className={styles.managementCard}>
-              <div className={styles.categoryCardHeader}>
+          {productCategories.map((item, index, list) => (
+            <Card key={item.name} className={styles.categoryManagementRow}>
+              <div className={styles.categoryManagementInfo}>
                 <strong>{item.name}</strong>
-                <Badge tone={item.active === false ? 'warning' : 'success'}>{item.active === false ? 'Inativa' : 'Ativa'}</Badge>
+                <span>{item.count} produtos | ordem {item.sortOrder ?? 0}</span>
               </div>
-              <span>{item.count} produtos | ordem {item.sortOrder ?? 0}</span>
+              <Badge tone={item.active === false ? 'warning' : 'success'}>{item.active === false ? 'Inativa' : 'Ativa'}</Badge>
               {item.id ? (
                 <div className={styles.managementActions}>
                   <Button onClick={() => openCategoryModal(item as AdminMenuCategory)}>Editar</Button>
@@ -686,9 +906,11 @@ export default function AdminMenuPage() {
               )}
             </Card>
           ))}
-          <Card className={styles.managementCard}>
-            <strong>Nova categoria</strong>
-            <span>Organize produtos por grupos operacionais.</span>
+          <Card className={styles.categoryManagementRow}>
+            <div className={styles.categoryManagementInfo}>
+              <strong>Nova categoria</strong>
+              <span>Organize produtos por grupos operacionais.</span>
+            </div>
             <Button variant="primary" onClick={() => openCategoryModal()}>Criar categoria</Button>
           </Card>
         </section>
@@ -700,6 +922,15 @@ export default function AdminMenuPage() {
           branchId={branchId}
           products={products}
           onProductsChanged={setProducts}
+          onError={setActionError}
+          onNotice={setNotice}
+        />
+      ) : null}
+
+      {activeTab === 'options' ? (
+        <AddonOptionsPanel
+          companyId={companyId}
+          branchId={branchId}
           onError={setActionError}
           onNotice={setNotice}
         />
@@ -724,6 +955,58 @@ export default function AdminMenuPage() {
       ) : null}
 
       {activeTab === 'recommendations' ? <RecommendationsPanel products={products} /> : null}
+
+      {activeTab === 'availability' ? (
+        <ProductIssuePanel
+          title="Disponibilidade operacional"
+          description="Produtos inativos, sem preco ou com restricao de estoque aparecem aqui para saneamento rapido."
+          products={[...unavailableProducts, ...products.filter((product) => Number(product.salePrice ?? product.price ?? 0) <= 0)]}
+          emptyTitle="Disponibilidade em ordem"
+          emptyDescription="Nao ha produtos inativos ou sem preco no catalogo atual."
+          actionLabel="Editar produto"
+          onAction={(product) => setModal({ mode: 'edit', product })}
+          secondaryActionLabel="Ativar"
+          onSecondaryAction={(product) => void toggleAvailability(product)}
+        />
+      ) : null}
+
+      {activeTab === 'media' ? (
+        <ProductIssuePanel
+          title="Fotos e midia"
+          description="Produtos sem imagem reduzem conversao no cardapio online. Abra o produto para inserir a foto."
+          products={productsWithoutImage}
+          emptyTitle="Todos os produtos tem foto"
+          emptyDescription="Nao ha pendencia de imagem nos produtos carregados."
+          actionLabel="Adicionar foto"
+          onAction={(product) => setModal({ mode: 'edit', product })}
+        />
+      ) : null}
+
+      {activeTab === 'deliveryPublication' ? (
+        <ProductIssuePanel
+          title="Publicacao no delivery"
+          description="Controle quais produtos aparecem no cardapio online sem alterar o PDV."
+          products={hiddenDeliveryProducts}
+          emptyTitle="Tudo publicado no delivery"
+          emptyDescription="Nao ha produtos ocultos no canal delivery."
+          actionLabel="Exibir no delivery"
+          onAction={(product) => void updateDeliveryVisibilityForProducts([product], true)}
+          secondaryActionLabel="Editar produto"
+          onSecondaryAction={(product) => setModal({ mode: 'edit', product })}
+        />
+      ) : null}
+
+      {activeTab === 'audit' ? (
+        <MenuAuditPanel
+          products={products}
+          categories={productCategories}
+          withoutImage={productsWithoutImage.length}
+          withoutDescription={productsWithoutDescription.length}
+          withoutTechnicalSheet={productsWithoutTechnicalSheet.length}
+          hiddenDelivery={hiddenDeliveryProducts.length}
+          onEdit={(product) => setModal({ mode: 'edit', product })}
+        />
+      ) : null}
 
       {modal ? (
         <ProductModal
@@ -792,7 +1075,184 @@ export default function AdminMenuPage() {
   );
 }
 
+function BulkProductToolbar({
+  selectedCount,
+  filteredCount,
+  saving,
+  onSelectFiltered,
+  onClear,
+  onActivate,
+  onDeactivate,
+  onShowDelivery,
+  onHideDelivery,
+}: {
+  selectedCount: number;
+  filteredCount: number;
+  saving: boolean;
+  onSelectFiltered: () => void;
+  onClear: () => void;
+  onActivate: () => void;
+  onDeactivate: () => void;
+  onShowDelivery: () => void;
+  onHideDelivery: () => void;
+}) {
+  return (
+    <Card className={styles.bulkToolbar}>
+      <div>
+        <span>Acao em massa</span>
+        <strong>{selectedCount} selecionados</strong>
+        <small>{filteredCount} produtos no filtro atual.</small>
+      </div>
+      <div className={styles.bulkActions}>
+        <Button onClick={onSelectFiltered} disabled={filteredCount === 0 || saving}>Selecionar filtro</Button>
+        <Button onClick={onClear} disabled={selectedCount === 0 || saving}>Limpar</Button>
+        <Button onClick={onActivate} disabled={selectedCount === 0 || saving}>Ativar</Button>
+        <Button onClick={onDeactivate} disabled={selectedCount === 0 || saving}>Inativar</Button>
+        <Button onClick={onShowDelivery} disabled={selectedCount === 0 || saving}>Exibir delivery</Button>
+        <Button onClick={onHideDelivery} disabled={selectedCount === 0 || saving}>Ocultar delivery</Button>
+      </div>
+    </Card>
+  );
+}
 
+function ProductIssuePanel({
+  title,
+  description,
+  products,
+  emptyTitle,
+  emptyDescription,
+  actionLabel,
+  onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+}: {
+  title: string;
+  description: string;
+  products: MenuProduct[];
+  emptyTitle: string;
+  emptyDescription: string;
+  actionLabel: string;
+  onAction: (product: MenuProduct) => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: (product: MenuProduct) => void;
+}) {
+  const uniqueProducts = Array.from(new Map(products.map((product) => [product.id, product])).values());
+
+  return (
+    <section className={styles.issueWorkspace}>
+      <Card className={styles.issueHero}>
+        <div>
+          <span>Gestao premium</span>
+          <strong>{title}</strong>
+          <p>{description}</p>
+        </div>
+        <Badge tone={uniqueProducts.length ? 'warning' : 'success'}>{uniqueProducts.length} pendencias</Badge>
+      </Card>
+      {uniqueProducts.length === 0 ? <EmptyState title={emptyTitle} description={emptyDescription} /> : null}
+      <section className={styles.issueGrid}>
+        {uniqueProducts.map((product) => (
+          <Card key={product.id} className={styles.issueCard}>
+            <div className={styles.issueCardHeader}>
+              <div>
+                <strong>{product.name}</strong>
+                <span>{product.categoryName ?? 'Sem categoria'} | SKU {product.sku ?? '-'}</span>
+              </div>
+              <Badge tone={product.available === false ? 'danger' : 'success'}>{product.available === false ? 'Inativo' : 'Ativo'}</Badge>
+            </div>
+            <div className={styles.issueFacts}>
+              <span>Preco {brl(primaryPrice(product))}</span>
+              <span>{product.imageUrl ? 'Com foto' : 'Sem foto'}</span>
+              <span>{hasTechnicalSheet(product) ? 'Com ficha' : 'Sem ficha'}</span>
+              <span>{product.channels?.delivery === false ? 'Oculto delivery' : 'Delivery ativo'}</span>
+            </div>
+            <div className={styles.managementActions}>
+              <Button variant="primary" onClick={() => onAction(product)}>{actionLabel}</Button>
+              {secondaryActionLabel && onSecondaryAction ? <Button onClick={() => onSecondaryAction(product)}>{secondaryActionLabel}</Button> : null}
+            </div>
+          </Card>
+        ))}
+      </section>
+    </section>
+  );
+}
+
+function MenuAuditPanel({
+  products,
+  categories,
+  withoutImage,
+  withoutDescription,
+  withoutTechnicalSheet,
+  hiddenDelivery,
+  onEdit,
+}: {
+  products: MenuProduct[];
+  categories: CategorySummary[];
+  withoutImage: number;
+  withoutDescription: number;
+  withoutTechnicalSheet: number;
+  hiddenDelivery: number;
+  onEdit: (product: MenuProduct) => void;
+}) {
+  const criticalProducts = products.filter(
+    (product) =>
+      !product.imageUrl?.trim() ||
+      !product.description?.trim() ||
+      !hasTechnicalSheet(product) ||
+      Number(product.salePrice ?? product.price ?? 0) <= 0,
+  );
+
+  return (
+    <section className={styles.auditWorkspace}>
+      <Card className={styles.issueHero}>
+        <div>
+          <span>Auditoria</span>
+          <strong>Saude do catalogo</strong>
+          <p>Conferencia rapida de publicacao, midia, ficha tecnica e dados comerciais.</p>
+        </div>
+        <Badge tone={criticalProducts.length ? 'warning' : 'success'}>{criticalProducts.length} itens para revisar</Badge>
+      </Card>
+      <section className={styles.auditCards}>
+        <AuditMetric title="Produtos" value={products.length} />
+        <AuditMetric title="Categorias ativas" value={categories.filter((item) => item.active !== false).length} />
+        <AuditMetric title="Sem foto" value={withoutImage} />
+        <AuditMetric title="Sem descricao" value={withoutDescription} />
+        <AuditMetric title="Sem ficha" value={withoutTechnicalSheet} />
+        <AuditMetric title="Ocultos delivery" value={hiddenDelivery} />
+      </section>
+      <Card className={styles.auditTable}>
+        <div className={styles.categoryCardHeader}>
+          <strong>Produtos com atencao</strong>
+          <span>{criticalProducts.length} linhas</span>
+        </div>
+        {criticalProducts.length === 0 ? <EmptyState title="Catalogo sem alertas" description="Nenhum ponto critico detectado." /> : null}
+        {criticalProducts.slice(0, 80).map((product) => (
+          <button key={product.id} type="button" className={styles.auditRow} onClick={() => onEdit(product)}>
+            <strong>{product.name}</strong>
+            <span>{product.categoryName ?? 'Sem categoria'}</span>
+            <span>{brl(primaryPrice(product))}</span>
+            <span>{!product.imageUrl?.trim() ? 'Sem foto' : 'Com foto'}</span>
+            <span>{!product.description?.trim() ? 'Sem descricao' : 'Descricao OK'}</span>
+            <span>{hasTechnicalSheet(product) ? 'Ficha OK' : 'Sem ficha'}</span>
+          </button>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
+function AuditMetric({ title, value }: { title: string; value: number }) {
+  return (
+    <Card className={styles.metric}>
+      <span>{title}</span>
+      <strong>{value}</strong>
+    </Card>
+  );
+}
+
+function hasTechnicalSheet(product: MenuProduct) {
+  if (product.controlsStock === false || product.stockAvailabilityStatus === 'not_controlled') return true;
+  return product.stockAvailabilityStatus !== 'missing_recipe' && product.stockAvailabilityStatus !== 'recipe_without_stock_items';
+}
 
 function CombosManagementPanel({
   products,

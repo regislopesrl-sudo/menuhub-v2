@@ -10,25 +10,11 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { useEffect } from 'react';
 import {
-  closePdvSession,
-  createPdvMovement,
   createPdvOrder,
   fetchPdvMenu,
   getCurrentOpenPdvSession,
-  getPdvOperatorSummary,
-  getCurrentPdvSessionSummary,
-  getPdvSessionDivergence,
-  getPdvSessionSummary,
-  listCurrentPdvMovements,
-  listPdvMovements,
-  openPdvSession,
-  type PdvMovementType,
-  type PdvSessionMovement,
   type PdvCheckoutPayload,
   type PdvPaymentMethod,
-  type PdvSessionSummary,
-  type PdvOperatorSummary,
-  type PdvSessionDivergence,
 } from '@/features/pdv/pdv.api';
 import type { MenuProduct } from '@/features/menu/menu.mock';
 import { Input, Select } from '@/components/ui/Input';
@@ -89,6 +75,10 @@ function pdvProductStatusText(product: MenuProduct, enabled: boolean) {
 
 type PdvSaleType = 'COUNTER' | 'TABLE' | 'COMMAND';
 
+function isPdvSaleType(value: string | null): value is PdvSaleType {
+  return value === 'COUNTER' || value === 'TABLE' || value === 'COMMAND';
+}
+
 export default function AdminPdvPage() {
   const companyId = process.env.NEXT_PUBLIC_MOCK_COMPANY_ID ?? 'company-demo';
   const branchId = process.env.NEXT_PUBLIC_MOCK_BRANCH_ID;
@@ -119,7 +109,6 @@ export default function AdminPdvPage() {
   const [customizingProduct, setCustomizingProduct] = useState<MenuProduct | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [sessionActionLoading, setSessionActionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [openSession, setOpenSession] = useState<{
     id: string;
@@ -128,17 +117,19 @@ export default function AdminPdvPage() {
     openedAt: string;
     openingBalance: number;
   } | null>(null);
-  const [sessionSummary, setSessionSummary] = useState<PdvSessionSummary | null>(null);
-  const [openingBalanceInput, setOpeningBalanceInput] = useState('0');
-  const [declaredCashInput, setDeclaredCashInput] = useState('');
-  const [closureNotesInput, setClosureNotesInput] = useState('');
-  const [movements, setMovements] = useState<PdvSessionMovement[]>([]);
-  const [operatorSummary, setOperatorSummary] = useState<PdvOperatorSummary | null>(null);
-  const [sessionDivergence, setSessionDivergence] = useState<PdvSessionDivergence | null>(null);
-  const [movementType, setMovementType] = useState<PdvMovementType>('SUPPLY');
-  const [movementAmount, setMovementAmount] = useState('');
-  const [movementReason, setMovementReason] = useState('');
   const finalizeRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const nextSaleType = params.get('saleType');
+    const nextReference = params.get('commandReference');
+    if (isPdvSaleType(nextSaleType)) {
+      setSaleType(nextSaleType);
+    }
+    if (nextReference) {
+      setCommandReference(nextReference);
+    }
+  }, []);
 
   const subtotal = useMemo(
     () =>
@@ -155,6 +146,39 @@ export default function AdminPdvPage() {
   const isCounterSale = selectedSaleType === 'COUNTER';
   const isDeferredSale = selectedSaleType === 'TABLE' || selectedSaleType === 'COMMAND';
   const saleTypeLabel = selectedSaleType === 'TABLE' ? 'Mesa' : selectedSaleType === 'COMMAND' ? 'Comanda' : 'Balcao';
+  const hasCartItems = cart.length > 0;
+  const hasOpenCash = Boolean(openSession?.id);
+  const hasSaleType = Boolean(selectedSaleType);
+  const hasCommandReference = !isDeferredSale || commandReference.trim().length > 0;
+  const canFinalize = hasCartItems && hasOpenCash && hasSaleType && hasCommandReference && !finishing;
+  const checkoutChecklist = [
+    {
+      label: 'Itens',
+      ok: hasCartItems,
+      hint: hasCartItems ? `${cart.length} linha(s) no carrinho.` : 'Adicione produtos ao carrinho.',
+    },
+    {
+      label: 'Caixa',
+      ok: hasOpenCash,
+      hint: hasOpenCash ? 'Caixa aberto para registrar venda.' : 'Abra o caixa antes de finalizar.',
+    },
+    {
+      label: 'Tipo',
+      ok: hasSaleType,
+      hint: hasSaleType ? saleTypeLabel : 'Escolha Balcao, Mesa ou Comanda.',
+    },
+    {
+      label: isCounterSale ? 'Pagamento' : 'Vinculo',
+      ok: isCounterSale || (isDeferredSale && hasCommandReference),
+      hint: isCounterSale
+        ? 'Pagamento sera registrado no caixa.'
+        : isDeferredSale
+          ? hasCommandReference
+            ? `${saleTypeLabel} ${commandReference.trim()}`
+            : `Informe a ${saleType === 'TABLE' ? 'mesa' : 'comanda'}.`
+          : 'Aguardando tipo de venda.',
+    },
+  ];
   const categories = useMemo(
     () => ['all', ...Array.from(new Set(menu.map((item) => item.categoryName || 'Sem categoria')))],
     [menu],
@@ -213,43 +237,7 @@ export default function AdminPdvPage() {
       setSessionError(null);
       try {
         const current = await getCurrentOpenPdvSession({ companyId, branchId });
-        if (current) {
-          setOpenSession(current);
-          const [summary, movementList] = await Promise.all([
-            getCurrentPdvSessionSummary({
-              companyId,
-              branchId,
-            }),
-            listCurrentPdvMovements({
-              companyId,
-              branchId,
-            }),
-          ]);
-          setSessionSummary(summary);
-          setMovements(movementList);
-          if (summary?.sessionId) {
-            const [operator, divergence] = await Promise.all([
-              getPdvOperatorSummary({
-                companyId,
-                branchId,
-                sessionId: summary.sessionId,
-              }),
-              getPdvSessionDivergence({
-                companyId,
-                branchId,
-                sessionId: summary.sessionId,
-              }),
-            ]);
-            setOperatorSummary(operator);
-            setSessionDivergence(divergence);
-          }
-        } else {
-          setOpenSession(null);
-          setSessionSummary(null);
-          setMovements([]);
-          setOperatorSummary(null);
-          setSessionDivergence(null);
-        }
+        setOpenSession(current);
       } catch (err) {
         setSessionError(err instanceof Error ? err.message : 'Falha ao carregar sessao de caixa.');
       } finally {
@@ -263,32 +251,8 @@ export default function AdminPdvPage() {
     if (access.loading || !access.allowed || !openSession?.id) return;
     const id = setInterval(async () => {
       try {
-        const summary = await getPdvSessionSummary({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        });
-        setSessionSummary(summary);
-        const [movementList, operator, divergence] = await Promise.all([
-          listPdvMovements({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-          getPdvOperatorSummary({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-          getPdvSessionDivergence({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-        ]);
-        setMovements(movementList);
-        setOperatorSummary(operator);
-        setSessionDivergence(divergence);
+        const current = await getCurrentOpenPdvSession({ companyId, branchId });
+        setOpenSession(current);
       } catch {
         // non-blocking polling
       }
@@ -312,7 +276,7 @@ export default function AdminPdvPage() {
       if (isTyping) return;
       if (event.key === 'F4') {
         event.preventDefault();
-        if (cart.length > 0 && openSession?.id && !finishing) {
+        if (canFinalize) {
           void finalizeRef.current();
         }
         return;
@@ -338,7 +302,7 @@ export default function AdminPdvPage() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [access.allowed, access.loading, cart.length, customizingProduct, finishing, openSession?.id]);
+  }, [access.allowed, access.loading, canFinalize, customizingProduct]);
 
   if (access.loading) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao mÃ³dulo..." /></main>;
@@ -458,151 +422,13 @@ export default function AdminPdvPage() {
         setCommandReference('');
       }
       if (openSession?.id) {
-        const [summary, operator, divergence] = await Promise.all([
-          getPdvSessionSummary({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-          getPdvOperatorSummary({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-          getPdvSessionDivergence({
-            companyId,
-            branchId,
-            sessionId: openSession.id,
-          }),
-        ]);
-        setSessionSummary(summary);
-        setOperatorSummary(operator);
-        setSessionDivergence(divergence);
+        const current = await getCurrentOpenPdvSession({ companyId, branchId });
+        setOpenSession(current);
       }
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Falha ao finalizar pedido.');
     } finally {
       setFinishing(false);
-    }
-  };
-
-  const handleOpenSession = async () => {
-    setSessionActionLoading(true);
-    setSessionError(null);
-    try {
-      const opened = await openPdvSession({
-        companyId,
-        branchId,
-        openingBalance: Number(openingBalanceInput || '0'),
-      });
-      setOpenSession(opened);
-      const summary = await getPdvSessionSummary({
-        companyId,
-        branchId,
-        sessionId: opened.id,
-      });
-      setSessionSummary(summary);
-      const movementList = await listPdvMovements({
-        companyId,
-        branchId,
-        sessionId: opened.id,
-      });
-      setMovements(movementList);
-      const [operator, divergence] = await Promise.all([
-        getPdvOperatorSummary({
-          companyId,
-          branchId,
-          sessionId: opened.id,
-        }),
-        getPdvSessionDivergence({
-          companyId,
-          branchId,
-          sessionId: opened.id,
-        }),
-      ]);
-      setOperatorSummary(operator);
-      setSessionDivergence(divergence);
-      setDeclaredCashInput(String(summary.expectedCashAmount));
-    } catch (err) {
-      setSessionError(err instanceof Error ? err.message : 'Falha ao abrir caixa.');
-    } finally {
-      setSessionActionLoading(false);
-    }
-  };
-
-  const handleCloseSession = async () => {
-    if (!openSession?.id) return;
-    setSessionActionLoading(true);
-    setSessionError(null);
-    try {
-      await closePdvSession({
-        companyId,
-        branchId,
-        sessionId: openSession.id,
-        declaredCashAmount: Number(declaredCashInput || '0'),
-        closureNotes: closureNotesInput.trim() || undefined,
-      });
-      setOpenSession(null);
-      setSessionSummary(null);
-      setMovements([]);
-      setOperatorSummary(null);
-      setSessionDivergence(null);
-      setClosureNotesInput('');
-    } catch (err) {
-      setSessionError(err instanceof Error ? err.message : 'Falha ao fechar caixa.');
-    } finally {
-      setSessionActionLoading(false);
-    }
-  };
-
-  const handleAddMovement = async () => {
-    if (!openSession?.id) return;
-    setSessionActionLoading(true);
-    setSessionError(null);
-    try {
-      await createPdvMovement({
-        companyId,
-        branchId,
-        sessionId: openSession.id,
-        type: movementType,
-        amount: Number(movementAmount || '0'),
-        reason: movementReason.trim() || undefined,
-      });
-      setMovementAmount('');
-      setMovementReason('');
-      const [summary, movementList] = await Promise.all([
-        getPdvSessionSummary({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        }),
-        listPdvMovements({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        }),
-      ]);
-      setSessionSummary(summary);
-      setMovements(movementList);
-      const [operator, divergence] = await Promise.all([
-        getPdvOperatorSummary({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        }),
-        getPdvSessionDivergence({
-          companyId,
-          branchId,
-          sessionId: openSession.id,
-        }),
-      ]);
-      setOperatorSummary(operator);
-      setSessionDivergence(divergence);
-      setDeclaredCashInput(String(summary.expectedCashAmount));
-    } catch (err) {
-      setSessionError(err instanceof Error ? err.message : 'Falha ao registrar movimentacao.');
-    } finally {
-      setSessionActionLoading(false);
     }
   };
 
@@ -642,114 +468,30 @@ export default function AdminPdvPage() {
     <main className={styles.page}>
       <PageHeader
         title="PDV / Balcao"
-        subtitle="Caixa, venda rapida, KDS e revisao de turno para atendimento presencial"
+        subtitle="Venda rapida, KDS e lancamento de pedidos presenciais"
         right={
           <div className={styles.headerBadges}>
             <Badge tone={openSession ? 'success' : 'danger'}>{openSession ? 'Caixa aberto' : 'Caixa fechado'}</Badge>
             <Badge tone="default">{operatorName}</Badge>
             <Badge tone="warning">{branchId ?? 'Filial local'}</Badge>
+            <a className={styles.cashShortcut} href="/admin/cash">
+              {openSession ? 'Conferir caixa' : 'Abrir caixa'}
+            </a>
           </div>
         }
       />
 
-      <Card className={styles.cashBox}>
-        <div className={styles.cashTop}>
+      {sessionLoading ? <LoadingState label="Carregando status do caixa..." /> : null}
+      {sessionError ? <div className={styles.error}>{sessionError}</div> : null}
+      {!sessionLoading && !openSession ? (
+        <div className={styles.cashNotice}>
           <div>
-            <h2 className={styles.sectionTitle}>Caixa</h2>
-            <small className={styles.sub}>
-              {openSession ? `Aberto desde ${new Date(openSession.openedAt).toLocaleString('pt-BR')}` : 'Caixa fechado'}
-            </small>
+            <strong>Caixa fechado</strong>
+            <span>Abra o caixa em uma tela propria antes de finalizar pedidos no balcao.</span>
           </div>
-          <Badge tone={openSession ? 'success' : 'danger'}>{openSession ? 'Aberto' : 'Fechado'}</Badge>
+          <a href="/admin/cash">Abrir caixa</a>
         </div>
-        {sessionLoading ? <LoadingState label="Carregando status do caixa..." /> : null}
-        {sessionError ? <div className={styles.error}>{sessionError}</div> : null}
-        <div className={styles.cashActions}>
-          {!openSession ? (
-            <>
-              <Input
-                value={openingBalanceInput}
-                onChange={(e) => setOpeningBalanceInput(e.target.value)}
-                placeholder="Saldo inicial"
-              />
-              <Button variant="primary" onClick={() => void handleOpenSession()} disabled={sessionActionLoading}>
-                {sessionActionLoading ? 'Abrindo...' : 'Abrir Caixa'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Input
-                value={declaredCashInput}
-                onChange={(e) => setDeclaredCashInput(e.target.value)}
-                placeholder="Valor declarado no caixa"
-              />
-              <Input
-                value={closureNotesInput}
-                onChange={(e) => setClosureNotesInput(e.target.value)}
-                placeholder="Justificativa se houver divergencia"
-              />
-              <Button variant="danger" onClick={() => void handleCloseSession()} disabled={sessionActionLoading}>
-                {sessionActionLoading ? 'Fechando...' : 'Fechar Caixa'}
-              </Button>
-            </>
-          )}
-        </div>
-        {sessionSummary ? (
-          <div className={styles.summaryGrid}>
-            <div><small>Total vendido</small><strong>{currency(sessionSummary.totalSales)}</strong></div>
-            <div><small>Pedidos</small><strong>{sessionSummary.ordersCount}</strong></div>
-            <div><small>Ticket medio</small><strong>{currency(sessionSummary.averageTicket)}</strong></div>
-            <div><small>Dinheiro</small><strong>{currency(sessionSummary.totalsByMethod.cash)}</strong></div>
-            <div><small>PIX</small><strong>{currency(sessionSummary.totalsByMethod.pix)}</strong></div>
-            <div><small>Cartao</small><strong>{currency(sessionSummary.totalsByMethod.card)}</strong></div>
-            <div><small>Caixa esperado</small><strong>{currency(sessionSummary.expectedCashAmount)}</strong></div>
-            {sessionSummary.cashDifference !== undefined ? (
-              <div><small>Diferenca</small><strong>{currency(sessionSummary.cashDifference)}</strong></div>
-            ) : null}
-            <div><small>Suprimentos</small><strong>{currency(sessionSummary.movementTotals.supply)}</strong></div>
-            <div><small>Sangrias</small><strong>{currency(sessionSummary.movementTotals.withdrawal)}</strong></div>
-            <div><small>Ajustes</small><strong>{currency(sessionSummary.movementTotals.adjustment)}</strong></div>
-            <div><small>Movimentos</small><strong>{sessionSummary.movementsCount}</strong></div>
-          </div>
-        ) : null}
-        {openSession ? (
-          <div className={styles.movementBox}>
-            <h3 className={styles.sectionTitle}>Movimentacoes</h3>
-            <div className={styles.movementForm}>
-              <Select value={movementType} onChange={(e) => setMovementType(e.target.value as PdvMovementType)}>
-                <option value="SUPPLY">Suprimento</option>
-                <option value="WITHDRAWAL">Sangria</option>
-                <option value="ADJUSTMENT">Ajuste</option>
-                <option value="SALE">Venda manual</option>
-              </Select>
-              <Input
-                value={movementAmount}
-                onChange={(e) => setMovementAmount(e.target.value)}
-                placeholder="Valor"
-              />
-              <Input
-                value={movementReason}
-                onChange={(e) => setMovementReason(e.target.value)}
-                placeholder="Motivo"
-              />
-              <Button variant="primary" onClick={() => void handleAddMovement()} disabled={sessionActionLoading}>
-                Lancar
-              </Button>
-            </div>
-            <div className={styles.movementList}>
-              {movements.map((movement) => (
-                <div key={movement.id} className={styles.movementRow}>
-                  <strong>{movement.type}</strong>
-                  <span>{currency(movement.amount)}</span>
-                  <small>{movement.reason ?? '-'}</small>
-                  <small>{new Date(movement.createdAt).toLocaleString('pt-BR')}</small>
-                </div>
-              ))}
-              {movements.length === 0 ? <small className={styles.sub}>Sem movimentacoes ainda.</small> : null}
-            </div>
-          </div>
-        ) : null}
-      </Card>
+      ) : null}
 
       {loading ? <LoadingState label="Carregando produtos..." /> : null}
       {error ? <div className={styles.error}>{error}</div> : null}
@@ -853,7 +595,17 @@ export default function AdminPdvPage() {
 
             <div className={styles.payment}>
               <label>Tipo de venda</label>
-              <select value={saleType} onChange={(e) => setSaleType(e.target.value as PdvSaleType | '')}>
+              <select
+                value={saleType}
+                onChange={(e) => {
+                  const nextSaleType = e.target.value as PdvSaleType | '';
+                  setSaleType(nextSaleType);
+                  setCheckoutError(null);
+                  if (nextSaleType === '' || nextSaleType === 'COUNTER') {
+                    setCommandReference('');
+                  }
+                }}
+              >
                 <option value="">Escolha o tipo de venda</option>
                 <option value="COUNTER">Balcao</option>
                 <option value="TABLE">Mesa</option>
@@ -891,6 +643,15 @@ export default function AdminPdvPage() {
               </label>
             </div>
 
+            <div className={styles.checkoutChecklist}>
+              {checkoutChecklist.map((item) => (
+                <div key={item.label} className={item.ok ? styles.checkoutCheckOk : styles.checkoutCheckPending}>
+                  <strong>{item.label}</strong>
+                  <span>{item.hint}</span>
+                </div>
+              ))}
+            </div>
+
             <div className={styles.totalRow}>
               <span>Total</span>
               <strong>{currency(subtotal)}</strong>
@@ -910,7 +671,7 @@ export default function AdminPdvPage() {
                 ) : null}
               </div>
             ) : null}
-            <Button variant="primary" onClick={() => void finalize()} disabled={finishing || cart.length === 0 || !selectedSaleType}>
+            <Button variant="primary" onClick={() => void finalize()} disabled={!canFinalize}>
               {finishing
                 ? 'Processando...'
                 : isCounterSale
@@ -921,43 +682,6 @@ export default function AdminPdvPage() {
             </Button>
             <small className={styles.shortcutHint}>Atalhos: F2 busca, F4 finalizar venda, Esc limpar/fechar modal, Enter confirma modal.</small>
           </Card>
-        </section>
-      ) : null}
-
-      {openSession && (operatorSummary || sessionDivergence) ? (
-        <section className={styles.grid}>
-          {operatorSummary ? (
-            <Card className={styles.cashBox}>
-              <h2 className={styles.sectionTitle}>Resumo por operador</h2>
-              <div className={styles.summaryGrid}>
-                <div><small>Operador</small><strong>{operatorSummary.operator.label}</strong></div>
-                <div><small>Pedidos</small><strong>{operatorSummary.ordersCount}</strong></div>
-                <div><small>Vendas</small><strong>{currency(operatorSummary.totalSales)}</strong></div>
-                <div><small>Ticket medio</small><strong>{currency(operatorSummary.avgTicket)}</strong></div>
-                <div><small>Movimentos</small><strong>{operatorSummary.movementsCount}</strong></div>
-                <div><small>Suprimentos</small><strong>{currency(operatorSummary.movementTotals.supply)}</strong></div>
-                <div><small>Sangrias</small><strong>{currency(operatorSummary.movementTotals.withdrawal)}</strong></div>
-                <div><small>Ajustes</small><strong>{currency(operatorSummary.movementTotals.adjustment)}</strong></div>
-              </div>
-            </Card>
-          ) : null}
-          {sessionDivergence ? (
-            <Card className={styles.cashBox}>
-              <h2 className={styles.sectionTitle}>Divergencia de caixa</h2>
-              <div className={styles.summaryGrid}>
-                <div><small>Nivel</small><strong>{sessionDivergence.divergenceLevel}</strong></div>
-                <div><small>Esperado</small><strong>{currency(sessionDivergence.expectedCashAmount)}</strong></div>
-                <div><small>Declarado</small><strong>{currency(sessionDivergence.declaredCashAmount ?? 0)}</strong></div>
-                <div><small>Diferenca</small><strong>{currency(sessionDivergence.cashDifference ?? 0)}</strong></div>
-                <div><small>Diferenca abs.</small><strong>{currency(sessionDivergence.absoluteDifference ?? 0)}</strong></div>
-                <div><small>Status</small><strong>{sessionDivergence.status}</strong></div>
-                <div><small>Severidade</small><strong>{sessionDivergence.divergenceSeverity}</strong></div>
-                {sessionDivergence.closureNotes ? (
-                  <div><small>Obs. fechamento</small><strong>{sessionDivergence.closureNotes}</strong></div>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
         </section>
       ) : null}
 

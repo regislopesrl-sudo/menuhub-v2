@@ -128,6 +128,33 @@ export interface PdvSessionDivergence {
   closureNotes?: string;
 }
 
+export interface PdvSessionListItem {
+  id: string;
+  branchId: string;
+  status: 'OPEN' | 'CLOSED';
+  openedAt: string;
+  closedAt?: string;
+  openingBalance: number;
+  expectedCashAmount: number;
+  declaredCashAmount: number | null;
+  cashDifference: number | null;
+  movementsCount: number;
+}
+
+export interface PdvCashLedgerEntry {
+  id: string;
+  sessionId: string;
+  branchId: string;
+  createdAt: string;
+  description: string;
+  amount: number;
+  paymentMethod: string;
+  type: PdvMovementType;
+  userLabel: string;
+  orderId?: string;
+  orderNumber?: string;
+}
+
 export async function fetchPdvMenu(input: { companyId: string; branchId?: string }): Promise<MenuProduct[]> {
   const [menu, availability] = await Promise.all([
     fetchAdminMenu(input),
@@ -315,6 +342,29 @@ export async function getPdvSessionDivergence(input: {
   return normalizeSessionDivergence(payload, input.sessionId);
 }
 
+export async function listPdvSessions(input: {
+  companyId: string;
+  branchId?: string;
+}): Promise<PdvSessionListItem[]> {
+  const payload = await apiFetch<unknown>('/v2/pdv/sessions', {
+    method: 'GET',
+    headers: pdvHeaders(input),
+  });
+  return Array.isArray(payload) ? payload.map(normalizeSessionListItem) : [];
+}
+
+export async function listPdvSessionLedger(input: {
+  companyId: string;
+  branchId?: string;
+  sessionId: string;
+}): Promise<PdvCashLedgerEntry[]> {
+  const payload = await apiFetch<unknown>(`/v2/pdv/sessions/${input.sessionId}/ledger`, {
+    method: 'GET',
+    headers: pdvHeaders(input),
+  });
+  return Array.isArray(payload) ? payload.map(normalizeCashLedgerEntry) : [];
+}
+
 function pdvHeaders(input: { companyId: string; branchId?: string }): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -380,6 +430,41 @@ function normalizeMovement(payload: unknown): PdvSessionMovement {
     amount: toNumber(data.amount),
     reason: typeof data.reason === 'string' ? data.reason : undefined,
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString(),
+  };
+}
+
+function normalizeSessionListItem(payload: unknown): PdvSessionListItem {
+  const data = payload && typeof payload === 'object' ? (payload as Partial<PdvSessionListItem>) : {};
+  const rawDeclared = data.declaredCashAmount;
+  const rawDiff = data.cashDifference;
+  return {
+    id: typeof data.id === 'string' ? data.id : '',
+    branchId: typeof data.branchId === 'string' ? data.branchId : '',
+    status: data.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
+    openedAt: typeof data.openedAt === 'string' ? data.openedAt : new Date().toISOString(),
+    closedAt: typeof data.closedAt === 'string' ? data.closedAt : undefined,
+    openingBalance: toNumber(data.openingBalance),
+    expectedCashAmount: toNumber(data.expectedCashAmount),
+    declaredCashAmount: rawDeclared === null || rawDeclared === undefined ? null : toNumber(rawDeclared),
+    cashDifference: rawDiff === null || rawDiff === undefined ? null : toNumber(rawDiff),
+    movementsCount: toNumber(data.movementsCount),
+  };
+}
+
+function normalizeCashLedgerEntry(payload: unknown): PdvCashLedgerEntry {
+  const data = payload && typeof payload === 'object' ? (payload as Partial<PdvCashLedgerEntry>) : {};
+  return {
+    id: typeof data.id === 'string' ? data.id : crypto.randomUUID(),
+    sessionId: typeof data.sessionId === 'string' ? data.sessionId : '',
+    branchId: typeof data.branchId === 'string' ? data.branchId : '',
+    createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString(),
+    description: typeof data.description === 'string' ? data.description : 'Movimento de caixa',
+    amount: toNumber(data.amount),
+    paymentMethod: typeof data.paymentMethod === 'string' ? data.paymentMethod : '-',
+    type: data.type ?? 'ADJUSTMENT',
+    userLabel: typeof data.userLabel === 'string' ? data.userLabel : 'Sistema',
+    orderId: typeof data.orderId === 'string' ? data.orderId : undefined,
+    orderNumber: typeof data.orderNumber === 'string' ? data.orderNumber : undefined,
   };
 }
 

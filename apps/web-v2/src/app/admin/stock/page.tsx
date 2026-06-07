@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/Badge';
@@ -21,6 +22,7 @@ import {
   listStockMovements,
   listStockBreakageAlerts,
   listStockProductAvailability,
+  reconcileStockOrderConsumption,
   stockManualEntry,
   stockManualExit,
   stockRegisterLoss,
@@ -36,15 +38,19 @@ import {
   type StockBatch,
   type StockItemType,
   type StockMovement,
+  type StockOrderConsumptionReconcileResponse,
   type StockProductAvailability,
   updateStockBatchStatus,
 } from '@/features/stock/stock.api';
+import { listSuppliers, type Supplier } from '@/features/procurement/procurement.api';
 import styles from './page.module.css';
 
 type StockTab = 'products' | 'addons' | 'ingredients';
 type StockWorkspaceView = 'catalog' | 'movement' | 'batches' | 'analysis';
+type StockSectionTab = 'alerts' | 'purchasing' | 'sanity' | 'products' | 'ingredients';
 type StockStatusFilter = 'all' | 'low' | 'forecast' | 'batch' | 'negative';
 type ProductPriorityKey = 'critical' | 'attention' | 'ok';
+type ProductCmvRiskKey = 'loss' | 'high' | 'healthy' | 'unknown';
 type ProductAvailabilityFilter =
   | 'action'
   | 'all'
@@ -81,6 +87,31 @@ const STOCK_TAB_META: Record<StockTab, { label: string; description: string; emp
     description: 'Materias-primas e itens internos',
     emptyTitle: 'Sem insumos em estoque',
     emptyDescription: 'Cadastre o primeiro insumo de estoque.',
+  },
+};
+
+const STOCK_SECTION_ORDER: StockSectionTab[] = ['alerts', 'purchasing', 'sanity', 'products', 'ingredients'];
+
+const STOCK_SECTION_META: Record<StockSectionTab, { label: string; description: string }> = {
+  alerts: {
+    label: 'Alerta de ruptura',
+    description: 'Itens criticos separados por tipo.',
+  },
+  purchasing: {
+    label: 'Compra sugerida e cobertura',
+    description: 'Somente insumos com risco ou reposicao.',
+  },
+  sanity: {
+    label: 'Saneamento cardapio/estoque',
+    description: 'Produtos sem ficha, controle ou saldo.',
+  },
+  products: {
+    label: 'Produtos',
+    description: 'Cadastro e movimentacao de produtos.',
+  },
+  ingredients: {
+    label: 'Insumos',
+    description: 'Materias-primas e compras.',
   },
 };
 
@@ -149,6 +180,29 @@ function getProductAvailabilityClass(status: StockProductAvailability['availabil
   return styles.statusNeutral;
 }
 
+function getProductCmvPercent(product: StockProductAvailability) {
+  const salePrice = Number(product.salePrice || 0);
+  if (salePrice <= 0) return null;
+  return (Number(product.technicalCost || 0) / salePrice) * 100;
+}
+
+function getProductMarginPercent(product: StockProductAvailability) {
+  if (product.grossMarginPercent !== null && product.grossMarginPercent !== undefined) return Number(product.grossMarginPercent);
+  const salePrice = Number(product.salePrice || 0);
+  if (salePrice <= 0) return null;
+  return ((salePrice - Number(product.technicalCost || 0)) / salePrice) * 100;
+}
+
+function getProductCmvRisk(product: StockProductAvailability): { key: ProductCmvRiskKey; label: string; className: string } {
+  if (!product.recipeId || product.ingredients.length === 0 || Number(product.salePrice || 0) <= 0) {
+    return { key: 'unknown', label: 'Sem CMV', className: styles.cmvUnknown };
+  }
+  const marginPercent = getProductMarginPercent(product);
+  if (marginPercent !== null && marginPercent < 0) return { key: 'loss', label: 'Prejuizo', className: styles.cmvLoss };
+  if (marginPercent !== null && marginPercent < 30) return { key: 'high', label: 'Margem baixa', className: styles.cmvHigh };
+  return { key: 'healthy', label: 'Saudavel', className: styles.cmvHealthy };
+}
+
 type UnitGroup = 'count' | 'mass' | 'volume' | 'length';
 
 type UnitOption = {
@@ -189,6 +243,93 @@ const STOCK_UNIT_OPTIONS: UnitOption[] = [
 ];
 
 const STOCK_UNIT_BY_CODE = new Map(STOCK_UNIT_OPTIONS.map((unit) => [unit.code, unit]));
+const INGREDIENT_CATEGORY_VALUE_PREFIX = '__ingredient_category__:';
+const INGREDIENT_CATEGORY_NAMES = [
+  'Proteina',
+  'Hortifruti',
+  'Laticinio',
+  'Frios',
+  'Destilado',
+  'Vinho/Cerveja',
+  'Xarope/Licor',
+  'Suco/Polpa',
+  'Seco/Grao',
+  'Tempero/Condimento',
+  'Embalagem',
+  'Limpeza',
+  'Higiene',
+  'Outros',
+  'Materia Prima Sorvete',
+  'Materia prima Recheios',
+  'Materia Prima Pastel Doce',
+  'Materia Prima Temperos',
+  'Materia Prima Suco',
+];
+const MENU_CATEGORY_NAMES_BLOCKLIST = [
+  'Bebidas',
+  'Caixa Kids',
+  'Classizissimos',
+  'Classízissimos',
+  'Docezissimos',
+  'Docezíssimos',
+  'Docezissimos veg',
+  'Docezíssimos veg',
+  'Gulosissimos',
+  'Gulosíssimos',
+  'Porcoes',
+  'Porções',
+  'Recheadizissimos',
+  'Recheadizíssimos',
+  'Shakizissimo',
+  'Shakizíssimo',
+  'Sobremesa',
+  'Superzissimos',
+  'Superzíssimos',
+  'Sucos Jarra 500ml',
+  'Veganissimos',
+  'Veganíssimos',
+];
+const INGREDIENT_CATEGORY_ALLOW_TERMS = [
+  'materia',
+  'prima',
+  'proteina',
+  'hortifruti',
+  'laticinio',
+  'frio',
+  'destilado',
+  'vinho',
+  'cerveja',
+  'xarope',
+  'licor',
+  'suco',
+  'polpa',
+  'seco',
+  'grao',
+  'tempero',
+  'condimento',
+  'embalagem',
+  'limpeza',
+  'higiene',
+  'sorvete',
+  'recheio',
+  'pastel',
+  'insumo',
+  'ingrediente',
+  'outros',
+];
+const INGREDIENT_SECTOR_OPTIONS = ['Cozinha', 'Bar', 'Limpeza/Higiene', 'Geral'];
+const INGREDIENT_UNIT_OPTIONS = [
+  { code: 'KG', label: 'kg' },
+  { code: 'G', label: 'g' },
+  { code: 'L', label: 'L' },
+  { code: 'ML', label: 'ml' },
+  { code: 'UN', label: 'un' },
+  { code: 'CX', label: 'cx' },
+  { code: 'FD', label: 'fd' },
+  { code: 'PCT', label: 'pct' },
+  { code: 'SC', label: 'sc' },
+  { code: 'DZ', label: 'dz' },
+];
 
 function getDefaultTypeForTab(tab: StockTab): StockItemType {
   if (tab === 'products') return 'PRODUCT';
@@ -202,7 +343,15 @@ function getTabForStockType(stockType: StockItemType): StockTab {
   return 'ingredients';
 }
 
-function belongsToTab(item: Pick<StockItem, 'stockType'>, tab: StockTab) {
+function isProductionInternalStockItem(item: Pick<StockItem, 'id' | 'stockType' | 'category' | 'notes'>) {
+  if (item.stockType !== 'RAW_MATERIAL') return false;
+  const categoryName = normalizeText(item.category?.name);
+  const notes = normalizeText(item.notes);
+  return categoryName === 'subprodutos' || item.id.startsWith('sg-subproduto-') || notes.includes('subproduto importado');
+}
+
+function belongsToTab(item: Pick<StockItem, 'id' | 'stockType' | 'category' | 'notes'>, tab: StockTab) {
+  if (isProductionInternalStockItem(item)) return false;
   return getTabForStockType(item.stockType) === tab;
 }
 
@@ -216,11 +365,46 @@ function formatDecimal(value: number, digits = 2) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: digits }).format(Number(value || 0));
 }
 
+function formatPercent(value: number | null | undefined, digits = 1) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '-';
+  return `${formatDecimal(Number(value), digits)}%`;
+}
+
 function formatCoverage(days: number | null) {
   if (days === null) return 'Sem consumo';
   if (!Number.isFinite(days)) return 'Sem consumo';
   if (days > 999) return '999+ dias';
   return `${formatDecimal(days, 1)} dias`;
+}
+
+function stockItemDisplayId(item: StockItem | null) {
+  if (!item) return 'Gerado automaticamente';
+  const code = String(item.code ?? '').trim();
+  return code || item.id.slice(0, 8);
+}
+
+function stockItemUnitLabel(item: StockItem | null) {
+  if (!item) return 'UN';
+  return item.stockUnit ?? item.productionUnit ?? item.purchaseUnit ?? 'UN';
+}
+
+function stockItemNotes(item: StockItem) {
+  const notes = [
+    item.controlsStock === false ? 'Nao controla estoque' : 'Controla estoque',
+    item.controlsBatch ? 'Lote' : null,
+    item.controlsExpiry ? 'Validade' : null,
+    item.requiresFefo ? 'FEFO' : null,
+    item.isPerishable ? 'Perecivel' : null,
+    item.isFractionable ? 'Fracionavel' : null,
+    item.isCritical ? 'Critico' : null,
+    item.isHighTurnover ? 'Alto giro' : null,
+  ].filter(Boolean);
+
+  return notes.length > 0 ? notes.join(', ') : '-';
+}
+
+function stockItemObservation(item: StockItem) {
+  return item.notes?.trim() || stockItemNotes(item);
 }
 
 function csvCell(value: unknown) {
@@ -232,6 +416,21 @@ function normalizeText(value: unknown) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
+}
+
+const INGREDIENT_CATEGORY_NAME_SET = new Set(INGREDIENT_CATEGORY_NAMES.map((name) => normalizeText(name)));
+const MENU_CATEGORY_NAME_BLOCK_SET = new Set(MENU_CATEGORY_NAMES_BLOCKLIST.map((name) => normalizeText(name)));
+
+function isIngredientCategoryName(name: string | null | undefined) {
+  const normalized = normalizeText(name);
+  if (!normalized) return false;
+  if (MENU_CATEGORY_NAME_BLOCK_SET.has(normalized)) return false;
+  if (INGREDIENT_CATEGORY_NAME_SET.has(normalized)) return true;
+  return INGREDIENT_CATEGORY_ALLOW_TERMS.some((term) => normalized.includes(term));
+}
+
+function getIngredientCategoryName(item: StockItem) {
+  return isIngredientCategoryName(item.category?.name) ? item.category?.name ?? 'Sem categoria' : 'Sem categoria';
 }
 
 function normalizeUnitCode(value: unknown) {
@@ -316,8 +515,15 @@ function FormSection({
 }
 
 export default function AdminStockPage() {
-  const [activeTab, setActiveTab] = useState<StockTab>('products');
+  const searchParams = useSearchParams();
+  const initialSection = (() => {
+    const requestedSection = searchParams.get('section') as StockSectionTab | null;
+    return requestedSection && STOCK_SECTION_ORDER.includes(requestedSection) ? requestedSection : 'alerts';
+  })();
+  const [activeSection, setActiveSection] = useState<StockSectionTab>(initialSection);
+  const [activeTab, setActiveTab] = useState<StockTab>(initialSection === 'purchasing' || initialSection === 'ingredients' ? 'ingredients' : 'products');
   const [workspaceView, setWorkspaceView] = useState<StockWorkspaceView>('catalog');
+  const [ingredientEditorOpen, setIngredientEditorOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
   const [itemStatusFilter, setItemStatusFilter] = useState<StockStatusFilter>('all');
   const [productAvailabilityFilter, setProductAvailabilityFilter] = useState<ProductAvailabilityFilter>('action');
@@ -328,6 +534,8 @@ export default function AdminStockPage() {
   const [alerts, setAlerts] = useState<StockBreakageAlert[]>([]);
   const [batches, setBatches] = useState<StockBatch[]>([]);
   const [productAvailability, setProductAvailability] = useState<StockProductAvailability[]>([]);
+  const [orderConsumptionAudit, setOrderConsumptionAudit] = useState<StockOrderConsumptionReconcileResponse | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -336,6 +544,10 @@ export default function AdminStockPage() {
   const [itemName, setItemName] = useState('');
   const [itemCode, setItemCode] = useState('');
   const [itemCategoryId, setItemCategoryId] = useState('');
+  const [itemSupplierId, setItemSupplierId] = useState('');
+  const [itemSector, setItemSector] = useState('Cozinha');
+  const [itemNotes, setItemNotes] = useState('');
+  const [itemIsActive, setItemIsActive] = useState(true);
   const [itemStockType, setItemStockType] = useState<StockItemType>('PRODUCT');
   const [itemUnit, setItemUnit] = useState('UN');
   const [itemPurchaseUnit, setItemPurchaseUnit] = useState('UN');
@@ -377,6 +589,7 @@ export default function AdminStockPage() {
   const [movementBatchFilter, setMovementBatchFilter] = useState('');
   const [movementTypeFilter, setMovementTypeFilter] = useState('');
 
+  const isIngredientWorkspace = activeSection === 'ingredients';
   const productItems = useMemo(() => items.filter((item) => belongsToTab(item, 'products')), [items]);
   const addonItems = useMemo(() => items.filter((item) => belongsToTab(item, 'addons')), [items]);
   const ingredientItems = useMemo(() => items.filter((item) => belongsToTab(item, 'ingredients')), [items]);
@@ -394,15 +607,70 @@ export default function AdminStockPage() {
     return acc;
   }, { critical: 0, attention: 0, ok: 0 } satisfies Record<ProductPriorityKey, number>), [productAvailability]);
   const activeStockCategories = useMemo(() => stockCategories.filter((category) => category.isActive !== false), [stockCategories]);
+  const ingredientCategoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    ingredientItems.forEach((item) => {
+      if (!item.categoryId) return;
+      if (!isIngredientCategoryName(item.category?.name)) return;
+      counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
+    });
+    return counts;
+  }, [ingredientItems]);
+  const ingredientStockCategories = useMemo(() => (
+    activeStockCategories.filter((category) => (
+      isIngredientCategoryName(category.name)
+      && (ingredientCategoryCounts.has(category.id) || category.id === itemCategoryId || INGREDIENT_CATEGORY_NAME_SET.has(normalizeText(category.name)))
+    ))
+  ), [activeStockCategories, ingredientCategoryCounts, itemCategoryId]);
+  const categoryOptions = isIngredientWorkspace ? ingredientStockCategories : activeStockCategories;
+  const ingredientCategorySelectOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string; count: number; isVirtual: boolean; order: number }> = [];
+    const seen = new Set<string>();
+    const categoriesByName = new Map(activeStockCategories.map((category) => [normalizeText(category.name), category]));
+
+    function addExisting(category: StockCategory, order: number) {
+      if (seen.has(category.id)) return;
+      seen.add(category.id);
+      options.push({
+        value: category.id,
+        label: category.name,
+        count: ingredientCategoryCounts.get(category.id) ?? 0,
+        isVirtual: false,
+        order,
+      });
+    }
+
+    INGREDIENT_CATEGORY_NAMES.forEach((name, index) => {
+      const existing = categoriesByName.get(normalizeText(name));
+      if (existing) {
+        addExisting(existing, index);
+        return;
+      }
+      const virtualValue = `${INGREDIENT_CATEGORY_VALUE_PREFIX}${name}`;
+      if (seen.has(virtualValue)) return;
+      seen.add(virtualValue);
+      options.push({ value: virtualValue, label: name, count: 0, isVirtual: true, order: index });
+    });
+
+    ingredientStockCategories.forEach((category) => addExisting(category, INGREDIENT_CATEGORY_NAMES.length + category.sortOrder));
+
+    return options.sort((left, right) => left.order - right.order || left.label.localeCompare(right.label));
+  }, [activeStockCategories, ingredientCategoryCounts, ingredientStockCategories]);
+  const supplierNameById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier.name])), [suppliers]);
+  const supplierOptions = useMemo(() => (
+    suppliers
+      .filter((supplier) => supplier.active || supplier.id === itemSupplierId)
+      .sort((left, right) => left.name.localeCompare(right.name))
+  ), [itemSupplierId, suppliers]);
   const visibleItems = useMemo(() => items.filter((item) => belongsToTab(item, activeTab)), [activeTab, items]);
   const visibleItemIds = useMemo(() => new Set(visibleItems.map((item) => item.id)), [visibleItems]);
   const alertsByTab = useMemo(() => {
-    const itemTypes = new Map(items.map((item) => [item.id, item.stockType] as const));
+    const itemTabs = new Map(items.map((item) => [item.id, isProductionInternalStockItem(item) ? null : getTabForStockType(item.stockType)] as const));
     const grouped: Record<StockTab, StockBreakageAlert[]> = { products: [], addons: [], ingredients: [] };
     alerts.forEach((alert) => {
-      const stockType = itemTypes.get(alert.stockItemId);
-      if (!stockType) return;
-      grouped[getTabForStockType(stockType)].push(alert);
+      const tab = itemTabs.get(alert.stockItemId);
+      if (!tab) return;
+      grouped[tab].push(alert);
     });
     return grouped;
   }, [alerts, items]);
@@ -417,7 +685,9 @@ export default function AdminStockPage() {
       return Number.isFinite(createdAt) && createdAt >= cutoff;
     });
   }, [movements]);
-  const stockInsights = useMemo(() => visibleItems.map((item) => {
+
+  function buildStockInsights(sourceItems: StockItem[]) {
+    return sourceItems.map((item) => {
     const current = Number(item.currentQuantity ?? 0);
     const committed = Number(item.committedQuantity ?? 0);
     const available = Number(item.availableQuantity ?? current - committed);
@@ -457,27 +727,135 @@ export default function AdminStockPage() {
       suggestedValue: suggestedQuantity * averageCost,
       ruptureRisk,
     };
-  }), [recentOutMovements, visibleItems]);
+    });
+  }
+
+  const stockInsights = useMemo(() => buildStockInsights(visibleItems), [recentOutMovements, visibleItems]);
+  const productStockInsights = useMemo(() => buildStockInsights(productItems), [productItems, recentOutMovements]);
+  const addonStockInsights = useMemo(() => buildStockInsights(addonItems), [addonItems, recentOutMovements]);
+  const ingredientStockInsights = useMemo(() => buildStockInsights(ingredientItems), [ingredientItems, recentOutMovements]);
+  const allStockInsights = useMemo(
+    () => [...productStockInsights, ...addonStockInsights, ...ingredientStockInsights],
+    [addonStockInsights, ingredientStockInsights, productStockInsights],
+  );
+  const sectionStockInsights = useMemo(() => {
+    if (activeSection === 'purchasing' || activeSection === 'ingredients') return ingredientStockInsights;
+    if (activeSection === 'products' || activeSection === 'sanity') return productStockInsights;
+    return allStockInsights;
+  }, [activeSection, allStockInsights, ingredientStockInsights, productStockInsights]);
+  const sectionItems = useMemo(() => {
+    if (activeSection === 'purchasing' || activeSection === 'ingredients') return ingredientItems;
+    if (activeSection === 'products' || activeSection === 'sanity') return productItems;
+    return items;
+  }, [activeSection, ingredientItems, items, productItems]);
   const suggestedPurchases = useMemo(
-    () => stockInsights
+    () => ingredientStockInsights
       .filter((insight) => insight.suggestedQuantity > 0 || insight.ruptureRisk)
       .sort((left, right) => right.suggestedValue - left.suggestedValue || Number(left.coverageDays ?? 9999) - Number(right.coverageDays ?? 9999))
       .slice(0, 12),
-    [stockInsights],
+    [ingredientStockInsights],
   );
   const stockKpis = useMemo(() => {
-    const totalValue = stockInsights.reduce((acc, insight) => acc + insight.stockValue, 0);
-    const availableValue = stockInsights.reduce((acc, insight) => acc + insight.availableValue, 0);
-    const committedValue = stockInsights.reduce((acc, insight) => acc + insight.committedValue, 0);
-    const committedQuantity = stockInsights.reduce((acc, insight) => acc + insight.committed, 0);
-    const committedItems = stockInsights.filter((insight) => insight.committed > 0).length;
-    const belowMinimum = stockInsights.filter((insight) => insight.available <= insight.minimum).length;
-    const consumption30d = stockInsights.reduce((acc, insight) => acc + insight.consumption30d * insight.averageCost, 0);
-    const suggestedValue = stockInsights.reduce((acc, insight) => acc + insight.suggestedValue, 0);
-    const ruptureForecast = stockInsights.filter((insight) => insight.ruptureRisk).length;
-    const perishable = visibleItems.filter((item) => item.controlsExpiry || item.isPerishable).length;
+    const totalValue = sectionStockInsights.reduce((acc, insight) => acc + insight.stockValue, 0);
+    const availableValue = sectionStockInsights.reduce((acc, insight) => acc + insight.availableValue, 0);
+    const committedValue = sectionStockInsights.reduce((acc, insight) => acc + insight.committedValue, 0);
+    const committedQuantity = sectionStockInsights.reduce((acc, insight) => acc + insight.committed, 0);
+    const committedItems = sectionStockInsights.filter((insight) => insight.committed > 0).length;
+    const belowMinimum = sectionStockInsights.filter((insight) => insight.available <= insight.minimum).length;
+    const consumption30d = sectionStockInsights.reduce((acc, insight) => acc + insight.consumption30d * insight.averageCost, 0);
+    const suggestedValue = ingredientStockInsights.reduce((acc, insight) => acc + insight.suggestedValue, 0);
+    const ruptureForecast = sectionStockInsights.filter((insight) => insight.ruptureRisk).length;
+    const perishable = sectionItems.filter((item) => item.controlsExpiry || item.isPerishable).length;
     return { totalValue, availableValue, committedValue, committedQuantity, committedItems, belowMinimum, perishable, consumption30d, suggestedValue, ruptureForecast };
-  }, [stockInsights, visibleItems]);
+  }, [ingredientStockInsights, sectionItems, sectionStockInsights]);
+  const sectionTabCounts: Record<StockSectionTab, number> = {
+    alerts: totalBreakageAlerts,
+    purchasing: suggestedPurchases.length,
+    sanity: productAttentionCount,
+    products: productItems.length,
+    ingredients: ingredientItems.length,
+  };
+  const activeSectionMeta = STOCK_SECTION_META[activeSection];
+  const productOperationalSummary = useMemo(() => {
+    const ready = productAvailabilitySummary.available ?? 0;
+    const blocked = (productAvailabilitySummary.out_of_stock ?? 0)
+      + (productAvailabilitySummary.missing_recipe ?? 0)
+      + (productAvailabilitySummary.recipe_without_stock_items ?? 0);
+    const attention = productAttentionCount;
+    const noControl = productAvailabilitySummary.not_controlled ?? 0;
+    const potentialRevenue = productAvailability.reduce((acc, product) => {
+      const availableToSell = product.availableToSell ?? 0;
+      return acc + Math.max(0, availableToSell) * Number(product.salePrice || 0);
+    }, 0);
+    const averageMarginPercent = productAvailability.length > 0
+      ? productAvailability.reduce((acc, product) => acc + Number(product.grossMarginPercent ?? 0), 0) / productAvailability.length
+      : 0;
+    return { ready, blocked, attention, noControl, potentialRevenue, averageMarginPercent };
+  }, [productAttentionCount, productAvailability, productAvailabilitySummary]);
+  const productCmvSummary = useMemo(() => {
+    const pricedProducts = productAvailability.filter((product) => Number(product.salePrice || 0) > 0);
+    const productsWithTechnicalCost = pricedProducts.filter((product) => product.recipeId && product.ingredients.length > 0);
+    const totalSale = productsWithTechnicalCost.reduce((acc, product) => acc + Number(product.salePrice || 0), 0);
+    const totalTechnicalCost = productsWithTechnicalCost.reduce((acc, product) => acc + Number(product.technicalCost || 0), 0);
+    const averageCmvPercent = totalSale > 0 ? (totalTechnicalCost / totalSale) * 100 : null;
+    const lowMargin = productsWithTechnicalCost.filter((product) => {
+      const margin = getProductMarginPercent(product);
+      return margin !== null && margin >= 0 && margin < 30;
+    }).length;
+    const loss = productsWithTechnicalCost.filter((product) => {
+      const margin = getProductMarginPercent(product);
+      return margin !== null && margin < 0;
+    }).length;
+    const missingTechnicalSetup = productAvailability.filter((product) => !product.recipeId || product.ingredients.length === 0).length;
+    const autoDeductionReady = productAvailability.filter(
+      (product) => product.controlsStock && product.recipeId && product.ingredients.some((ingredient) => ingredient.controlsStock && !ingredient.optional),
+    ).length;
+    return {
+      averageCmvPercent,
+      lowMargin,
+      loss,
+      missingTechnicalSetup,
+      autoDeductionReady,
+      totalTechnicalCost,
+    };
+  }, [productAvailability]);
+  const cmvRiskProducts = useMemo(() => productAvailability
+    .filter((product) => {
+      const risk = getProductCmvRisk(product);
+      return risk.key === 'loss' || risk.key === 'high';
+    })
+    .sort((left, right) => Number(getProductMarginPercent(left) ?? 999) - Number(getProductMarginPercent(right) ?? 999))
+    .slice(0, 6), [productAvailability]);
+  const recipeSetupQueue = useMemo(() => productAvailability
+    .filter((product) => !product.recipeId || product.ingredients.length === 0 || product.availabilityStatus === 'recipe_without_stock_items')
+    .sort((left, right) => Number(right.salePrice || 0) - Number(left.salePrice || 0))
+    .slice(0, 6), [productAvailability]);
+  const limitingIngredientSummary = useMemo(() => {
+    const grouped = new Map<string, {
+      stockItemId: string;
+      name: string;
+      unit: string | null;
+      availableQuantity: number;
+      affectedProducts: Set<string>;
+    }>();
+    productAvailability.forEach((product) => {
+      product.limitingIngredients.forEach((ingredient) => {
+        const current = grouped.get(ingredient.stockItemId) ?? {
+          stockItemId: ingredient.stockItemId,
+          name: ingredient.name,
+          unit: ingredient.stockUnit,
+          availableQuantity: Number(ingredient.availableQuantity ?? 0),
+          affectedProducts: new Set<string>(),
+        };
+        current.availableQuantity = Math.min(current.availableQuantity, Number(ingredient.availableQuantity ?? 0));
+        current.affectedProducts.add(product.name);
+        grouped.set(ingredient.stockItemId, current);
+      });
+    });
+    return Array.from(grouped.values())
+      .sort((left, right) => right.affectedProducts.size - left.affectedProducts.size || left.availableQuantity - right.availableQuantity)
+      .slice(0, 6);
+  }, [productAvailability]);
 
   const stockInsightMap = useMemo(() => new Map(stockInsights.map((insight) => [insight.item.id, insight] as const)), [stockInsights]);
   const selectedInsight = selected ? stockInsightMap.get(selected.id) ?? null : null;
@@ -502,7 +880,7 @@ export default function AdminStockPage() {
     const query = normalizeText(itemSearch);
     return visibleItems.filter((item) => {
       const insight = stockInsightMap.get(item.id);
-      const matchesSearch = !query || normalizeText(`${item.name} ${item.code ?? ''} ${item.category?.name ?? ''} ${STOCK_TYPE_LABELS[item.stockType] ?? item.stockType}`).includes(query);
+      const matchesSearch = !query || normalizeText(`${item.name} ${item.code ?? ''} ${item.supplierId ?? ''} ${supplierNameById.get(item.supplierId ?? '') ?? ''} ${getIngredientCategoryName(item)} ${item.sector ?? ''} ${item.notes ?? ''} ${STOCK_TYPE_LABELS[item.stockType] ?? item.stockType}`).includes(query);
       if (!matchesSearch) return false;
       if (itemStatusFilter === 'low') return Number(insight?.available ?? item.availableQuantity ?? item.currentQuantity ?? 0) <= Number(insight?.minimum ?? item.minimumQuantity ?? 0);
       if (itemStatusFilter === 'forecast') return insight?.ruptureRisk === true;
@@ -510,7 +888,7 @@ export default function AdminStockPage() {
       if (itemStatusFilter === 'negative') return Number(insight?.available ?? item.availableQuantity ?? item.currentQuantity ?? 0) < 0;
       return true;
     });
-  }, [itemSearch, itemStatusFilter, stockInsightMap, visibleItems]);
+  }, [itemSearch, itemStatusFilter, stockInsightMap, supplierNameById, visibleItems]);
 
   const filteredMovements = useMemo(() => movements.filter((movement) => {
     if (!visibleItemIds.has(movement.stockItemId)) return false;
@@ -524,6 +902,10 @@ export default function AdminStockPage() {
     setItemName('');
     setItemCode('');
     setItemCategoryId('');
+    setItemSupplierId('');
+    setItemSector('Cozinha');
+    setItemNotes('');
+    setItemIsActive(true);
     setItemStockType(getDefaultTypeForTab(activeTab));
     setItemUnit('UN');
     setItemPurchaseUnit('UN');
@@ -547,7 +929,11 @@ export default function AdminStockPage() {
   function fillItemForm(item: StockItem) {
     setItemName(item.name ?? '');
     setItemCode(item.code ?? '');
-    setItemCategoryId(item.categoryId ?? '');
+    setItemCategoryId(item.stockType === 'RAW_MATERIAL' && !isIngredientCategoryName(item.category?.name) ? '' : item.categoryId ?? '');
+    setItemSupplierId(item.supplierId ?? '');
+    setItemSector(item.sector ?? 'Cozinha');
+    setItemNotes(item.notes ?? '');
+    setItemIsActive(item.isActive !== false);
     setItemStockType(item.stockType ?? 'RAW_MATERIAL');
     setItemUnit(normalizeUnitCode(item.stockUnit ?? 'UN'));
     setItemPurchaseUnit(normalizeUnitCode(item.purchaseUnit ?? item.stockUnit ?? 'UN'));
@@ -574,13 +960,42 @@ export default function AdminStockPage() {
     }, 0);
   }
 
+  function selectStockSection(section: StockSectionTab) {
+    setActiveSection(section);
+    setItemSearch('');
+    setItemStatusFilter('all');
+    setMovementItemFilter('');
+    setMovementBatchFilter('');
+    setSelectedProductIds([]);
+    setIngredientEditorOpen(false);
+
+    if (section === 'purchasing' || section === 'ingredients') {
+      setActiveTab('ingredients');
+    }
+    if (section === 'products' || section === 'sanity') {
+      setActiveTab('products');
+    }
+    if (section === 'sanity') {
+      setProductAvailabilityFilter('action');
+    }
+    if (section === 'products' || section === 'ingredients') {
+      setWorkspaceView('catalog');
+    }
+  }
+
   function openItemForEdit(itemId: string, view: StockWorkspaceView = 'catalog') {
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return;
+    setActiveSection(item.stockType === 'RAW_MATERIAL' ? 'ingredients' : 'products');
     setActiveTab(getTabForStockType(item.stockType));
     setWorkspaceView(view);
     setSelectedItemId(item.id);
     fillItemForm(item);
+    if (item.stockType === 'RAW_MATERIAL') {
+      setIngredientEditorOpen(true);
+      return;
+    }
+    setIngredientEditorOpen(false);
     scrollToItemForm();
   }
 
@@ -588,7 +1003,15 @@ export default function AdminStockPage() {
     setSelectedItemId('');
     setWorkspaceView('catalog');
     resetItemForm();
+    if (isIngredientWorkspace) {
+      setIngredientEditorOpen(true);
+      return;
+    }
     scrollToItemForm();
+  }
+
+  function closeIngredientEditor() {
+    setIngredientEditorOpen(false);
   }
 
   function exportStockAnalysisCsv() {
@@ -619,15 +1042,19 @@ export default function AdminStockPage() {
     URL.revokeObjectURL(url);
   }
 
-  function buildItemPayload() {
+  function buildItemPayload(categoryIdOverride: string | null = itemCategoryId || null) {
+    const normalizedUnit = normalizeUnitCode(itemUnit) || 'UN';
     return {
       name: itemName.trim(),
       code: itemCode.trim() || undefined,
-      categoryId: itemCategoryId || null,
-      stockType: itemStockType,
-      stockUnit: normalizeUnitCode(itemUnit) || 'UN',
-      purchaseUnit: normalizeUnitCode(itemPurchaseUnit) || normalizeUnitCode(itemUnit) || 'UN',
-      productionUnit: normalizeUnitCode(itemProductionUnit) || normalizeUnitCode(itemUnit) || 'UN',
+      categoryId: categoryIdOverride,
+      supplierId: itemSupplierId.trim() || null,
+      sector: isIngredientWorkspace ? itemSector.trim() || null : undefined,
+      notes: isIngredientWorkspace ? itemNotes.trim() || null : undefined,
+      stockType: isIngredientWorkspace ? 'RAW_MATERIAL' : itemStockType,
+      stockUnit: normalizedUnit,
+      purchaseUnit: isIngredientWorkspace ? normalizedUnit : normalizeUnitCode(itemPurchaseUnit) || normalizedUnit,
+      productionUnit: isIngredientWorkspace ? normalizedUnit : normalizeUnitCode(itemProductionUnit) || normalizedUnit,
       conversionFactor: Number(itemConversionFactor || '1'),
       averageCost: Number(itemCost || '0'),
       minimumQuantity: Number(itemMinimum || '0'),
@@ -649,18 +1076,20 @@ export default function AdminStockPage() {
     setLoading(true);
     setError(null);
     try {
-      const [stockItems, stockMovements, stockAlerts, categories, productStatuses] = await Promise.all([
+      const [stockItems, stockMovements, stockAlerts, categories, productStatuses, supplierRows] = await Promise.all([
         listStockItems(),
         listStockMovements(),
         listStockBreakageAlerts(),
         listStockCategories(true),
         listStockProductAvailability(),
+        listSuppliers().catch(() => [] as Supplier[]),
       ]);
       setItems(stockItems);
       setMovements(stockMovements);
       setAlerts(stockAlerts);
       setStockCategories(categories);
       setProductAvailability(productStatuses);
+      setSuppliers(supplierRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar estoque.');
     } finally {
@@ -750,6 +1179,35 @@ export default function AdminStockPage() {
     }
   }
 
+
+  async function runOrderConsumptionAudit(dryRun: boolean) {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await reconcileStockOrderConsumption({ dryRun, limit: 100 });
+      setOrderConsumptionAudit(result);
+      if (dryRun) {
+        setNotice(
+          result.wouldConsume > 0
+            ? `Auditoria encontrou ${result.wouldConsume} pedido(s) finalizados sem baixa de estoque.`
+            : 'Auditoria concluida: nenhum pedido pendente de baixa foi encontrado.',
+        );
+      } else {
+        await load();
+        setNotice(
+          result.consumed > 0
+            ? `${result.consumed} pedido(s) reconciliados com baixa de estoque real.`
+            : 'Reconcilia??o executada sem pedidos pendentes para baixar.',
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao auditar vendas sem baixa de estoque.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function loadBatches(itemId: string) {
     if (!itemId) {
       setBatches([]);
@@ -804,6 +1262,14 @@ export default function AdminStockPage() {
   }, []);
 
   useEffect(() => {
+    const requestedSection = searchParams.get('section') as StockSectionTab | null;
+    if (requestedSection && STOCK_SECTION_ORDER.includes(requestedSection)) {
+      selectStockSection(requestedSection);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!selectedItemId) return;
     void loadBatches(selectedItemId);
   }, [selectedItemId]);
@@ -839,14 +1305,34 @@ export default function AdminStockPage() {
     setSelectedProductIds((current) => current.filter((id) => availableIds.has(id)));
   }, [productAvailability]);
 
+  async function resolveItemCategoryIdForSave() {
+    if (!isIngredientWorkspace) return itemCategoryId || null;
+    if (!itemCategoryId) return null;
+    if (!itemCategoryId.startsWith(INGREDIENT_CATEGORY_VALUE_PREFIX)) return itemCategoryId;
+
+    const name = itemCategoryId.slice(INGREDIENT_CATEGORY_VALUE_PREFIX.length).trim();
+    if (!name) return null;
+    const existing = activeStockCategories.find((category) => normalizeText(category.name) === normalizeText(name));
+    if (existing) return existing.id;
+
+    const created = await createStockCategory({
+      name,
+      sortOrder: stockCategories.length + 1,
+    });
+    setStockCategories((prev) => [...prev, created].sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name)));
+    return created.id;
+  }
+
   async function onCreateItem(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const created = await createStockItem({
-        ...buildItemPayload(),
-      });
+      const categoryId = await resolveItemCategoryIdForSave();
+      let created = await createStockItem(buildItemPayload(categoryId));
+      if (isIngredientWorkspace && !itemIsActive) {
+        created = await updateStockItemStatus(created.id, { isActive: false });
+      }
       setItems((prev) => [created, ...prev]);
       setActiveTab(getTabForStockType(created.stockType));
       setSelectedItemId(created.id);
@@ -854,6 +1340,7 @@ export default function AdminStockPage() {
       fillItemForm(created);
       await refreshProductAvailability();
       setNotice('Item de estoque criado.');
+      if (isIngredientWorkspace) setIngredientEditorOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar item.');
     } finally {
@@ -869,10 +1356,15 @@ export default function AdminStockPage() {
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateStockItem(selectedItemId, buildItemPayload());
+      const categoryId = await resolveItemCategoryIdForSave();
+      let updated = await updateStockItem(selectedItemId, buildItemPayload(categoryId));
+      if (isIngredientWorkspace && selected?.isActive !== itemIsActive) {
+        updated = await updateStockItemStatus(selectedItemId, { isActive: itemIsActive });
+      }
       setItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
       await refreshProductAvailability();
       setNotice('Item de estoque atualizado.');
+      if (isIngredientWorkspace) setIngredientEditorOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao atualizar item.');
     } finally {
@@ -915,6 +1407,7 @@ export default function AdminStockPage() {
     try {
       const nextActive = selected.isActive === false;
       const updated = await updateStockItemStatus(selectedItemId, { isActive: nextActive });
+      setItemIsActive(nextActive);
       setItems((prev) => {
         if (nextActive) return prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item));
         return prev.filter((item) => item.id !== updated.id);
@@ -922,6 +1415,7 @@ export default function AdminStockPage() {
       if (!nextActive) {
         setSelectedItemId('');
         resetItemForm();
+        if (isIngredientWorkspace) setIngredientEditorOpen(false);
       }
       await refreshProductAvailability();
       setNotice(nextActive ? 'Item reativado.' : 'Item desativado.');
@@ -1116,82 +1610,79 @@ export default function AdminStockPage() {
 
   return (
     <main className={styles.page}>
-      <PageHeader
-        title="Estoque"
-        subtitle="Controle base de itens, cobertura, compra sugerida e movimentacoes"
-        right={
-          <div className={styles.headerActions}>
-            <Button onClick={exportStockAnalysisCsv}>CSV analise</Button>
-            <Button onClick={() => void load()}>Atualizar</Button>
-          </div>
-        }
-      />
+      {!isIngredientWorkspace ? (
+        <PageHeader
+          title="Estoque"
+          subtitle="Controle base de itens, cobertura, compra sugerida e movimentacoes"
+          right={
+            <div className={styles.headerActions}>
+              <Button onClick={exportStockAnalysisCsv}>Analise CSV</Button>
+            </div>
+          }
+        />
+      ) : null}
 
-      <section className={styles.stockTabs} aria-label="Tipo de estoque">
-        <button
-          type="button"
-          className={`${styles.stockTab} ${activeTab === 'products' ? styles.stockTabActive : ''}`.trim()}
-          onClick={() => setActiveTab('products')}
-        >
-          <span>{STOCK_TAB_META.products.label}</span>
-          <strong>{productItems.length}</strong>
-          <small>{STOCK_TAB_META.products.description}</small>
-        </button>
-        <button
-          type="button"
-          className={`${styles.stockTab} ${activeTab === 'addons' ? styles.stockTabActive : ''}`.trim()}
-          onClick={() => setActiveTab('addons')}
-        >
-          <span>{STOCK_TAB_META.addons.label}</span>
-          <strong>{addonItems.length}</strong>
-          <small>{STOCK_TAB_META.addons.description}</small>
-        </button>
-        <button
-          type="button"
-          className={`${styles.stockTab} ${activeTab === 'ingredients' ? styles.stockTabActive : ''}`.trim()}
-          onClick={() => setActiveTab('ingredients')}
-        >
-          <span>{STOCK_TAB_META.ingredients.label}</span>
-          <strong>{ingredientItems.length}</strong>
-          <small>{STOCK_TAB_META.ingredients.description}</small>
-        </button>
-      </section>
+      {!isIngredientWorkspace ? (
+        <section className={styles.sectionTabs} aria-label="Submenus de estoque">
+          {STOCK_SECTION_ORDER.map((section) => (
+            <button
+              key={section}
+              type="button"
+              className={`${styles.sectionTab} ${activeSection === section ? styles.sectionTabActive : ''}`.trim()}
+              onClick={() => selectStockSection(section)}
+            >
+              <span>{STOCK_SECTION_META[section].label}</span>
+              <strong>{sectionTabCounts[section]}</strong>
+              <small>{STOCK_SECTION_META[section].description}</small>
+            </button>
+          ))}
+        </section>
+      ) : null}
 
       {error ? <Card className={styles.card}><Badge tone="danger">Erro</Badge><span>{error}</span></Card> : null}
       {notice ? <Card className={styles.card}><Badge tone="success">OK</Badge><span>{notice}</span></Card> : null}
-      <section className={styles.kpiGrid}>
-        <Card className={styles.kpiCard}>
-          <span>Disponivel</span>
-          <strong>{formatMoney(stockKpis.availableValue)}</strong>
-          <small>Saldo livre para venda/producao</small>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <span>Saldo fisico</span>
-          <strong>{formatMoney(stockKpis.totalValue)}</strong>
-          <small>Total contado no estoque</small>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <span>Comprometido</span>
-          <strong>{formatMoney(stockKpis.committedValue)}</strong>
-          <small>{formatDecimal(stockKpis.committedQuantity, 3)} em {stockKpis.committedItems} itens</small>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <span>Compra sugerida</span>
-          <strong>{formatMoney(stockKpis.suggestedValue)}</strong>
-          <small>Considera o saldo disponivel</small>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <span>Ruptura prevista</span>
-          <strong>{stockKpis.ruptureForecast}</strong>
-          <small>Cobertura menor que o prazo seguro</small>
-        </Card>
-        <Card className={styles.kpiCard}>
-          <span>Disponivel abaixo do minimo</span>
-          <strong>{stockKpis.belowMinimum}</strong>
-          <small>Fisico menos pedidos abertos</small>
-        </Card>
-      </section>
+      {!isIngredientWorkspace ? (
+        <>
+          <div className={styles.sectionContext}>
+            <strong>{activeSectionMeta.label}</strong>
+            <span>{activeSectionMeta.description}</span>
+          </div>
+          <section className={styles.kpiGrid}>
+            <Card className={styles.kpiCard}>
+              <span>Disponivel</span>
+              <strong>{formatMoney(stockKpis.availableValue)}</strong>
+              <small>Saldo livre para venda/producao</small>
+            </Card>
+            <Card className={styles.kpiCard}>
+              <span>Saldo fisico</span>
+              <strong>{formatMoney(stockKpis.totalValue)}</strong>
+              <small>Total contado no estoque</small>
+            </Card>
+            <Card className={styles.kpiCard}>
+              <span>Comprometido</span>
+              <strong>{formatMoney(stockKpis.committedValue)}</strong>
+              <small>{formatDecimal(stockKpis.committedQuantity, 3)} em {stockKpis.committedItems} itens</small>
+            </Card>
+            <Card className={styles.kpiCard}>
+              <span>Compra sugerida insumos</span>
+              <strong>{formatMoney(stockKpis.suggestedValue)}</strong>
+              <small>Somente materias-primas</small>
+            </Card>
+            <Card className={styles.kpiCard}>
+              <span>Ruptura prevista</span>
+              <strong>{stockKpis.ruptureForecast}</strong>
+              <small>Cobertura menor que o prazo seguro</small>
+            </Card>
+            <Card className={styles.kpiCard}>
+              <span>Disponivel abaixo do minimo</span>
+              <strong>{stockKpis.belowMinimum}</strong>
+              <small>Fisico menos pedidos abertos</small>
+            </Card>
+          </section>
+        </>
+      ) : null}
 
+      {activeSection === 'alerts' ? (
       <Card className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
@@ -1236,17 +1727,19 @@ export default function AdminStockPage() {
           ))}
         </div>
       </Card>
+      ) : null}
 
+      {activeSection === 'purchasing' ? (
       <Card className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
             <h2>Compra sugerida e cobertura</h2>
-            <p>Adaptado da auditoria V15: calcula consumo recente, cobertura em dias e quantidade sugerida.</p>
+            <p>Lista somente insumos. Produtos acabados e adicionais nao entram em sugestao de compra.</p>
           </div>
           <Badge>{suggestedPurchases.length} itens</Badge>
         </div>
         <div className={styles.suggestionList}>
-          {suggestedPurchases.length === 0 ? <span className={styles.emptyMini}>Sem compra sugerida para esta aba.</span> : null}
+          {suggestedPurchases.length === 0 ? <span className={styles.emptyMini}>Sem compra sugerida para insumos.</span> : null}
           {suggestedPurchases.map((insight) => (
             <button
               key={insight.item.id}
@@ -1269,8 +1762,9 @@ export default function AdminStockPage() {
           ))}
         </div>
       </Card>
+      ) : null}
 
-      {activeTab === 'products' ? (
+      {activeSection === 'sanity' ? (
         <Card className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
@@ -1352,6 +1846,47 @@ export default function AdminStockPage() {
               </Button>
             </div>
           </div>
+          <div className={styles.reconcilePanel}>
+            <div className={styles.reconcileHeader}>
+              <div>
+                <span>Vendas sem baixa</span>
+                <strong>Auditoria de consumo por pedido</strong>
+                <p>Localiza pedidos finalizados que ainda nao geraram baixa de estoque e permite reconciliar em DEV.</p>
+              </div>
+              <div className={styles.bulkSanityActions}>
+                <Button type="button" disabled={saving} onClick={() => void runOrderConsumptionAudit(true)}>
+                  Auditar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={saving || (orderConsumptionAudit?.wouldConsume ?? 0) === 0}
+                  onClick={() => void runOrderConsumptionAudit(false)}
+                >
+                  Aplicar baixa pendente
+                </Button>
+              </div>
+            </div>
+            <div className={styles.reconcileMetrics}>
+              <span><strong>{orderConsumptionAudit?.scanned ?? 0}</strong> pedidos auditados</span>
+              <span><strong>{orderConsumptionAudit?.wouldConsume ?? 0}</strong> pendentes</span>
+              <span><strong>{orderConsumptionAudit?.consumed ?? 0}</strong> reconciliados</span>
+              <span><strong>{orderConsumptionAudit?.skipped ?? 0}</strong> ignorados</span>
+              <span><strong>{orderConsumptionAudit?.errors ?? 0}</strong> erros</span>
+            </div>
+            {orderConsumptionAudit?.results?.length ? (
+              <div className={styles.reconcileResults}>
+                {orderConsumptionAudit.results.slice(0, 6).map((result) => (
+                  <span key={`${result.orderId}-${result.action}`}>
+                    <strong>{result.orderNumber ?? result.orderId.slice(0, 8)}</strong>
+                    {result.action === 'would_consume' ? 'pendente de baixa' : null}
+                    {result.action === 'consumed' ? 'baixa aplicada' : null}
+                    {result.action === 'skip' ? `ignorado: ${result.reason ?? 'sem acao'}` : null}
+                    {result.action === 'error' ? `erro: ${result.error ?? 'falha ao reconciliar'}` : null}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <div className={styles.productAvailabilityGrid}>
             {filteredProductAvailability.length === 0 ? (
               <EmptyState title="Nenhum produto encontrado" description="Altere a busca ou o filtro para revisar outros produtos." />
@@ -1407,7 +1942,7 @@ export default function AdminStockPage() {
                   </div>
                 ) : null}
                 <div className={styles.productAvailabilityActions}>
-                  <Link className={styles.linkButton} href={`/admin/menu/products/${product.productId}/ficha-tecnica`}>
+                  <Link className={styles.linkButton} href={`/admin/technical-sheet/${product.productId}`}>
                     Ficha tecnica
                   </Link>
                   <Button type="button" disabled={saving} onClick={() => void toggleProductStockControl(product)}>
@@ -1421,116 +1956,497 @@ export default function AdminStockPage() {
         </Card>
       ) : null}
 
-      <section className={styles.stockWorkspace}>
-        <Card className={`${styles.card} ${styles.stockListCard}`.trim()}>
+      {activeSection === 'products' ? (
+        <Card className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2>{activeTabMeta.label}</h2>
-              <p>Consulte, filtre e selecione um item antes de editar cadastro, movimentos ou lotes.</p>
+              <h2>Produtos</h2>
+              <p>Operacao de venda, ficha tecnica e controle de estoque em uma visao unica.</p>
             </div>
-            <Badge>{filteredVisibleItems.length} de {visibleItems.length}</Badge>
+            <Badge tone={productOperationalSummary.blocked > 0 ? 'warning' : 'success'}>
+              {productOperationalSummary.blocked} bloqueios
+            </Badge>
           </div>
 
-          <div className={styles.listToolbar}>
+          <div className={styles.productOpsSummary}>
+            <button type="button" className={styles.productOpsMetric} onClick={() => setProductAvailabilityFilter('available')}>
+              <span>Prontos para venda</span>
+              <strong>{productOperationalSummary.ready}</strong>
+              <small>Produtos disponiveis agora</small>
+            </button>
+            <button type="button" className={styles.productOpsMetric} onClick={() => setProductAvailabilityFilter('action')}>
+              <span>Acao necessaria</span>
+              <strong>{productOperationalSummary.attention}</strong>
+              <small>Ficha, saldo ou controle</small>
+            </button>
+            <button type="button" className={styles.productOpsMetric} onClick={() => setProductAvailabilityFilter('not_controlled')}>
+              <span>Sem controle</span>
+              <strong>{productOperationalSummary.noControl}</strong>
+              <small>Nao baixa estoque</small>
+            </button>
+            <div className={styles.productOpsMetric}>
+              <span>Receita potencial</span>
+              <strong>{formatMoney(productOperationalSummary.potentialRevenue)}</strong>
+              <small>Disponivel x preco de venda</small>
+            </div>
+          </div>
+
+          <div className={styles.cmvBoard}>
+            <div className={styles.cmvHero}>
+              <span>CMV tecnico medio</span>
+              <strong>{formatPercent(productCmvSummary.averageCmvPercent)}</strong>
+              <small>
+                Calculado por ficha tecnica: soma do custo tecnico dividido pelo preco dos produtos com ficha.
+              </small>
+              <div className={styles.cmvHeroMetrics}>
+                <span>{formatMoney(productCmvSummary.totalTechnicalCost)} em custo tecnico</span>
+                <span>{productCmvSummary.autoDeductionReady} com baixa automatica pronta</span>
+              </div>
+            </div>
+            <div className={styles.cmvMiniGrid}>
+              <button type="button" className={styles.cmvMiniCard} onClick={() => setProductAvailabilityFilter('missing_recipe')}>
+                <span>Ficha pendente</span>
+                <strong>{productCmvSummary.missingTechnicalSetup}</strong>
+                <small>Sem ficha ou sem insumos ativos</small>
+              </button>
+              <div className={styles.cmvMiniCard}>
+                <span>Margem baixa</span>
+                <strong>{productCmvSummary.lowMargin}</strong>
+                <small>Abaixo de 30% pela ficha</small>
+              </div>
+              <div className={styles.cmvMiniCard}>
+                <span>Prejuizo tecnico</span>
+                <strong>{productCmvSummary.loss}</strong>
+                <small>Custo tecnico maior que venda</small>
+              </div>
+            </div>
+            <section className={styles.cmvColumn}>
+              <div className={styles.cmvColumnHeader}>
+                <strong>Produtos em risco de margem</strong>
+                <span>{cmvRiskProducts.length}</span>
+              </div>
+              {cmvRiskProducts.length === 0 ? <span className={styles.emptyMini}>Sem produtos com margem critica.</span> : null}
+              {cmvRiskProducts.map((product) => {
+                const risk = getProductCmvRisk(product);
+                return (
+                  <Link key={product.productId} className={styles.cmvRow} href={`/admin/technical-sheet/${product.productId}`}>
+                    <span className={`${styles.cmvRiskBadge} ${risk.className}`.trim()}>{risk.label}</span>
+                    <strong>{product.name}</strong>
+                    <small>CMV {formatPercent(getProductCmvPercent(product))} | Margem {formatPercent(getProductMarginPercent(product))}</small>
+                  </Link>
+                );
+              })}
+            </section>
+            <section className={styles.cmvColumn}>
+              <div className={styles.cmvColumnHeader}>
+                <strong>Fila de ficha tecnica</strong>
+                <span>{recipeSetupQueue.length}</span>
+              </div>
+              {recipeSetupQueue.length === 0 ? <span className={styles.emptyMini}>Todas as fichas principais estao configuradas.</span> : null}
+              {recipeSetupQueue.map((product) => (
+                <Link key={product.productId} className={styles.cmvRow} href={`/admin/technical-sheet/${product.productId}`}>
+                  <span className={`${styles.cmvRiskBadge} ${styles.cmvUnknown}`.trim()}>Ficha</span>
+                  <strong>{product.name}</strong>
+                  <small>{product.recipe?.name ?? 'Criar ficha'} | Preco {formatMoney(product.salePrice)}</small>
+                </Link>
+              ))}
+            </section>
+            <section className={styles.cmvColumn}>
+              <div className={styles.cmvColumnHeader}>
+                <strong>Insumos limitantes</strong>
+                <span>{limitingIngredientSummary.length}</span>
+              </div>
+              {limitingIngredientSummary.length === 0 ? <span className={styles.emptyMini}>Nenhum insumo travando venda agora.</span> : null}
+              {limitingIngredientSummary.map((ingredient) => (
+                <button
+                  key={ingredient.stockItemId}
+                  type="button"
+                  className={styles.cmvRow}
+                  onClick={() => openItemForEdit(ingredient.stockItemId, 'analysis')}
+                >
+                  <span className={`${styles.cmvRiskBadge} ${styles.cmvHigh}`.trim()}>Insumo</span>
+                  <strong>{ingredient.name}</strong>
+                  <small>{ingredient.affectedProducts.size} produto(s) afetado(s) | Disp. {formatDecimal(ingredient.availableQuantity, 3)} {ingredient.unit ?? ''}</small>
+                </button>
+              ))}
+            </section>
+          </div>
+
+          <div className={styles.productOpsToolbar}>
             <Input
-              placeholder={`Buscar em ${activeTabMeta.label.toLowerCase()}`}
+              placeholder="Buscar produto, SKU ou categoria"
               value={itemSearch}
               onChange={(e) => setItemSearch(e.target.value)}
             />
-            <select className={styles.select} value={itemStatusFilter} onChange={(e) => setItemStatusFilter(e.target.value as StockStatusFilter)}>
-              <option value="all">Todos os status</option>
-              <option value="low">Disponivel abaixo do minimo</option>
-              <option value="forecast">Ruptura prevista</option>
-              <option value="batch">Com lote/validade</option>
-              <option value="negative">Disponivel negativo</option>
-            </select>
-            <Button type="button" onClick={startNewItem}>Novo {STOCK_TYPE_LABELS[getDefaultTypeForTab(activeTab)].toLowerCase()}</Button>
+            <div className={styles.productSanityFilters}>
+              {PRODUCT_AVAILABILITY_FILTERS.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`${styles.productSanityFilter} ${productAvailabilityFilter === filter.key ? styles.productSanityFilterActive : ''}`.trim()}
+                  onClick={() => setProductAvailabilityFilter(filter.key)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className={styles.itemRows}>
-            {visibleItems.length === 0 ? (
-              <EmptyState title={activeTabMeta.emptyTitle} description={activeTabMeta.emptyDescription} />
+          <div className={styles.bulkSanityBar}>
+            <div>
+              <strong>{selectedProductIds.length} produto(s) selecionado(s)</strong>
+              <span>Use a selecao para ligar ou desligar baixa automatica em massa.</span>
+            </div>
+            <div className={styles.bulkSanityActions}>
+              <Button type="button" disabled={filteredProductAvailability.length === 0} onClick={selectFilteredProducts}>
+                Selecionar visiveis
+              </Button>
+              <Button type="button" disabled={selectedProductIds.length === 0} onClick={clearSelectedProducts}>
+                Limpar selecao
+              </Button>
+              <Button type="button" disabled={saving || selectedProductIds.length === 0} onClick={() => void bulkUpdateProductStockControl(true)}>
+                Controlar estoque
+              </Button>
+              <Button type="button" disabled={saving || selectedProductIds.length === 0} onClick={() => void bulkUpdateProductStockControl(false)}>
+                Marcar sem controle
+              </Button>
+            </div>
+          </div>
+
+          <div className={styles.productOpsList}>
+            {filteredProductAvailability.length === 0 ? (
+              <EmptyState title="Nenhum produto encontrado" description="Altere a busca ou escolha outro filtro." />
             ) : null}
-            {visibleItems.length > 0 && filteredVisibleItems.length === 0 ? (
-              <EmptyState title="Nenhum item encontrado" description="Altere a busca ou o filtro para ver outros cadastros." />
-            ) : null}
-            {filteredVisibleItems.map((item) => {
-              const insight = stockInsightMap.get(item.id);
+            {filteredProductAvailability.map((product) => {
+              const priority = getProductSanityPriority(product);
+              const isSelected = selectedProductIds.includes(product.productId);
+              const ingredientCount = product.ingredients.length;
+              const limitingCount = product.limitingIngredients.length;
               return (
-                <button
-                  key={item.id}
-                  className={`${styles.itemCardRow} ${styles.clickableRow} ${selectedItemId === item.id ? styles.selectedRow : ''}`.trim()}
-                  type="button"
-                  onClick={() => openItemForEdit(item.id)}
-                >
-                  <div className={styles.itemRowMain}>
-                    <strong>{item.name}</strong>
-                    <span>{STOCK_TYPE_LABELS[item.stockType] ?? item.stockType} - {item.category?.name ?? 'Sem categoria'}</span>
-                    <span>Cod. {item.code ?? '-'}</span>
-                  </div>
-                  <div className={styles.itemRowMetrics}>
-                    <div className={styles.itemMetric}>
-                      <small>Fisico</small>
-                      <strong>{formatDecimal(Number(item.currentQuantity ?? 0), 3)} {item.stockUnit ?? 'un'}</strong>
-                    </div>
-                    <div className={styles.itemMetric}>
-                      <small>Comprometido</small>
-                      <strong>{formatDecimal(insight?.committed ?? item.committedQuantity ?? 0, 3)}</strong>
-                    </div>
-                    <div className={styles.itemMetric}>
-                      <small>Disponivel</small>
-                      <strong>{formatDecimal(insight?.available ?? item.availableQuantity ?? item.currentQuantity ?? 0, 3)} {item.stockUnit ?? 'un'}</strong>
-                    </div>
-                    <div className={styles.itemMetric}>
-                      <small>Cobertura</small>
-                      <strong>{formatCoverage(insight?.coverageDays ?? null)}</strong>
+                <article key={product.productId} className={`${styles.productOpsCard} ${isSelected ? styles.productOpsCardSelected : ''}`.trim()}>
+                  <div className={styles.productOpsMain}>
+                    <label className={styles.productSelectBox}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleProductSelection(product.productId)}
+                      />
+                      <span className={styles.productOpsTitle}>
+                        <strong>{product.name}</strong>
+                        <small>{product.category?.name ?? 'Sem categoria'} {product.sku ? `- SKU ${product.sku}` : ''}</small>
+                      </span>
+                    </label>
+                    <div className={styles.productOpsStatusLine}>
+                      <span className={`${styles.productStatusBadge} ${getProductAvailabilityClass(product.availabilityStatus)}`.trim()}>
+                        {PRODUCT_AVAILABILITY_LABELS[product.availabilityStatus]}
+                      </span>
+                      <span className={`${styles.productPriorityBadge} ${priority.className}`.trim()}>{priority.label}</span>
                     </div>
                   </div>
-                  <div className={styles.itemRowBadges}>
-                    {(insight?.available ?? 0) <= 0 ? <span className={styles.badgeDanger}>Disponivel zerado</span> : null}
-                    {(insight?.available ?? 0) > 0 && (insight?.available ?? 0) <= (insight?.minimum ?? 0) ? <span className={styles.badgeDanger}>Abaixo do minimo</span> : null}
-                    {(insight?.committed ?? 0) > 0 ? <span className={styles.badgeWarn}>{formatDecimal(insight?.committed ?? 0, 3)} comprometido</span> : null}
-                    {insight?.ruptureRisk ? <span className={styles.badgeWarn}>Ruptura prevista</span> : null}
-                    {item.controlsBatch ? <span className={styles.badgeSoft}>Lote</span> : null}
-                    {item.category?.name ? <span className={styles.badgeSoft}>{item.category.name}</span> : null}
-                    {item.controlsExpiry ? <span className={styles.badgeSoft}>Validade</span> : null}
-                    {item.requiresFefo ? <span className={styles.badgeSoft}>FEFO</span> : null}
-                    {item.controlsStock === false ? <span className={styles.badgeSoft}>Sem baixa</span> : null}
+
+                  <div className={styles.productOpsNumbers}>
+                    <div>
+                      <span>Vender</span>
+                      <strong>{product.availableToSell === null ? '-' : formatDecimal(product.availableToSell, 0)}</strong>
+                    </div>
+                    <div>
+                      <span>Preco</span>
+                      <strong>{formatMoney(product.salePrice)}</strong>
+                    </div>
+                    <div>
+                      <span>Custo</span>
+                      <strong>{formatMoney(product.technicalCost)}</strong>
+                    </div>
+                    <div>
+                      <span>Margem</span>
+                      <strong>{formatPercent(getProductMarginPercent(product))}</strong>
+                    </div>
+                    <div>
+                      <span>CMV</span>
+                      <strong>{formatPercent(getProductCmvPercent(product))}</strong>
+                    </div>
+                    <div>
+                      <span>Lucro</span>
+                      <strong>{product.grossMargin === null ? '-' : formatMoney(product.grossMargin)}</strong>
+                    </div>
                   </div>
-                </button>
+
+                  <div className={styles.productOpsMeta}>
+                    <span>{product.controlsStock ? 'Baixa automatica ativa' : 'Sem baixa automatica'}</span>
+                    <span className={getProductCmvRisk(product).className}>{getProductCmvRisk(product).label}</span>
+                    <span>{product.recipe?.name ?? 'Sem ficha tecnica'}</span>
+                    <span>{ingredientCount} insumo(s)</span>
+                    {limitingCount > 0 ? <span>{limitingCount} limitante(s)</span> : null}
+                  </div>
+
+                  <p className={styles.productAvailabilityGuidance}>{productSanityGuidance(product)}</p>
+
+                  {product.limitingIngredients.length > 0 ? (
+                    <div className={styles.limitingIngredients}>
+                      {product.limitingIngredients.slice(0, 4).map((ingredient) => (
+                        <span key={ingredient.stockItemId}>
+                          {ingredient.name}: {formatDecimal(ingredient.availableQuantity, 3)} {ingredient.stockUnit ?? ''}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className={styles.productOpsActions}>
+                    <Link className={styles.linkButton} href={`/admin/technical-sheet/${product.productId}`}>
+                      Ficha tecnica
+                    </Link>
+                    <Link className={styles.linkButton} href="/admin/menu">
+                      Cardapio
+                    </Link>
+                    <Button type="button" disabled={saving} onClick={() => void toggleProductStockControl(product)}>
+                      {product.controlsStock ? 'Desligar baixa' : 'Controlar estoque'}
+                    </Button>
+                  </div>
+                </article>
               );
             })}
           </div>
         </Card>
+      ) : null}
 
-        <Card className={`${styles.card} ${styles.itemDetailCard}`.trim()} id="stock-item-form">
+      {activeSection === 'products' || activeSection === 'ingredients' ? (
+      <section className={`${styles.stockWorkspace} ${isIngredientWorkspace ? styles.ingredientCadastroWorkspace : ''}`.trim()}>
+        <Card className={`${styles.card} ${styles.stockListCard}`.trim()}>
+          {isIngredientWorkspace ? (
+            <>
+              <div className={styles.ingredientSheetHeader}>
+                <div className={styles.ingredientSheetTitle}>
+                  <span>1_INSUMOS</span>
+                  <h1>Insumos</h1>
+                </div>
+                <div className={styles.ingredientSheetActions}>
+                  <Button type="button" onClick={startNewItem}>
+                    Cadastro de Insumo
+                  </Button>
+                  <label className={styles.ingredientSearchField}>
+                    <span>Buscar</span>
+                    <Input
+                      placeholder="Insumo, prato, fornecedor..."
+                      value={itemSearch}
+                      onChange={(e) => setItemSearch(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className={styles.ingredientSheetCount}>
+                {filteredVisibleItems.length} registros carregados
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={styles.cardHeader}>
+                <div>
+                  <h2>{activeTabMeta.label}</h2>
+                  <p>Consulte, filtre e selecione um item antes de editar cadastro, movimentos ou lotes.</p>
+                </div>
+                <Badge>{filteredVisibleItems.length} de {visibleItems.length}</Badge>
+              </div>
+
+              <div className={styles.listToolbar}>
+                <Input
+                  placeholder={`Buscar em ${activeTabMeta.label.toLowerCase()}`}
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                />
+                <select className={styles.select} value={itemStatusFilter} onChange={(e) => setItemStatusFilter(e.target.value as StockStatusFilter)}>
+                  <option value="all">Todos os status</option>
+                  <option value="low">Disponivel abaixo do minimo</option>
+                  <option value="forecast">Ruptura prevista</option>
+                  <option value="batch">Com lote/validade</option>
+                  <option value="negative">Disponivel negativo</option>
+                </select>
+                <Button type="button" onClick={startNewItem}>
+                  {`Novo ${STOCK_TYPE_LABELS[getDefaultTypeForTab(activeTab)].toLowerCase()}`}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {isIngredientWorkspace ? (
+            <div className={styles.ingredientTableWrap}>
+              {visibleItems.length === 0 ? (
+                <EmptyState title="Sem insumos cadastrados" description="Use Cadastro de Insumo para criar a primeira materia-prima." />
+              ) : null}
+              {visibleItems.length > 0 && filteredVisibleItems.length === 0 ? (
+                <EmptyState title="Nenhum insumo encontrado" description="Altere a busca ou o filtro para ver outros cadastros." />
+              ) : null}
+              {filteredVisibleItems.length > 0 ? (
+                <table className={styles.ingredientTable}>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Nome do insumo</th>
+                      <th>Setor</th>
+                      <th>Categoria</th>
+                      <th>Unidade</th>
+                      <th>Custo unitario (R$)</th>
+                      <th>Fornecedor</th>
+                      <th>Observacoes</th>
+                      <th>Ativo?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVisibleItems.map((item) => (
+                      <tr key={item.id} className={selectedItemId === item.id ? styles.selectedTableRow : ''}>
+                        <td>{stockItemDisplayId(item)}</td>
+                        <td>
+                          <button className={styles.ingredientNameButton} type="button" onClick={() => openItemForEdit(item.id)}>
+                            {item.name}
+                          </button>
+                        </td>
+                        <td>{item.sector?.trim() || 'Geral'}</td>
+                        <td>{getIngredientCategoryName(item)}</td>
+                        <td>{stockItemUnitLabel(item)}</td>
+                        <td>{formatMoney(Number(item.averageCost ?? 0))}</td>
+                        <td>{item.supplierId ? supplierNameById.get(item.supplierId) ?? item.supplierId : '-'}</td>
+                        <td>{stockItemObservation(item)}</td>
+                        <td>
+                          <span className={item.isActive === false ? styles.badgeDanger : styles.badgeSoft}>
+                            {item.isActive === false ? 'Nao' : 'Sim'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+          ) : (
+            <div className={styles.itemRows}>
+              {visibleItems.length === 0 ? (
+                <EmptyState title={activeTabMeta.emptyTitle} description={activeTabMeta.emptyDescription} />
+              ) : null}
+              {visibleItems.length > 0 && filteredVisibleItems.length === 0 ? (
+                <EmptyState title="Nenhum item encontrado" description="Altere a busca ou o filtro para ver outros cadastros." />
+              ) : null}
+              {filteredVisibleItems.map((item) => {
+                const insight = stockInsightMap.get(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    className={`${styles.itemCardRow} ${styles.clickableRow} ${selectedItemId === item.id ? styles.selectedRow : ''}`.trim()}
+                    type="button"
+                    onClick={() => openItemForEdit(item.id)}
+                  >
+                    <div className={styles.itemRowMain}>
+                      <strong>{item.name}</strong>
+                      <span>{STOCK_TYPE_LABELS[item.stockType] ?? item.stockType} - {item.category?.name ?? 'Sem categoria'}</span>
+                      <span>Cod. {item.code ?? '-'}</span>
+                    </div>
+                    <div className={styles.itemRowMetrics}>
+                      <div className={styles.itemMetric}>
+                        <small>Fisico</small>
+                        <strong>{formatDecimal(Number(item.currentQuantity ?? 0), 3)} {item.stockUnit ?? 'un'}</strong>
+                      </div>
+                      <div className={styles.itemMetric}>
+                        <small>Comprometido</small>
+                        <strong>{formatDecimal(insight?.committed ?? item.committedQuantity ?? 0, 3)}</strong>
+                      </div>
+                      <div className={styles.itemMetric}>
+                        <small>Disponivel</small>
+                        <strong>{formatDecimal(insight?.available ?? item.availableQuantity ?? item.currentQuantity ?? 0, 3)} {item.stockUnit ?? 'un'}</strong>
+                      </div>
+                      <div className={styles.itemMetric}>
+                        <small>Cobertura</small>
+                        <strong>{formatCoverage(insight?.coverageDays ?? null)}</strong>
+                      </div>
+                    </div>
+                    <div className={styles.itemRowBadges}>
+                      {(insight?.available ?? 0) <= 0 ? <span className={styles.badgeDanger}>Disponivel zerado</span> : null}
+                      {(insight?.available ?? 0) > 0 && (insight?.available ?? 0) <= (insight?.minimum ?? 0) ? <span className={styles.badgeDanger}>Abaixo do minimo</span> : null}
+                      {(insight?.committed ?? 0) > 0 ? <span className={styles.badgeWarn}>{formatDecimal(insight?.committed ?? 0, 3)} comprometido</span> : null}
+                      {insight?.ruptureRisk ? <span className={styles.badgeWarn}>Ruptura prevista</span> : null}
+                      {item.controlsBatch ? <span className={styles.badgeSoft}>Lote</span> : null}
+                      {item.category?.name ? <span className={styles.badgeSoft}>{item.category.name}</span> : null}
+                      {item.controlsExpiry ? <span className={styles.badgeSoft}>Validade</span> : null}
+                      {item.requiresFefo ? <span className={styles.badgeSoft}>FEFO</span> : null}
+                      {item.controlsStock === false ? <span className={styles.badgeSoft}>Sem baixa</span> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        {!isIngredientWorkspace || ingredientEditorOpen ? (
+        <div className={isIngredientWorkspace ? styles.ingredientDialogBackdrop : styles.productDetailFrame}>
+        <Card className={`${styles.card} ${styles.itemDetailCard} ${isIngredientWorkspace ? styles.ingredientRecordDialog : ''}`.trim()} id="stock-item-form" role={isIngredientWorkspace ? 'dialog' : undefined} aria-modal={isIngredientWorkspace ? 'true' : undefined}>
           <div className={styles.cardHeader}>
-            <div>
-              <h2>{selected ? selected.name : `Novo ${STOCK_TYPE_LABELS[getDefaultTypeForTab(activeTab)].toLowerCase()}`}</h2>
-              <p>{selected ? 'Edite o cadastro, ajuste saldo, controle lotes e acompanhe a cobertura do item selecionado.' : 'Preencha os dados para criar um novo cadastro nesta aba.'}</p>
-            </div>
-            <Badge>{selected ? STOCK_TYPE_LABELS[selected.stockType] ?? 'Item' : 'Novo item'}</Badge>
+            {isIngredientWorkspace ? (
+              <div className={styles.ingredientRecordTitle}>
+                <span>REGISTRO</span>
+                <h2>{selected ? 'Atualizar Insumo' : 'Cadastrar Insumo'}</h2>
+              </div>
+            ) : (
+              <div>
+                <h2>{selected ? selected.name : `Novo ${STOCK_TYPE_LABELS[getDefaultTypeForTab(activeTab)].toLowerCase()}`}</h2>
+                <p>
+                  {selected
+                    ? 'Edite o cadastro, ajuste saldo, controle lotes e acompanhe a cobertura do item selecionado.'
+                    : 'Preencha os dados para criar um novo cadastro nesta aba.'}
+                </p>
+              </div>
+            )}
+            {isIngredientWorkspace ? (
+              <button type="button" className={styles.ingredientCloseButton} onClick={closeIngredientEditor} aria-label="Fechar cadastro de insumo">
+                x
+              </button>
+            ) : (
+              <Badge>{selected ? STOCK_TYPE_LABELS[selected.stockType] ?? 'Item' : 'Novo item'}</Badge>
+            )}
           </div>
 
+          {!isIngredientWorkspace ? (
           <div className={styles.detailSummary}>
-            <div>
-              <span>Saldo fisico</span>
-              <strong>{selectedInsight ? `${formatDecimal(selectedInsight.current, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
-            </div>
-            <div>
-              <span>Comprometido</span>
-              <strong>{selectedInsight ? `${formatDecimal(selectedInsight.committed, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
-            </div>
-            <div>
-              <span>Disponivel</span>
-              <strong>{selectedInsight ? `${formatDecimal(selectedInsight.available, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
-            </div>
-            <div>
-              <span>Cobertura</span>
-              <strong>{selectedInsight ? formatCoverage(selectedInsight.coverageDays) : '-'}</strong>
-            </div>
+            {isIngredientWorkspace ? (
+              <>
+                <div>
+                  <span>ID</span>
+                  <strong>{stockItemDisplayId(selected)}</strong>
+                </div>
+                <div>
+                  <span>Unidade</span>
+                  <strong>{stockItemUnitLabel(selected)}</strong>
+                </div>
+                <div>
+                  <span>Custo unitario</span>
+                  <strong>{selected ? formatMoney(Number(selected.averageCost ?? 0)) : '-'}</strong>
+                </div>
+                <div>
+                  <span>Ativo?</span>
+                  <strong>{selected?.isActive === false ? 'Nao' : 'Sim'}</strong>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span>Saldo fisico</span>
+                  <strong>{selectedInsight ? `${formatDecimal(selectedInsight.current, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
+                </div>
+                <div>
+                  <span>Comprometido</span>
+                  <strong>{selectedInsight ? `${formatDecimal(selectedInsight.committed, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
+                </div>
+                <div>
+                  <span>Disponivel</span>
+                  <strong>{selectedInsight ? `${formatDecimal(selectedInsight.available, 3)} ${selected?.stockUnit ?? 'un'}` : '-'}</strong>
+                </div>
+                <div>
+                  <span>Cobertura</span>
+                  <strong>{selectedInsight ? formatCoverage(selectedInsight.coverageDays) : '-'}</strong>
+                </div>
+              </>
+            )}
           </div>
+          ) : null}
 
+          {!isIngredientWorkspace ? (
           <div className={styles.workspaceTabs} role="tablist" aria-label="Acoes do item de estoque">
             <button
               type="button"
@@ -1564,38 +2480,158 @@ export default function AdminStockPage() {
               Analise
             </button>
           </div>
+          ) : null}
 
-          {workspaceView === 'catalog' ? (
-            <form onSubmit={(e) => void onCreateItem(e)} className={styles.itemForm}>
-              <FormSection title="Identificacao" description="Campos usados para localizar o item nas telas de estoque e ficha tecnica.">
+          {isIngredientWorkspace || workspaceView === 'catalog' ? (
+            <form
+              onSubmit={(e) => {
+                if (isIngredientWorkspace && selectedItemId) {
+                  e.preventDefault();
+                  void onUpdateItem();
+                  return;
+                }
+                void onCreateItem(e);
+              }}
+              className={styles.itemForm}
+            >
+              {isIngredientWorkspace ? (
+                <>
+                  <div className={styles.ingredientRecordGrid}>
+                    <label className={styles.ingredientField}>
+                      <span>ID</span>
+                      <input className={styles.ingredientInput} value={stockItemDisplayId(selected)} readOnly />
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Nome do insumo</span>
+                      <input className={styles.ingredientInput} value={itemName} onChange={(event) => setItemName(event.target.value)} />
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Setor</span>
+                      <select className={styles.ingredientSelect} value={itemSector} onChange={(event) => setItemSector(event.target.value)}>
+                        <option value="">Selecione...</option>
+                        {INGREDIENT_SECTOR_OPTIONS.map((sector) => (
+                          <option key={sector} value={sector}>{sector}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Categoria</span>
+                      <select className={styles.ingredientSelect} value={itemCategoryId} onChange={(event) => setItemCategoryId(event.target.value)}>
+                        <option value="">Selecione...</option>
+                        {ingredientCategorySelectOptions.map((category) => (
+                          <option key={category.value} value={category.value}>{category.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Unidade</span>
+                      <select className={styles.ingredientSelect} value={itemUnit} onChange={(event) => setItemUnit(normalizeUnitCode(event.target.value))}>
+                        <option value="">Selecione...</option>
+                        {INGREDIENT_UNIT_OPTIONS.map((unit) => (
+                          <option key={unit.code} value={unit.code}>{unit.label}</option>
+                        ))}
+                        {!INGREDIENT_UNIT_OPTIONS.some((unit) => unit.code === normalizeUnitCode(itemUnit)) && itemUnit ? (
+                          <option value={itemUnit}>{itemUnit}</option>
+                        ) : null}
+                      </select>
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Custo unitario (R$)</span>
+                      <input className={styles.ingredientInput} value={itemCost} onChange={(event) => setItemCost(event.target.value)} />
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Fornecedor</span>
+                      <select className={styles.ingredientSelect} value={itemSupplierId} onChange={(event) => setItemSupplierId(event.target.value)}>
+                        <option value="">Selecione...</option>
+                        {supplierOptions.map((supplier) => (
+                          <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                        ))}
+                        {itemSupplierId && !supplierNameById.has(itemSupplierId) ? (
+                          <option value={itemSupplierId}>{itemSupplierId}</option>
+                        ) : null}
+                      </select>
+                    </label>
+                    <label className={`${styles.ingredientField} ${styles.ingredientFieldWide}`.trim()}>
+                      <span>Observacoes</span>
+                      <textarea className={styles.ingredientTextarea} value={itemNotes} onChange={(event) => setItemNotes(event.target.value)} />
+                    </label>
+                    <label className={styles.ingredientField}>
+                      <span>Ativo?</span>
+                      <select className={styles.ingredientSelect} value={itemIsActive ? 'yes' : 'no'} onChange={(event) => setItemIsActive(event.target.value === 'yes')}>
+                        <option value="yes">Sim</option>
+                        <option value="no">Nao</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className={styles.ingredientRecordFooter}>
+                    <Button type="button" variant="danger" disabled={saving || !selectedItemId} onClick={() => void toggleSelectedItemStatus()}>
+                      Excluir Insumo
+                    </Button>
+                    <div>
+                      <Button type="button" onClick={closeIngredientEditor}>Cancelar</Button>
+                      <Button type="submit" disabled={saving}>Salvar</Button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+              {!isIngredientWorkspace ? (
+              <>
+              <FormSection
+                title={isIngredientWorkspace ? 'Cadastro do insumo' : 'Identificacao'}
+                description={isIngredientWorkspace ? 'Campos principais do cadastro base usado em compras, estoque, ficha tecnica e relatorios.' : 'Campos usados para localizar o item nas telas de estoque e ficha tecnica.'}
+              >
                 <div className={styles.formGrid}>
-                  <Field label="Nome do item" help="Exibido na lista, movimentos e ficha tecnica." wide>
+                  {isIngredientWorkspace ? (
+                    <Field label="ID" help="Codigo automatico do sistema, sem digitacao manual.">
+                      <Input value={stockItemDisplayId(selected)} readOnly />
+                    </Field>
+                  ) : null}
+                  <Field label={isIngredientWorkspace ? 'Nome do insumo' : 'Nome do item'} help="Exibido na lista, movimentos e ficha tecnica." wide>
                     <Input placeholder="Ex.: Abacaxi fruta" value={itemName} onChange={(e) => setItemName(e.target.value)} />
                   </Field>
                   <Field label="Codigo interno" help="Codigo proprio, SKU ou codigo fiscal.">
                     <Input placeholder="Ex.: 137299" value={itemCode} onChange={(e) => setItemCode(e.target.value)} />
                   </Field>
-                  <Field label="Tipo de cadastro" help="Produto, adicional e insumo ficam em abas separadas.">
-                    <select className={styles.select} value={itemStockType} onChange={(e) => setItemStockType(e.target.value as StockItemType)}>
-                      <option value="PRODUCT">Produto</option>
-                      <option value="ADDON">Adicional</option>
-                      <option value="RAW_MATERIAL">Insumo</option>
-                    </select>
-                  </Field>
-                  <Field label="Categoria de estoque" help="Agrupa o item sem misturar com categorias do cardapio.">
+                  {isIngredientWorkspace ? (
+                    <Field label="Setor" help="Insumos ficam no setor operacional de estoque.">
+                      <Input value="Insumo" readOnly />
+                    </Field>
+                  ) : (
+                    <Field label="Tipo de cadastro" help="Produto, adicional e insumo ficam em abas separadas.">
+                      <select className={styles.select} value={itemStockType} onChange={(e) => setItemStockType(e.target.value as StockItemType)}>
+                        <option value="PRODUCT">Produto</option>
+                        <option value="ADDON">Adicional</option>
+                        <option value="RAW_MATERIAL">Insumo</option>
+                      </select>
+                    </Field>
+                  )}
+                  <Field label={isIngredientWorkspace ? 'Categoria' : 'Categoria de estoque'} help="Agrupa o item sem misturar com categorias do cardapio.">
                     <select className={styles.select} value={itemCategoryId} onChange={(e) => setItemCategoryId(e.target.value)}>
                       <option value="">Sem categoria</option>
-                      {activeStockCategories.map((category) => (
+                      {categoryOptions.map((category) => (
                         <option key={category.id} value={category.id}>{category.name}</option>
                       ))}
                     </select>
                   </Field>
+                  {isIngredientWorkspace ? (
+                    <>
+                      <Field label="Fornecedor" help="Fornecedor padrao ou codigo de vinculacao usado em compras.">
+                        <Input placeholder="Fornecedor padrao" value={itemSupplierId} onChange={(e) => setItemSupplierId(e.target.value)} />
+                      </Field>
+                      <Field label="Ativo?" help="Sim aparece nas selecoes; para ocultar, use Excluir Insumo.">
+                        <Input value={selected?.isActive === false ? 'Nao' : 'Sim'} readOnly />
+                      </Field>
+                    </>
+                  ) : null}
                 </div>
               </FormSection>
 
-              <FormSection title="Categorias de estoque" description="Crie grupos internos para organizar compras, inventario e alertas.">
+              <FormSection
+                title={isIngredientWorkspace ? 'Categorias de insumo' : 'Categorias de estoque'}
+                description={isIngredientWorkspace ? 'Somente categorias vinculadas a materias-primas aparecem aqui.' : 'Crie grupos internos para organizar compras, inventario e alertas.'}
+              >
                 <div className={styles.formGrid}>
-                  <Field label="Nova categoria" help="Ex.: Hortifruti, Bebidas, Embalagens.">
+                  <Field label="Nova categoria" help={isIngredientWorkspace ? 'Ex.: Hortifruti, Laticinios, Embalagens.' : 'Ex.: Hortifruti, Bebidas, Embalagens.'}>
                     <Input placeholder="Nome da categoria" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
                   </Field>
                   <Field label="Ordem" help="Menor numero aparece primeiro.">
@@ -1608,8 +2644,12 @@ export default function AdminStockPage() {
                   </div>
                 </div>
                 <div className={styles.categoryList}>
-                  {stockCategories.length === 0 ? <span className={styles.emptyMini}>Sem categorias cadastradas.</span> : null}
-                  {stockCategories.map((category) => (
+                  {categoryOptions.length === 0 ? (
+                    <span className={styles.emptyMini}>
+                      {isIngredientWorkspace ? 'Sem categorias de insumo vinculadas. Crie uma categoria ou selecione um insumo ja categorizado.' : 'Sem categorias cadastradas.'}
+                    </span>
+                  ) : null}
+                  {categoryOptions.map((category) => (
                     <button
                       key={category.id}
                       type="button"
@@ -1618,13 +2658,13 @@ export default function AdminStockPage() {
                       disabled={category.isActive === false}
                     >
                       <strong>{category.name}</strong>
-                      <span>{category._count?.items ?? 0} itens</span>
+                      <span>{isIngredientWorkspace ? ingredientCategoryCounts.get(category.id) ?? 0 : category._count?.items ?? 0} itens</span>
                     </button>
                   ))}
                 </div>
-                {stockCategories.length > 0 ? (
+                {categoryOptions.length > 0 ? (
                   <div className={styles.actions}>
-                    {stockCategories.map((category) => (
+                    {categoryOptions.map((category) => (
                       <Button key={category.id} type="button" disabled={saving} onClick={() => void toggleCategoryStatus(category)}>
                         {category.isActive === false ? 'Reativar' : 'Desativar'} {category.name}
                       </Button>
@@ -1635,7 +2675,7 @@ export default function AdminStockPage() {
 
               <FormSection title="Unidades e conversao" description="Define como o saldo, a compra e a ficha tecnica calculam quantidade.">
                 <div className={styles.formGrid}>
-                  <Field label="Unidade de estoque" help="Unidade usada no saldo atual.">
+                  <Field label={isIngredientWorkspace ? 'Unidade' : 'Unidade de estoque'} help="Unidade usada no saldo atual.">
                     <select className={styles.select} value={itemUnit} onChange={(e) => setItemUnit(normalizeUnitCode(e.target.value))}>
                       <UnitOptions value={itemUnit} />
                     </select>
@@ -1662,7 +2702,7 @@ export default function AdminStockPage() {
 
               <FormSection title="Custo e reposicao" description="Parametros usados para alertas, CMV, cobertura e valor em estoque.">
                 <div className={styles.formGrid}>
-                  <Field label="Custo medio" help="Custo unitario atual do item.">
+                  <Field label={isIngredientWorkspace ? 'Custo unitario (R$)' : 'Custo medio'} help="Custo unitario atual do item.">
                     <Input placeholder="0,00" value={itemCost} onChange={(e) => setItemCost(e.target.value)} />
                   </Field>
                   <Field label="Estoque minimo" help="Saldo minimo antes de alertar.">
@@ -1691,16 +2731,40 @@ export default function AdminStockPage() {
                 </div>
               </FormSection>
 
+              {isIngredientWorkspace ? (
+                <FormSection title="Observacoes" description="Resumo operacional gerado pelos controles atuais do insumo.">
+                  <textarea
+                    className={styles.textarea}
+                    value={selected ? stockItemNotes(selected) : 'As observacoes serao geradas pelos controles marcados acima.'}
+                    readOnly
+                  />
+                </FormSection>
+              ) : null}
+
               <div className={styles.formActions}>
-                <Button type="submit" disabled={saving}>Criar novo</Button>
-                <Button type="button" disabled={saving || !selectedItemId} onClick={() => void onUpdateItem()}>Salvar edicao</Button>
-                <Button type="button" variant="danger" disabled={saving || !selectedItemId} onClick={() => void toggleSelectedItemStatus()}>Desativar item</Button>
-                <Button type="button" onClick={startNewItem}>Limpar campos</Button>
+                {isIngredientWorkspace ? (
+                  <>
+                    <Button type="submit" disabled={saving}>Salvar</Button>
+                    <Button type="button" onClick={closeIngredientEditor}>Cancelar</Button>
+                    <Button type="button" variant="danger" disabled={saving || !selectedItemId} onClick={() => void toggleSelectedItemStatus()}>
+                      Excluir Insumo
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button type="submit" disabled={saving}>Criar novo</Button>
+                    <Button type="button" disabled={saving || !selectedItemId} onClick={() => void onUpdateItem()}>Salvar edicao</Button>
+                    <Button type="button" variant="danger" disabled={saving || !selectedItemId} onClick={() => void toggleSelectedItemStatus()}>Desativar item</Button>
+                    <Button type="button" onClick={startNewItem}>Limpar campos</Button>
+                  </>
+                )}
               </div>
+              </>
+              ) : null}
             </form>
           ) : null}
 
-          {workspaceView === 'movement' ? (
+          {!isIngredientWorkspace && workspaceView === 'movement' ? (
             <div className={styles.workspacePanel}>
               <FormSection title="Movimento de saldo" description="Use entrada para compra/ajuste positivo e saida para consumo manual.">
                 <div className={styles.formGrid}>
@@ -1818,7 +2882,7 @@ export default function AdminStockPage() {
             </div>
           ) : null}
 
-          {workspaceView === 'batches' ? (
+          {!isIngredientWorkspace && workspaceView === 'batches' ? (
             <div className={styles.workspacePanel}>
               <FormSection title="Novo lote" description="Preencha os dados do lote recebido para controlar saldo e vencimento.">
                 <div className={styles.formGrid}>
@@ -1877,7 +2941,7 @@ export default function AdminStockPage() {
             </div>
           ) : null}
 
-          {workspaceView === 'analysis' ? (
+          {!isIngredientWorkspace && workspaceView === 'analysis' ? (
             <div className={styles.workspacePanel}>
               <div className={styles.analysisGrid}>
                 <div className={styles.analysisCard}>
@@ -1928,7 +2992,10 @@ export default function AdminStockPage() {
             </div>
           ) : null}
         </Card>
+        </div>
+        ) : null}
       </section>
+      ) : null}
     </main>
   );
 }

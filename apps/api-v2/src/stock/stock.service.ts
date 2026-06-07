@@ -24,6 +24,9 @@ export type StockItemInput = {
   name: string;
   code?: string;
   categoryId?: string | null;
+  supplierId?: string | null;
+  sector?: string | null;
+  notes?: string | null;
   stockType?: StockItemTypeValue;
   purchaseUnit?: string;
   stockUnit?: string;
@@ -129,6 +132,9 @@ export class StockService {
         select: {
           id: true,
           categoryId: true,
+          supplierId: true,
+          sector: true,
+          notes: true,
           name: true,
           code: true,
           stockType: true,
@@ -141,6 +147,7 @@ export class StockService {
           reorderPoint: true,
           averageCost: true,
           lastCost: true,
+          standardCost: true,
           leadTimeDays: true,
           controlsStock: true,
           controlsBatch: true,
@@ -314,6 +321,9 @@ export class StockService {
       select: {
         id: true,
         categoryId: true,
+        supplierId: true,
+        sector: true,
+        notes: true,
         name: true,
         code: true,
         stockType: true,
@@ -410,7 +420,6 @@ export class StockService {
               lossPercent: true,
               active: true,
               items: {
-                where: { affectsStock: true },
                 select: {
                   stockItemId: true,
                   quantity: true,
@@ -425,6 +434,9 @@ export class StockService {
                       code: true,
                       stockType: true,
                       stockUnit: true,
+                      purchaseUnit: true,
+                      productionUnit: true,
+                      conversionFactor: true,
                       currentQuantity: true,
                       minimumQuantity: true,
                       reorderPoint: true,
@@ -491,7 +503,6 @@ export class StockService {
               lossPercent: true,
               active: true,
               items: {
-                where: { affectsStock: true },
                 select: {
                   stockItemId: true,
                   quantity: true,
@@ -506,6 +517,9 @@ export class StockService {
                       code: true,
                       stockType: true,
                       stockUnit: true,
+                      purchaseUnit: true,
+                      productionUnit: true,
+                      conversionFactor: true,
                       currentQuantity: true,
                       minimumQuantity: true,
                       reorderPoint: true,
@@ -538,7 +552,11 @@ export class StockService {
       const availability = availabilityByProductId.get(item.productId);
       if (!availability) continue;
       const availableToSell = availability.availableToSell;
-      const hasTechnicalStockControl = availability.controlsStock && availability.recipeId && availability.ingredients.length > 0;
+      const hasTechnicalStockControl = availability.controlsStock
+        && availability.recipeId
+        && availability.ingredients.some((ingredient: any) =>
+          ingredient.affectsStock !== false && ingredient.controlsStock !== false && !ingredient.optional,
+        );
       if (!hasTechnicalStockControl || availableToSell === null) continue;
       if (item.quantity > availableToSell) {
         blocked.push({
@@ -581,6 +599,9 @@ export class StockService {
         ...(categoryId !== undefined ? { categoryId } : {}),
         name,
         code: this.clean(input.code),
+        supplierId: this.clean(input.supplierId),
+        sector: this.clean(input.sector),
+        notes: this.clean(input.notes),
         stockType: this.normalizeStockType(input.stockType) ?? 'RAW_MATERIAL',
         purchaseUnit: this.clean(input.purchaseUnit),
         stockUnit: this.clean(input.stockUnit) ?? 'un',
@@ -616,6 +637,9 @@ export class StockService {
       payload.name = name;
     }
     if (input.categoryId !== undefined) payload.categoryId = await this.resolveCategoryId(ctx, input.categoryId);
+    if (input.supplierId !== undefined) payload.supplierId = this.clean(input.supplierId);
+    if (input.sector !== undefined) payload.sector = this.clean(input.sector);
+    if (input.notes !== undefined) payload.notes = this.clean(input.notes);
     if (input.code !== undefined) payload.code = this.clean(input.code);
     if (input.stockType !== undefined) payload.stockType = this.normalizeStockType(input.stockType);
     if (input.purchaseUnit !== undefined) payload.purchaseUnit = this.clean(input.purchaseUnit);
@@ -1102,12 +1126,17 @@ export class StockService {
                 select: {
                   stockItemId: true,
                   quantity: true,
+                  unit: true,
                   affectsCost: true,
                   stockItem: {
                     select: {
                       id: true,
                       name: true,
                       averageCost: true,
+                      stockUnit: true,
+                      purchaseUnit: true,
+                      productionUnit: true,
+                      conversionFactor: true,
                     },
                   },
                 },
@@ -1410,6 +1439,119 @@ export class StockService {
     });
   }
 
+  async reconcileOrderConsumption(
+    ctx: RequestContext,
+    input: { orderId?: string; orderIds?: string[]; dryRun?: boolean; limit?: number } = {},
+  ) {
+    const explicitOrderIds = [
+      ...(input.orderId ? [input.orderId] : []),
+      ...(Array.isArray(input.orderIds) ? input.orderIds : []),
+    ]
+      .map((id) => String(id ?? '').trim())
+      .filter(Boolean);
+    const uniqueOrderIds = [...new Set(explicitOrderIds)];
+    const limit = Math.min(Math.max(Number(input.limit ?? 50), 1), 200);
+    const eligibleStatuses = [
+      'IN_PREPARATION',
+      'READY',
+      'WAITING_PICKUP',
+      'WAITING_DISPATCH',
+      'OUT_FOR_DELIVERY',
+      'DELIVERED',
+      'FINALIZED',
+    ];
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        companyId: ctx.companyId,
+        ...(ctx.branchId ? { branchId: ctx.branchId } : {}),
+        deletedAt: null,
+        ...(uniqueOrderIds.length > 0 ? { id: { in: uniqueOrderIds } } : { status: { in: eligibleStatuses as any[] } }),
+        items: { some: { product: { controlsStock: true, recipeId: { not: null } } } },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        totalAmount: true,
+        items: {
+          select: {
+            id: true,
+            productId: true,
+            quantity: true,
+            costSnapshot: true,
+            product: { select: { controlsStock: true, recipeId: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: uniqueOrderIds.length > 0 ? undefined : limit,
+    });
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const order of orders) {
+      const existing = await this.prisma.stockMovement.findFirst({
+        where: {
+          sourceModule: 'orders',
+          sourceId: order.id,
+          movementType: 'SALE_CONSUMPTION',
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        results.push({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          action: 'skip',
+          reason: 'already_consumed',
+        });
+        continue;
+      }
+
+      if (input.dryRun) {
+        results.push({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          action: 'would_consume',
+          items: order.items.length,
+          totalAmount: this.money(Number(order.totalAmount ?? 0)),
+        });
+        continue;
+      }
+
+      try {
+        const consumed = await this.consumeByOrder(ctx, order.id);
+        results.push({
+          ...consumed,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          action: 'consumed',
+        });
+      } catch (error) {
+        results.push({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          action: 'error',
+          message: error instanceof Error ? error.message : 'Falha desconhecida ao reprocessar consumo.',
+        });
+      }
+    }
+
+    return {
+      dryRun: Boolean(input.dryRun),
+      requested: uniqueOrderIds.length > 0 ? uniqueOrderIds.length : undefined,
+      scanned: orders.length,
+      consumed: results.filter((row) => row.action === 'consumed').length,
+      wouldConsume: results.filter((row) => row.action === 'would_consume').length,
+      skipped: results.filter((row) => row.action === 'skip').length,
+      errors: results.filter((row) => row.action === 'error').length,
+      results,
+    };
+  }
+
   async consumeByOrder(ctx: RequestContext, orderId: string) {
     const existing = await this.prisma.stockMovement.findFirst({
       where: {
@@ -1442,7 +1584,7 @@ export class StockService {
                     lossPercent: true,
                     items: {
                       where: { affectsStock: true },
-                      select: { stockItemId: true, quantity: true },
+                      select: { stockItemId: true, quantity: true, unit: true, optional: true },
                     },
                   },
                 },
@@ -1465,14 +1607,15 @@ export class StockService {
         const recipeLossMultiplier = 1 + Number(item.product.recipe.lossPercent ?? 0) / 100;
 
         for (const recipeItem of item.product.recipe.items) {
-          const baseRecipeQuantity = Number(recipeItem.quantity);
+          const stock = await tx.stockItem.findUnique({ where: { id: recipeItem.stockItemId } });
+          if (!stock || stock.companyId !== ctx.companyId) continue;
+          if (recipeItem.optional || stock.controlsStock === false) continue;
+
+          const baseRecipeQuantity = this.quantityInStockUnit(recipeItem.quantity, recipeItem.unit, stock);
           const consumeQty = recipeYieldQuantity > 0
             ? (baseRecipeQuantity * recipeLossMultiplier * orderItemQty) / recipeYieldQuantity
             : baseRecipeQuantity * recipeLossMultiplier * orderItemQty;
           if (!Number.isFinite(consumeQty) || consumeQty <= 0) continue;
-
-          const stock = await tx.stockItem.findUnique({ where: { id: recipeItem.stockItemId } });
-          if (!stock || stock.companyId !== ctx.companyId) continue;
 
           const previous = Number(stock.currentQuantity);
           const next = previous - consumeQty;
@@ -1727,6 +1870,15 @@ export class StockService {
                       select: {
                         stockItemId: true,
                         quantity: true,
+                        unit: true,
+                        stockItem: {
+                          select: {
+                            stockUnit: true,
+                            purchaseUnit: true,
+                            productionUnit: true,
+                            conversionFactor: true,
+                          },
+                        },
                       },
                     },
                   },
@@ -1772,7 +1924,7 @@ export class StockService {
 
         for (const recipeItem of recipe.items) {
           const stockItemId = String(recipeItem.stockItemId ?? '').trim();
-          const baseQuantity = Number(recipeItem.quantity ?? 0);
+          const baseQuantity = this.quantityInStockUnit(recipeItem.quantity, recipeItem.unit, recipeItem.stockItem);
           if (!stockItemId || !Number.isFinite(baseQuantity) || baseQuantity <= 0) continue;
 
           const quantity = yieldQuantity > 0
@@ -1847,11 +1999,12 @@ export class StockService {
     const ingredients: Array<Record<string, unknown>> = [];
     let availableToSell = Number.POSITIVE_INFINITY;
     let technicalCost = 0;
+    let stockControlledIngredientCount = 0;
 
     for (const recipeItem of recipe.items ?? []) {
       const stock = recipeItem.stockItem;
       const stockItemId = String(recipeItem.stockItemId ?? stock?.id ?? '').trim();
-      const recipeQuantity = Number(recipeItem.quantity ?? 0);
+      const recipeQuantity = this.quantityInStockUnit(recipeItem.quantity, recipeItem.unit, stock);
       if (!stockItemId || !Number.isFinite(recipeQuantity) || recipeQuantity <= 0) continue;
 
       const requiredPerUnit = yieldQuantity > 0
@@ -1862,12 +2015,18 @@ export class StockService {
       const currentQuantity = Number(stock?.currentQuantity ?? 0);
       const committed = committedStock.get(stockItemId)?.quantity ?? 0;
       const availableQuantity = currentQuantity - committed;
-      const itemAvailableToSell = Math.floor(Math.max(availableQuantity, 0) / requiredPerUnit);
+      const controlsStock = recipeItem.affectsStock !== false && stock?.controlsStock !== false && !recipeItem.optional;
+      const itemAvailableToSell = controlsStock
+        ? Math.floor(Math.max(availableQuantity, 0) / requiredPerUnit)
+        : null;
       const averageCost = Number(stock?.averageCost ?? 0);
       if (recipeItem.affectsCost !== false) {
         technicalCost += requiredPerUnit * averageCost;
       }
-      availableToSell = Math.min(availableToSell, itemAvailableToSell);
+      if (controlsStock && itemAvailableToSell !== null) {
+        stockControlledIngredientCount += 1;
+        availableToSell = Math.min(availableToSell, itemAvailableToSell);
+      }
 
       ingredients.push({
         stockItemId,
@@ -1885,13 +2044,15 @@ export class StockService {
         costPerProductUnit: this.money(recipeItem.affectsCost === false ? 0 : requiredPerUnit * averageCost),
         minimumQuantity: Number(stock?.minimumQuantity ?? 0),
         reorderPoint: Number(stock?.reorderPoint ?? 0),
-        controlsStock: stock?.controlsStock !== false,
+        controlsStock: recipeItem.affectsStock !== false && stock?.controlsStock !== false,
+        affectsStock: recipeItem.affectsStock !== false,
+        affectsCost: recipeItem.affectsCost !== false,
         isActive: stock?.isActive !== false,
         optional: Boolean(recipeItem.optional),
       });
     }
 
-    if (ingredients.length === 0) {
+    if (ingredients.length === 0 || stockControlledIngredientCount === 0) {
       return {
         ...base,
         recipe: {
@@ -1904,9 +2065,10 @@ export class StockService {
         },
         availabilityStatus: 'recipe_without_stock_items',
         availableToSell: 0,
-        technicalCost: this.money(0),
-        grossMargin: salePrice > 0 ? this.money(salePrice) : null,
-        ingredients: [],
+        technicalCost: this.money(technicalCost),
+        grossMargin: salePrice > 0 ? this.money(salePrice - technicalCost) : null,
+        grossMarginPercent: salePrice > 0 ? this.money(((salePrice - technicalCost) / salePrice) * 100) : null,
+        ingredients,
         limitingIngredients: [],
       };
     }
@@ -1914,9 +2076,9 @@ export class StockService {
     const normalizedAvailableToSell = Number.isFinite(availableToSell)
       ? Math.max(0, availableToSell)
       : 0;
-    const sortedIngredients = [...ingredients].sort((left, right) =>
-      Number(left.availableToSell ?? 0) - Number(right.availableToSell ?? 0),
-    );
+    const sortedIngredients = [...ingredients]
+      .filter((ingredient) => ingredient.controlsStock !== false && ingredient.optional !== true)
+      .sort((left, right) => Number(left.availableToSell ?? 0) - Number(right.availableToSell ?? 0));
     const limitingIngredients = sortedIngredients.slice(0, 3);
     const availabilityStatus = normalizedAvailableToSell <= 0
       ? 'out_of_stock'
@@ -2165,7 +2327,7 @@ export class StockService {
   private calculateRecipeUnitCost(recipe: any) {
     const grossCost = (recipe?.items ?? []).reduce((sum: number, item: any) => {
       if (item.affectsCost === false) return sum;
-      return sum + Number(item.quantity ?? 0) * Number(item.stockItem?.averageCost ?? 0);
+      return sum + this.quantityInStockUnit(item.quantity, item.unit, item.stockItem) * Number(item.stockItem?.averageCost ?? 0);
     }, 0);
     const lossMultiplier = 1 + Number(recipe?.lossPercent ?? 0) / 100;
     const totalCost = grossCost * lossMultiplier;
@@ -2173,12 +2335,74 @@ export class StockService {
     return yieldQuantity > 0 ? totalCost / yieldQuantity : totalCost;
   }
 
-  private decimal(value: number) {
-    return Number(value.toFixed(4));
+  private quantityInStockUnit(quantityValue: unknown, unitValue: unknown, stockItem: any) {
+    const quantity = Number(quantityValue ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+    const fromUnit = this.normalizeUnit(unitValue);
+    const stockUnit = this.normalizeUnit(stockItem?.stockUnit ?? stockItem?.productionUnit ?? stockItem?.purchaseUnit);
+    if (!fromUnit || !stockUnit || fromUnit === stockUnit) return quantity;
+
+    const converted = this.convertBasicUnit(quantity, fromUnit, stockUnit);
+    if (converted !== null) return converted;
+
+    const purchaseUnit = this.normalizeUnit(stockItem?.purchaseUnit);
+    const conversionFactor = Number(stockItem?.conversionFactor ?? 1);
+    if (purchaseUnit && fromUnit === purchaseUnit && Number.isFinite(conversionFactor) && conversionFactor > 0) {
+      return quantity * conversionFactor;
+    }
+
+    return quantity;
   }
 
-  private money(value: number) {
-    return Number(value.toFixed(2));
+  private convertBasicUnit(quantity: number, fromUnit: string, toUnit: string) {
+    const mass: Record<string, number> = { mg: 0.001, g: 1, kg: 1000, t: 1000000 };
+    const volume: Record<string, number> = { ml: 1, l: 1000 };
+    const count: Record<string, number> = { un: 1, dz: 12 };
+    for (const group of [mass, volume, count]) {
+      if (group[fromUnit] && group[toUnit]) return (quantity * group[fromUnit]) / group[toUnit];
+    }
+    return null;
+  }
+
+  private normalizeUnit(value: unknown) {
+    const unit = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const aliases: Record<string, string> = {
+      quilo: 'kg',
+      kilos: 'kg',
+      quilograma: 'kg',
+      quilogramas: 'kg',
+      grama: 'g',
+      gramas: 'g',
+      litro: 'l',
+      litros: 'l',
+      unidade: 'un',
+      unidades: 'un',
+      und: 'un',
+      duzia: 'dz',
+      duzias: 'dz',
+    };
+    return aliases[unit] ?? unit;
+  }
+
+  private decimal(value: number | string | null | undefined) {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) {
+      throw new BadRequestException('Valor numerico invalido.');
+    }
+    return Number(parsed.toFixed(4));
+  }
+
+  private money(value: number | string | null | undefined) {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) {
+      throw new BadRequestException('Valor monetario invalido.');
+    }
+    return Number(parsed.toFixed(2));
   }
 
   private assertNonNegative(value: unknown, message: string) {

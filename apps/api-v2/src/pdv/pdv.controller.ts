@@ -14,26 +14,17 @@ import { PdvService, type PdvMovementType } from './pdv.service';
 export class PdvController {
   constructor(private readonly pdvService: PdvService) {}
 
+  @Get()
+  async listSessions(@CurrentContext() ctx: RequestContext) {
+    return this.pdvService.listSessions(ctx);
+  }
+
   @Post('open')
   async openSession(
     @CurrentContext() ctx: RequestContext,
     @Body() body: { openingBalance?: number },
   ) {
     return this.pdvService.openSession(ctx, body);
-  }
-
-  @Post(':id/close')
-  async closeSession(
-    @Param('id') id: string,
-    @CurrentContext() ctx: RequestContext,
-    @Body() body: { declaredCashAmount?: number; closureNotes?: string },
-  ) {
-    return this.pdvService.closeSession(id, ctx, body);
-  }
-
-  @Get(':id/summary')
-  async summary(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
-    return this.pdvService.getSessionSummary(id, ctx);
   }
 
   @Get('current/open')
@@ -51,6 +42,20 @@ export class PdvController {
     return this.pdvService.getCurrentSessionMovements(ctx);
   }
 
+  @Post(':id/close')
+  async closeSession(
+    @Param('id') id: string,
+    @CurrentContext() ctx: RequestContext,
+    @Body() body: { declaredCashAmount?: number; closureNotes?: string },
+  ) {
+    return this.pdvService.closeSession(id, ctx, body);
+  }
+
+  @Get(':id/summary')
+  async summary(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getSessionSummary(id, ctx);
+  }
+
   @Post(':id/movements')
   async createMovement(
     @Param('id') id: string,
@@ -63,6 +68,11 @@ export class PdvController {
   @Get(':id/movements')
   async listMovements(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
     return this.pdvService.listMovements(id, ctx);
+  }
+
+  @Get(':id/ledger')
+  async ledger(@Param('id') id: string, @CurrentContext() ctx: RequestContext) {
+    return this.pdvService.getSessionLedger(id, ctx);
   }
 
   @Get(':id/operators/summary')

@@ -164,7 +164,8 @@ export class KdsService {
   }
 
   async bumpOrder(id: string, ctx: RequestContext): Promise<KdsOrderCardDto> {
-    return this.updateKdsOrderStatus(id, 'FINALIZED', ctx);
+    const detail = await this.ordersService.getById(id, ctx);
+    return this.updateKdsOrderStatus(id, this.resolvePostKdsStatus(detail), ctx);
   }
 
   async printKitchenTicket(id: string, ctx: RequestContext): Promise<KdsPrintTicketDto> {
@@ -259,6 +260,18 @@ export class KdsService {
       source: (detail.items ?? []).some((item) => item.station) ? 'product' as const : 'channel' as const,
       itemStations: this.countItemStations(detail.items ?? []),
     };
+  }
+
+  private resolvePostKdsStatus(detail: {
+    channel?: string | null;
+    deliveryAddress?: { street?: string | null; neighborhood?: string | null } | null;
+  }): 'WAITING_DISPATCH' | 'WAITING_PICKUP' {
+    const channel = String(detail.channel ?? '').toUpperCase();
+    const hasDeliveryAddress = Boolean(detail.deliveryAddress?.street || detail.deliveryAddress?.neighborhood);
+    if (['WEB', 'DELIVERY', 'IFOOD', 'WHATSAPP'].includes(channel) || hasDeliveryAddress) {
+      return 'WAITING_DISPATCH';
+    }
+    return 'WAITING_PICKUP';
   }
 
   private countItemStations(items: Array<{ station?: string | null }>): Array<{ station: KdsStationKey; label: string; count: number }> {

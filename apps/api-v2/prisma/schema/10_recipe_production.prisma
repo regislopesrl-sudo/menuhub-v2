@@ -10,6 +10,8 @@ model Recipe {
   yieldQuantity Decimal    @map("yield_quantity") @db.Decimal(12, 3)
   yieldUnit     String     @map("yield_unit")
   lossPercent   Decimal?   @map("loss_percent") @db.Decimal(5, 2)
+  preparationSummary String? @map("preparation_summary")
+  notes         String?    @map("notes")
   active        Boolean    @default(true) @map("active")
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
@@ -103,4 +105,3 @@ model ProductionConsumption {
   @@index([batchId])
   @@map("production_consumptions")
 }
-

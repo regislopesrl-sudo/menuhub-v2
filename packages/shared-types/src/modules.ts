@@ -12,9 +12,18 @@ export type ModuleKey =
   | 'reports'
   | 'stock'
   | 'fiscal'
-  | 'financial';
+  | 'financial'
+  | 'cash'
+  | 'procurement'
+  | 'production'
+  | 'logistics'
+  | 'crm'
+  | 'coupons'
+  | 'promotions'
+  | 'notifications'
+  | 'delivery_zones';
 
-export type PlanKey = 'basic' | 'pro' | 'enterprise';
+export type PlanKey = 'basic' | 'starter' | 'pro' | 'enterprise' | 'demo' | 'premium';
 
 export interface ModuleDefinition {
   key: ModuleKey;

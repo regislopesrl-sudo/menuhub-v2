@@ -6,9 +6,13 @@ import styles from '../page.module.css';
 
 export function ProductCard({
   product,
+  selected,
+  onToggleSelected,
   onEdit,
 }: {
   product: MenuProduct;
+  selected: boolean;
+  onToggleSelected: () => void;
   onEdit: () => void;
 }) {
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -30,7 +34,15 @@ export function ProductCard({
       <div className={styles.productBody}>
         <div className={styles.productTop}>
           <div>
-            <h2>{product.name}</h2>
+            <label className={styles.productSelect} onClick={(event) => event.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={onToggleSelected}
+                aria-label={`Selecionar produto ${product.name}`}
+              />
+              <h2>{product.name}</h2>
+            </label>
             <p>{product.categoryName ?? 'Sem categoria'}</p>
           </div>
           <Badge tone={product.available === false ? 'danger' : 'success'}>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import styles from './page.module.css';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +16,18 @@ import { useModuleAccess } from '@/features/modules/use-module-access';
 import { ModuleDisabled } from '@/components/module-disabled';
 
 type SocketStatus = 'connecting' | 'connected' | 'disconnected';
+type KdsOperationMode = 'prep' | 'dispatch';
+type KdsLayoutMode = 'compact' | 'aligned';
+type KdsOrderType = 'delivery' | 'pickup' | 'local' | 'tables';
+type KdsQueueFilter = 'all' | 'new' | 'preparing' | 'ready' | 'urgent' | 'delivery' | 'tables';
+type KdsOrderAction = {
+  key: string;
+  label: string;
+  loadingLabel: string;
+  hint: string;
+  tone: 'default' | 'ready' | 'dispatch';
+  run: () => Promise<KdsOrderCard>;
+};
 
 function channelLabel(channel: string) {
   const map: Record<string, string> = {
@@ -23,7 +36,12 @@ function channelLabel(channel: string) {
     kiosk: 'Totem',
     waiter: 'Garcom',
     whatsapp: 'WhatsApp',
+    PDV: 'PDV',
     WEB: 'Web',
+    KIOSK: 'Totem',
+    WHATSAPP: 'WhatsApp',
+    WAITER_APP: 'Garcom',
+    IFOOD: 'iFood',
   };
   return map[channel] ?? channel;
 }
@@ -46,6 +64,67 @@ function urgencyLabel(minutes: number): string {
   if (minutes > 20) return 'Urgente';
   if (minutes >= 10) return 'Atencao';
   return 'Normal';
+}
+
+function orderTypeForChannel(channel: string): KdsOrderType {
+  const normalized = channel.toUpperCase();
+  if (normalized === 'WEB' || normalized === 'DELIVERY') return 'delivery';
+  if (normalized === 'WAITER_APP' || normalized === 'WAITER') return 'tables';
+  if (normalized === 'KIOSK' || normalized === 'PDV') return 'local';
+  return 'pickup';
+}
+
+function orderTypeLabel(orderType: KdsOrderType): string {
+  const map: Record<KdsOrderType, string> = {
+    delivery: 'Delivery',
+    pickup: 'Retirada',
+    local: 'Balcao',
+    tables: 'Mesa/Comanda',
+  };
+  return map[orderType];
+}
+
+function kdsStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    CONFIRMED: 'Aguardando preparo',
+    IN_PREPARATION: 'Em preparo',
+    READY: 'Pronto para expedicao',
+  };
+  return map[status] ?? status;
+}
+
+function nextStepLabel(status: string, orderType: KdsOrderType): string {
+  if (status === 'CONFIRMED') return 'Iniciar preparo';
+  if (status === 'IN_PREPARATION') return 'Concluir producao';
+  if (status === 'READY' && orderType === 'delivery') return 'Aguardar despacho';
+  if (status === 'READY' && orderType === 'tables') return 'Aguardar mesa/comanda';
+  if (status === 'READY') return 'Aguardar retirada';
+  return 'Conferir pedido';
+}
+
+function orderMatchesSearch(order: KdsOrderCard, searchTerm: string) {
+  const term = searchTerm.trim().toLowerCase();
+  if (!term) return true;
+  const text = [
+    order.orderNumber,
+    order.customer?.name,
+    order.channel,
+    ...order.items.map((item) => item.name),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return text.includes(term);
+}
+
+function orderMatchesQueueFilter(order: KdsOrderCard, filter: KdsQueueFilter) {
+  if (filter === 'new') return order.status === 'CONFIRMED';
+  if (filter === 'preparing') return order.status === 'IN_PREPARATION';
+  if (filter === 'ready') return order.status === 'READY';
+  if (filter === 'urgent') return order.priorityLevel === 'urgent' || order.lateMinutes > 0;
+  if (filter === 'delivery') return orderTypeForChannel(order.channel) === 'delivery';
+  if (filter === 'tables') return orderTypeForChannel(order.channel) === 'tables';
+  return true;
 }
 
 function mapOrderDetailToKds(detail: Awaited<ReturnType<typeof getOrderById>>): KdsOrderCard {
@@ -95,6 +174,18 @@ export default function KdsPage() {
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('connecting');
   const [stationFilter, setStationFilter] = useState<'all' | 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'>('all');
   const [channelFilter, setChannelFilter] = useState<'all' | 'PDV' | 'WEB' | 'WHATSAPP' | 'KIOSK' | 'WAITER_APP'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [operationMode, setOperationMode] = useState<KdsOperationMode>('prep');
+  const [layoutMode, setLayoutMode] = useState<KdsLayoutMode>('compact');
+  const [queueFilter, setQueueFilter] = useState<KdsQueueFilter>('all');
+  const [enabledOrderTypes, setEnabledOrderTypes] = useState<KdsOrderType[]>(['delivery', 'pickup', 'local', 'tables']);
+  const [enabledProductionAreas, setEnabledProductionAreas] = useState<Array<'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition'>>([
+    'hot_kitchen',
+    'cold_kitchen',
+    'assembly',
+    'expedition',
+  ]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [printFeedback, setPrintFeedback] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -218,6 +309,43 @@ export default function KdsPage() {
     }
   };
 
+  const buildOrderAction = useCallback(
+    (order: KdsOrderCard): KdsOrderAction => {
+      const orderType = orderTypeForChannel(order.channel);
+      if (order.status === 'CONFIRMED') {
+        return {
+          key: `start-${order.id}`,
+          label: 'Iniciar preparo',
+          loadingLabel: 'Iniciando...',
+          hint: 'Move o pedido para a coluna Em preparo.',
+          tone: 'default',
+          run: () => startKdsOrder(order.id, headers),
+        };
+      }
+      if (order.status === 'IN_PREPARATION') {
+        return {
+          key: `ready-${order.id}`,
+          label: 'Marcar pronto',
+          loadingLabel: 'Atualizando...',
+          hint: 'Conclui a producao e envia para conferencia.',
+          tone: 'ready',
+          run: () => readyKdsOrder(order.id, headers),
+        };
+      }
+      return {
+        key: `bump-${order.id}`,
+        label: 'Enviar para expedicao',
+        loadingLabel: 'Enviando...',
+        hint: orderType === 'delivery'
+          ? 'Pedido pronto; entra em despacho e entrega fora da cozinha.'
+          : 'Pedido pronto; retirada, mesa ou fechamento seguem no atendimento.',
+        tone: 'dispatch',
+        run: () => bumpKdsOrder(order.id, headers),
+      };
+    },
+    [headers],
+  );
+
   const printTicket = async (orderId: string) => {
     setActionLoading(`print-${orderId}`);
     setPrintFeedback(null);
@@ -252,19 +380,52 @@ export default function KdsPage() {
     setSoundEnabled(true);
   };
 
-  const board = useMemo(() => {
-    const normalized = orders
+  const toggleOrderType = (key: KdsOrderType) => {
+    setEnabledOrderTypes((current) => {
+      if (current.includes(key)) {
+        return current.length === 1 ? current : current.filter((item) => item !== key);
+      }
+      return [...current, key];
+    });
+  };
+
+  const toggleProductionArea = (key: 'hot_kitchen' | 'cold_kitchen' | 'assembly' | 'expedition') => {
+    setEnabledProductionAreas((current) => {
+      if (current.includes(key)) {
+        return current.length === 1 ? current : current.filter((item) => item !== key);
+      }
+      return [...current, key];
+    });
+  };
+
+  const visibleOrdersBase = useMemo(
+    () => orders
       .map((order) => ({
         ...order,
         elapsedMinutes: elapsedMinutes(order.createdAt),
       }))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      .filter((order) => enabledProductionAreas.includes(order.station))
+      .filter((order) => enabledOrderTypes.includes(orderTypeForChannel(order.channel)))
+      .filter((order) => orderMatchesSearch(order, searchTerm))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [enabledOrderTypes, enabledProductionAreas, orders, searchTerm, tick],
+  );
+
+  const board = useMemo(() => {
+    const normalized = visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, queueFilter));
+    if (operationMode === 'dispatch') {
+      return {
+        new: [],
+        preparing: [],
+        ready: normalized.filter((order) => order.status === 'READY'),
+      };
+    }
     return {
       new: normalized.filter((order) => order.status === 'CONFIRMED'),
       preparing: normalized.filter((order) => order.status === 'IN_PREPARATION'),
       ready: normalized.filter((order) => order.status === 'READY'),
     };
-  }, [orders, tick]);
+  }, [operationMode, queueFilter, visibleOrdersBase]);
 
   const stationLabels = useMemo(() => {
     const fallback = new Map<string, string>([
@@ -287,6 +448,19 @@ export default function KdsPage() {
     return { total: allOrders.length, urgent, late, avgElapsed };
   }, [board]);
 
+  const queueFacets = useMemo(
+    () => ([
+      { key: 'all' as const, label: 'Todos', hint: 'Fila carregada', count: visibleOrdersBase.length },
+      { key: 'new' as const, label: 'Novos', hint: 'Aguardando preparo', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'new')).length },
+      { key: 'preparing' as const, label: 'Preparando', hint: 'Em producao', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'preparing')).length },
+      { key: 'ready' as const, label: 'Prontos', hint: 'Expedicao', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'ready')).length },
+      { key: 'urgent' as const, label: 'Urgentes', hint: 'SLA estourado', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'urgent')).length },
+      { key: 'delivery' as const, label: 'Delivery', hint: 'Entrega', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'delivery')).length },
+      { key: 'tables' as const, label: 'Mesa/Comanda', hint: 'Consumo local', count: visibleOrdersBase.filter((order) => orderMatchesQueueFilter(order, 'tables')).length },
+    ]),
+    [visibleOrdersBase],
+  );
+
   if (access.loading) {
     return <main className={styles.page}><LoadingState label="Validando acesso ao modulo..." /></main>;
   }
@@ -297,14 +471,15 @@ export default function KdsPage() {
   return (
     <main className={`${styles.page} ${isFullscreen ? styles.fullscreen : ''}`}>
       <PageHeader
-        title="KDS Cozinha"
-        subtitle="Painel operacional em tempo real para preparo de pedidos"
+        title="KDS"
+        subtitle="Fila de preparo, despacho e acompanhamento dos pedidos da cozinha."
         right={
           <div className={styles.actions}>
           <Badge tone={socketStatus === 'connected' ? 'success' : socketStatus === 'connecting' ? 'warning' : 'danger'}>
             {socketStatus === 'connected' ? 'Conectado' : socketStatus === 'connecting' ? 'Conectando' : 'Desconectado'}
           </Badge>
           <Button onClick={() => window.open('/admin/kds/tv', '_blank', 'noopener,noreferrer')}>Tela TV</Button>
+          <Button onClick={() => setShowSettings(true)}>Configuracoes</Button>
           {!soundArmed ? (
             <Button variant="primary" onClick={() => void activateSound()}>Ativar som</Button>
           ) : (
@@ -338,6 +513,34 @@ export default function KdsPage() {
       />
 
       {loading ? <LoadingState label="Carregando pedidos da cozinha..." /> : null}
+      <Card className={styles.kdsCommandBar}>
+        <a className={styles.homeButton} href="/admin" aria-label="Voltar ao painel">⌂</a>
+        <input
+          className={styles.orderSearch}
+          placeholder="Numero do pedido"
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+        />
+        <div className={styles.kdsCounters}>
+          <span><strong>{board.new.length}</strong>pendentes</span>
+          <span><strong>{board.preparing.length}</strong>iniciados</span>
+          <span><strong>{board.ready.length}</strong>prontos</span>
+        </div>
+      </Card>
+      <Card className={styles.queueFacets} aria-label="Filtros rapidos do KDS">
+        {queueFacets.map((facet) => (
+          <button
+            key={facet.key}
+            type="button"
+            className={queueFilter === facet.key ? styles.queueFacetActive : undefined}
+            onClick={() => setQueueFilter(facet.key)}
+          >
+            <span>{facet.count}</span>
+            <strong>{facet.label}</strong>
+            <small>{facet.hint}</small>
+          </button>
+        ))}
+      </Card>
       {error ? (
         <div className={styles.errorBox}>
           <span>{error}</span>
@@ -374,6 +577,57 @@ export default function KdsPage() {
         </div>
       ) : null}
 
+      {showSettings ? (
+        <div className={styles.settingsBackdrop} onClick={() => setShowSettings(false)}>
+          <Card className={styles.settingsModal} onClick={(event) => event.stopPropagation()}>
+            <header className={styles.settingsHeader}>
+              <h2>Configuracoes do KDS</h2>
+              <Button onClick={() => setShowSettings(false)}>Fechar</Button>
+            </header>
+            <div className={styles.tipBox}>
+              <strong>Dica</strong>
+              <span>Use as setas do teclado para navegar entre pedidos e Enter para avançar para o proximo status.</span>
+            </div>
+            <SettingsGroup
+              title="Modo de operacao do KDS"
+              description="O modo de preparo e indicado para producao. O modo de despacho mostra apenas pedidos prontos para entrega/retirada."
+            >
+              <Chip active={operationMode === 'prep'} onClick={() => setOperationMode('prep')}>Modo de preparo</Chip>
+              <Chip active={operationMode === 'dispatch'} onClick={() => setOperationMode('dispatch')}>Modo de despacho</Chip>
+            </SettingsGroup>
+            <SettingsGroup
+              title="Layout do KDS"
+              description="Compacto aproveita melhor o espaco. Alinhado mantem cartoes lado a lado com leitura maior."
+            >
+              <Chip active={layoutMode === 'compact'} onClick={() => setLayoutMode('compact')}>Compacto</Chip>
+              <Chip active={layoutMode === 'aligned'} onClick={() => setLayoutMode('aligned')}>Alinhado</Chip>
+            </SettingsGroup>
+            <SettingsGroup
+              title="Tipos de pedido"
+              description="Escolha os tipos de pedido que devem aparecer no KDS."
+            >
+              <Chip active={enabledOrderTypes.includes('delivery')} onClick={() => toggleOrderType('delivery')}>Delivery</Chip>
+              <Chip active={enabledOrderTypes.includes('pickup')} onClick={() => toggleOrderType('pickup')}>Retirada</Chip>
+              <Chip active={enabledOrderTypes.includes('local')} onClick={() => toggleOrderType('local')}>No local</Chip>
+              <Chip active={enabledOrderTypes.includes('tables')} onClick={() => toggleOrderType('tables')}>Mesas/Comandas</Chip>
+            </SettingsGroup>
+            <SettingsGroup
+              title="Areas de producao"
+              description="Apenas pedidos roteados para as areas escolhidas entram na tela."
+            >
+              {(['hot_kitchen', 'cold_kitchen', 'assembly', 'expedition'] as const).map((station) => (
+                <Chip key={station} active={enabledProductionAreas.includes(station)} onClick={() => toggleProductionArea(station)}>
+                  {stationLabels.get(station) ?? station}
+                </Chip>
+              ))}
+            </SettingsGroup>
+            <footer className={styles.settingsFooter}>
+              <Button variant="primary" onClick={() => setShowSettings(false)}>Salvar configuracoes</Button>
+            </footer>
+          </Card>
+        </div>
+      ) : null}
+
       {!loading && !error ? (
         <section className={styles.summaryGrid} aria-label="Resumo operacional da cozinha">
           <Card className={styles.summaryCard}>
@@ -400,7 +654,7 @@ export default function KdsPage() {
       ) : null}
 
       {!loading && !error ? (
-        <section className={styles.board}>
+        <section className={`${styles.board} ${layoutMode === 'aligned' ? styles.boardAligned : ''}`}>
           <Card className={styles.column}>
             <header className={styles.columnHeader}>
               <h2>Novos</h2>
@@ -415,13 +669,12 @@ export default function KdsPage() {
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   stationLabel={stationLabels.get(order.station) ?? order.station}
-                  onActionLabel={actionLoading === `start-${order.id}` ? 'Iniciando...' : 'Iniciar preparo'}
-                  onAction={() => void withAction(`start-${order.id}`, () => startKdsOrder(order.id, headers))}
+                  action={buildOrderAction(order)}
+                  actionLoading={actionLoading}
+                  onAction={(action) => void withAction(action.key, action.run)}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
                   onPrint={() => void printTicket(order.id)}
                   printDisabled={actionLoading === `print-${order.id}`}
-                  disabled={actionLoading === `start-${order.id}`}
-                  emphasis="default"
                 />
               ))}
             </div>
@@ -441,13 +694,12 @@ export default function KdsPage() {
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   stationLabel={stationLabels.get(order.station) ?? order.station}
-                  onActionLabel={actionLoading === `ready-${order.id}` ? 'Atualizando...' : 'Marcar pronto'}
-                  onAction={() => void withAction(`ready-${order.id}`, () => readyKdsOrder(order.id, headers))}
+                  action={buildOrderAction(order)}
+                  actionLoading={actionLoading}
+                  onAction={(action) => void withAction(action.key, action.run)}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
                   onPrint={() => void printTicket(order.id)}
                   printDisabled={actionLoading === `print-${order.id}`}
-                  disabled={actionLoading === `ready-${order.id}`}
-                  emphasis="ready"
                 />
               ))}
             </div>
@@ -467,13 +719,12 @@ export default function KdsPage() {
                   urgency={urgencyClass(order.elapsedMinutes)}
                   urgencyLabel={urgencyLabel(order.elapsedMinutes)}
                   stationLabel={stationLabels.get(order.station) ?? order.station}
-                  onActionLabel={actionLoading === `bump-${order.id}` ? 'Finalizando...' : 'Finalizar'}
-                  onAction={() => void withAction(`bump-${order.id}`, () => bumpKdsOrder(order.id, headers))}
+                  action={buildOrderAction(order)}
+                  actionLoading={actionLoading}
+                  onAction={(action) => void withAction(action.key, action.run)}
                   onPrintLabel={actionLoading === `print-${order.id}` ? 'Imprimindo...' : 'Imprimir comanda'}
                   onPrint={() => void printTicket(order.id)}
                   printDisabled={actionLoading === `print-${order.id}`}
-                  disabled={actionLoading === `bump-${order.id}`}
-                  emphasis="default"
                 />
               ))}
             </div>
@@ -489,29 +740,29 @@ function OrderCard({
   urgency,
   urgencyLabel,
   stationLabel,
-  onActionLabel,
+  action,
+  actionLoading,
   onAction,
   onPrintLabel,
   onPrint,
   printDisabled,
-  disabled,
-  emphasis,
 }: {
   order: KdsOrderCard;
   urgency: 'normal' | 'attention' | 'urgent';
   urgencyLabel: string;
   stationLabel: string;
-  onActionLabel: string;
-  onAction: () => void;
+  action: KdsOrderAction;
+  actionLoading: string | null;
+  onAction: (action: KdsOrderAction) => void;
   onPrintLabel: string;
   onPrint: () => void;
   printDisabled: boolean;
-  disabled: boolean;
-  emphasis: 'default' | 'ready';
 }) {
   const totalMinutes = elapsedMinutes(order.createdAt);
   const prepMinutes = order.preparationStartedAt ? elapsedMinutes(order.preparationStartedAt) : null;
   const slaPercent = Math.min(100, Math.round((totalMinutes / Math.max(1, order.prepTargetMinutes)) * 100));
+  const orderType = orderTypeForChannel(order.channel);
+  const isActionLoading = actionLoading === action.key;
 
   return (
     <Card
@@ -526,6 +777,20 @@ function OrderCard({
       <div className={styles.row}>
         <Badge tone="warning">{channelLabel(order.channel)}</Badge>
         <strong className={styles.timeBadge}>{totalMinutes} min</strong>
+      </div>
+      <div className={styles.flowChecklist} aria-label="Checklist operacional do pedido">
+        <span>
+          <small>Status</small>
+          <strong>{kdsStatusLabel(order.status)}</strong>
+        </span>
+        <span>
+          <small>Tipo</small>
+          <strong>{orderTypeLabel(orderType)}</strong>
+        </span>
+        <span>
+          <small>Proxima acao</small>
+          <strong>{nextStepLabel(order.status, orderType)}</strong>
+        </span>
       </div>
       <div className={styles.row}>
         <small className={styles.meta}>Estacao: {stationLabel}</small>
@@ -557,13 +822,14 @@ function OrderCard({
           ) : null}
         </div>
       ))}
+      <small className={styles.actionHint}>{action.hint}</small>
       <Button
-        variant={emphasis === 'ready' ? 'danger' : 'primary'}
+        variant={action.tone === 'ready' ? 'danger' : 'primary'}
         className={styles.actionBtn}
-        disabled={disabled}
-        onClick={onAction}
+        disabled={isActionLoading}
+        onClick={() => onAction(action)}
       >
-        {onActionLabel}
+        {isActionLoading ? action.loadingLabel : action.label}
       </Button>
       <Button
         className={styles.actionBtn}
@@ -573,5 +839,40 @@ function OrderCard({
         {onPrintLabel}
       </Button>
     </Card>
+  );
+}
+
+function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={styles.settingsGroup}>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      <div className={styles.chipRow}>{children}</div>
+    </section>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" className={`${styles.chip} ${active ? styles.chipActive : ''}`} onClick={onClick}>
+      {active ? '✓ ' : ''}
+      {children}
+    </button>
   );
 }

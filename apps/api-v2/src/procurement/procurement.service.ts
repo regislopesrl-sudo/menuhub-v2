@@ -10,6 +10,15 @@ import {
   type FiscalDocumentLookupProvider,
 } from './fiscal-document-lookup.provider';
 
+const PURCHASE_ENTRY_SOURCE_MODULES = ['procurement_receipt', 'purchase_fiscal_document'] as const;
+
+type PurchaseEntrySourceMeta = {
+  supplierId: string | null;
+  supplierName: string | null;
+  documentLabel: string | null;
+  receivedAt: Date | null;
+};
+
 @Injectable()
 export class ProcurementService {
   private readonly fiscalLookupProvider: FiscalDocumentLookupProvider;
@@ -354,7 +363,7 @@ export class ProcurementService {
     if (po.branchId !== branchId) throw new NotFoundException('Pedido de compra nao encontrado.');
     if (po.status === 'CANCELED') throw new BadRequestException('Pedido cancelado nao pode ser recebido.');
     if (['RECEIVED', 'PARTIALLY_RECEIVED'].includes(String(po.status))) throw new BadRequestException('Pedido ja recebido.');
-    const orderedStockItemIds = new Set(po.items.map((item) => item.stockItemId));
+    const orderedItemsByStockItemId = new Map(po.items.map((item) => [item.stockItemId, item]));
 
     return this.prisma.$transaction(async (tx) => {
       const receipt = await tx.goodsReceipt.create({
@@ -378,13 +387,10 @@ export class ProcurementService {
         if (!row.stockItemId || !Number.isFinite(receivedQuantity) || receivedQuantity <= 0 || !Number.isFinite(unitCost) || unitCost < 0) {
           throw new BadRequestException('Item de recebimento invalido.');
         }
-        if (!orderedStockItemIds.has(row.stockItemId)) {
+        const purchaseOrderItem = orderedItemsByStockItemId.get(row.stockItemId);
+        if (!purchaseOrderItem) {
           throw new BadRequestException('Recebimento contem item que nao pertence ao pedido de compra.');
         }
-        const orderedQuantity = Number(row.orderedQuantity ?? receivedQuantity);
-        const divergence = Math.abs(receivedQuantity - orderedQuantity) > 0.0001;
-        if (divergence) hasDivergence = true;
-
         const item = await tx.stockItem.findUnique({ where: { id: row.stockItemId } });
         if (!item || item.companyId !== ctx.companyId) {
           throw new NotFoundException('Item de estoque nao encontrado para recebimento.');
@@ -392,6 +398,18 @@ export class ProcurementService {
         if (String(item.stockType) !== 'RAW_MATERIAL') {
           throw new BadRequestException('Recebimento de compra aceita apenas insumos.');
         }
+
+        const receivedUnit = purchaseOrderItem.unit ?? item.purchaseUnit ?? item.stockUnit ?? 'UN';
+        const orderedQuantity = Number(row.orderedQuantity ?? purchaseOrderItem.quantity ?? receivedQuantity);
+        const receivedStockQuantity = this.quantityInStockUnit(receivedQuantity, receivedUnit, item);
+        const orderedStockQuantity = this.quantityInStockUnit(orderedQuantity, receivedUnit, item);
+        if (!Number.isFinite(receivedStockQuantity) || receivedStockQuantity <= 0) {
+          throw new BadRequestException('Quantidade recebida convertida invalida.');
+        }
+        const divergence = Math.abs(receivedStockQuantity - orderedStockQuantity) > 0.0001;
+        if (divergence) hasDivergence = true;
+        const totalCost = Number((receivedQuantity * unitCost).toFixed(2));
+        const stockUnitCost = Number((totalCost / receivedStockQuantity).toFixed(4));
 
         const batchNumber = this.clean(row.batchNumber);
         const expirationDate = row.expirationDate ? new Date(row.expirationDate) : null;
@@ -417,13 +435,13 @@ export class ProcurementService {
             ? await tx.stockBatch.update({
                 where: { id: existingBatch.id },
                 data: {
-                  initialQuantity: Number(existingBatch.initialQuantity ?? 0) + receivedQuantity,
-                  quantityRemaining: Number(existingBatch.quantityRemaining ?? 0) + receivedQuantity,
-                  unitCost,
+                  initialQuantity: Number(existingBatch.initialQuantity ?? 0) + receivedStockQuantity,
+                  quantityRemaining: Number(existingBatch.quantityRemaining ?? 0) + receivedStockQuantity,
+                  unitCost: stockUnitCost,
                   expirationDate: expirationDate ?? existingBatch.expirationDate,
                   receivedDate: new Date(),
                   supplierId: po.supplierId,
-                  status: Number(existingBatch.quantityRemaining ?? 0) + receivedQuantity > 0 ? 'AVAILABLE' : existingBatch.status,
+                  status: Number(existingBatch.quantityRemaining ?? 0) + receivedStockQuantity > 0 ? 'AVAILABLE' : existingBatch.status,
                 },
               })
             : await tx.stockBatch.create({
@@ -434,9 +452,9 @@ export class ProcurementService {
                   batchNumber,
                   receivedDate: new Date(),
                   expirationDate,
-                  initialQuantity: receivedQuantity,
-                  quantityRemaining: receivedQuantity,
-                  unitCost,
+                  initialQuantity: receivedStockQuantity,
+                  quantityRemaining: receivedStockQuantity,
+                  unitCost: stockUnitCost,
                   status: 'AVAILABLE',
                 },
               });
@@ -450,26 +468,26 @@ export class ProcurementService {
             batchId,
             batchNumber,
             expirationDate,
-            orderedQuantity,
-            receivedQuantity,
-            unitCost,
+            orderedQuantity: orderedStockQuantity,
+            receivedQuantity: receivedStockQuantity,
+            unitCost: stockUnitCost,
             hasDivergence: divergence,
             divergenceNotes: divergence ? 'Diferenca entre pedido e recebimento.' : null,
           },
         });
 
         const previous = Number(item.currentQuantity);
-        const next = previous + receivedQuantity;
+        const next = previous + receivedStockQuantity;
         const previousAverageCost = Number(item.averageCost ?? 0);
         const weightedAverageCost = next > 0
-          ? Number(((previous * previousAverageCost + receivedQuantity * unitCost) / next).toFixed(4))
-          : unitCost;
+          ? Number(((previous * previousAverageCost + receivedStockQuantity * stockUnitCost) / next).toFixed(4))
+          : stockUnitCost;
         await tx.stockItem.update({
           where: { id: row.stockItemId },
           data: {
             currentQuantity: next,
             averageCost: weightedAverageCost,
-            lastCost: unitCost,
+            lastCost: stockUnitCost,
             ...(batchId ? { controlsBatch: true, controlsExpiry: Boolean(expirationDate) || item.controlsExpiry } : {}),
           },
         });
@@ -489,16 +507,19 @@ export class ProcurementService {
             sourceId: receipt.id,
             actorId: ctx.userId,
             requestId: ctx.requestId,
-            quantity: receivedQuantity,
-            unitCost,
-            totalCost: Number((receivedQuantity * unitCost).toFixed(2)),
+            quantity: receivedStockQuantity,
+            unitCost: stockUnitCost,
+            totalCost,
             previousStock: previous,
             newStock: next,
             reasonCode: 'purchase_receipt',
+            notes: receivedUnit && this.normalizeUnit(receivedUnit) !== this.normalizeUnit(item.stockUnit)
+              ? `Recebido ${receivedQuantity} ${receivedUnit}; convertido para ${receivedStockQuantity.toFixed(3)} ${item.stockUnit ?? 'UN'}.`
+              : null,
           },
         });
 
-        totalReceived += Number((receivedQuantity * unitCost).toFixed(2));
+        totalReceived += totalCost;
       }
 
       const settledDueDate = input.dueDate ? new Date(input.dueDate) : new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
@@ -622,19 +643,16 @@ export class ProcurementService {
   async listQuotations(ctx: RequestContext, stockItemId: string) {
     if (!stockItemId) throw new BadRequestException('stockItemId obrigatorio.');
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
-    const rows = await this.prisma.goodsReceiptItem.findMany({
-      where: { stockItemId, goodsReceipt: { purchaseOrder: { branchId: ctx.branchId }, supplier: { companyId: ctx.companyId } } },
-      include: { goodsReceipt: { include: { supplier: true } } },
-      orderBy: { goodsReceipt: { createdAt: 'desc' } },
-      take: 50,
-    });
+    const rows = await this.listConfirmedPurchaseEntryMovements(ctx, stockItemId, 50);
+    const sourceMeta = await this.resolvePurchaseEntrySourceMeta(ctx, rows);
 
     return rows.map((row) => ({
-      supplierId: row.goodsReceipt.supplierId,
-      supplierName: row.goodsReceipt.supplier.name,
+      supplierId: sourceMeta.get(this.purchaseEntrySourceKey(row))?.supplierId ?? null,
+      supplierName: sourceMeta.get(this.purchaseEntrySourceKey(row))?.supplierName ?? 'Fornecedor nao informado',
       unitCost: Number(row.unitCost),
-      receivedAt: row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt,
-      invoiceNumber: row.goodsReceipt.invoiceNumber,
+      receivedAt: sourceMeta.get(this.purchaseEntrySourceKey(row))?.receivedAt ?? row.createdAt,
+      invoiceNumber: sourceMeta.get(this.purchaseEntrySourceKey(row))?.documentLabel ?? null,
+      sourceModule: row.sourceModule,
     }));
   }
 
@@ -656,24 +674,17 @@ export class ProcurementService {
 
   async getPurchaseHistorySummary(ctx: RequestContext, stockItemId?: string) {
     if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
-    const rows = await this.prisma.goodsReceiptItem.findMany({
-      where: {
-        ...(stockItemId ? { stockItemId } : {}),
-        goodsReceipt: { purchaseOrder: { branchId: ctx.branchId }, supplier: { companyId: ctx.companyId } },
-      },
-      include: {
-        stockItem: { select: { id: true, name: true, code: true, stockUnit: true, purchaseUnit: true } },
-        goodsReceipt: { include: { supplier: true } },
-      },
-      orderBy: { goodsReceipt: { createdAt: 'desc' } },
-      take: 200,
-    });
+    const rows = await this.listConfirmedPurchaseEntryMovements(ctx, stockItemId, 500);
+    const sourceMeta = await this.resolvePurchaseEntrySourceMeta(ctx, rows);
 
     const byItem = new Map<string, any>();
     for (const row of rows) {
-      const quantity = Number(row.receivedQuantity ?? 0);
+      const source = sourceMeta.get(this.purchaseEntrySourceKey(row));
+      const receivedAt = source?.receivedAt ?? row.createdAt;
+      const quantity = Number(row.quantity ?? 0);
       const unitCost = Number(row.unitCost ?? 0);
-      const totalCost = quantity * unitCost;
+      const recordedTotal = Number(row.totalCost ?? 0);
+      const totalCost = recordedTotal > 0 ? recordedTotal : quantity * unitCost;
       const current = byItem.get(row.stockItemId) ?? {
         stockItemId: row.stockItemId,
         stockItemName: row.stockItem?.name ?? row.stockItemId,
@@ -682,16 +693,16 @@ export class ProcurementService {
         totalQuantity: 0,
         totalCost: 0,
         lastUnitCost: unitCost,
-        lastSupplierName: row.goodsReceipt.supplier?.name ?? null,
-        lastReceivedAt: row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt,
+        lastSupplierName: source?.supplierName ?? null,
+        lastReceivedAt: receivedAt,
       };
       current.samples += 1;
       current.totalQuantity += quantity;
       current.totalCost += totalCost;
-      if (new Date(row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt).getTime() >= new Date(current.lastReceivedAt).getTime()) {
+      if (new Date(receivedAt).getTime() >= new Date(current.lastReceivedAt).getTime()) {
         current.lastUnitCost = unitCost;
-        current.lastSupplierName = row.goodsReceipt.supplier?.name ?? null;
-        current.lastReceivedAt = row.goodsReceipt.receivedAt ?? row.goodsReceipt.createdAt;
+        current.lastSupplierName = source?.supplierName ?? null;
+        current.lastReceivedAt = receivedAt;
       }
       byItem.set(row.stockItemId, current);
     }
@@ -710,13 +721,12 @@ export class ProcurementService {
     const stockItem = await this.prisma.stockItem.findUnique({ where: { id: stockItemId } });
     if (!stockItem || stockItem.companyId !== ctx.companyId) throw new NotFoundException('Item nao encontrado.');
 
-    const history = await this.prisma.goodsReceiptItem.findMany({
-      where: { stockItemId, goodsReceipt: { purchaseOrder: { branchId: ctx.branchId }, supplier: { companyId: ctx.companyId } } },
-      select: { unitCost: true, receivedQuantity: true },
-      take: 200,
-    });
-    const totalQty = history.reduce((acc, row) => acc + Number(row.receivedQuantity), 0);
-    const totalCost = history.reduce((acc, row) => acc + Number(row.receivedQuantity) * Number(row.unitCost), 0);
+    const history = await this.listConfirmedPurchaseEntryMovements(ctx, stockItemId, 500);
+    const totalQty = history.reduce((acc, row) => acc + Number(row.quantity), 0);
+    const totalCost = history.reduce((acc, row) => {
+      const recordedTotal = Number(row.totalCost ?? 0);
+      return acc + (recordedTotal > 0 ? recordedTotal : Number(row.quantity) * Number(row.unitCost));
+    }, 0);
     const weightedAverage = totalQty > 0 ? Number((totalCost / totalQty).toFixed(4)) : Number(stockItem.averageCost ?? 0);
 
     return {
@@ -1034,7 +1044,34 @@ export class ProcurementService {
         where: { id: doc.id },
         data: { status: 'CONFIRMED', confirmedAt: new Date() },
       });
-      return { documentId: doc.id, confirmed: true as const, movementsCreated, document: updatedDocument };
+      const payableAmount = Number(doc.totalAmount ?? mapped.reduce((sum: number, row: any) => sum + Number(row.totalAmount ?? 0), 0));
+      let payableId: string | null = null;
+      if (Number.isFinite(payableAmount) && payableAmount > 0) {
+        const existingPayable = await tx.accountsPayable.findFirst({
+          where: { branchId, originType: 'GOODS_RECEIPT', originId: doc.id },
+          select: { id: true },
+        });
+        if (existingPayable) {
+          payableId = existingPayable.id;
+        } else {
+          const payable = await tx.accountsPayable.create({
+            data: {
+              branchId,
+              supplierId: doc.supplierId,
+              createdById: ctx.userId,
+              description: `Documento fiscal ${doc.issuerName ?? doc.issuerCnpj ?? doc.accessKey}`,
+              amount: Number(payableAmount.toFixed(2)),
+              dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+              status: 'PENDING',
+              originType: 'GOODS_RECEIPT',
+              originId: doc.id,
+              externalReference: doc.accessKey,
+            },
+          });
+          payableId = payable.id;
+        }
+      }
+      return { documentId: doc.id, confirmed: true as const, movementsCreated, payableId, document: updatedDocument };
     });
 
     recordAuditFromContext({
@@ -1042,7 +1079,7 @@ export class ProcurementService {
       outcome: 'success',
       ctx,
       target: { type: 'purchase_document', id: doc.id, label: doc.accessKey },
-      metadata: { movementsCreated: result.movementsCreated },
+      metadata: { movementsCreated: result.movementsCreated, payableId: result.payableId ?? null },
     });
 
     return result;
@@ -1077,6 +1114,90 @@ export class ProcurementService {
     return doc;
   }
 
+  private listConfirmedPurchaseEntryMovements(ctx: RequestContext, stockItemId?: string, take = 200) {
+    if (!ctx.branchId) throw new BadRequestException('branchId obrigatorio no contexto.');
+    return this.prisma.stockMovement.findMany({
+      where: {
+        ...(stockItemId ? { stockItemId } : {}),
+        branchId: ctx.branchId,
+        movementType: 'ENTRY',
+        sourceModule: { in: [...PURCHASE_ENTRY_SOURCE_MODULES] },
+        stockItem: { companyId: ctx.companyId, stockType: 'RAW_MATERIAL' },
+      },
+      include: {
+        stockItem: { select: { id: true, name: true, code: true, stockUnit: true, purchaseUnit: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+    });
+  }
+
+  private async resolvePurchaseEntrySourceMeta(ctx: RequestContext, rows: Array<{ sourceModule?: string | null; sourceId?: string | null }>) {
+    const receiptIds = Array.from(
+      new Set(rows.filter((row) => row.sourceModule === 'procurement_receipt' && row.sourceId).map((row) => String(row.sourceId))),
+    );
+    const documentIds = Array.from(
+      new Set(rows.filter((row) => row.sourceModule === 'purchase_fiscal_document' && row.sourceId).map((row) => String(row.sourceId))),
+    );
+
+    const [receipts, documents] = await Promise.all([
+      receiptIds.length
+        ? this.prisma.goodsReceipt.findMany({
+            where: { id: { in: receiptIds }, supplier: { companyId: ctx.companyId } },
+            include: { supplier: true },
+          })
+        : Promise.resolve([]),
+      documentIds.length
+        ? this.prisma.purchaseDocument.findMany({
+            where: { id: { in: documentIds }, companyId: ctx.companyId, branchId: ctx.branchId },
+            select: {
+              id: true,
+              supplierId: true,
+              issuerName: true,
+              accessKey: true,
+              emittedAt: true,
+              confirmedAt: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const supplierIds = Array.from(new Set(documents.map((doc) => doc.supplierId).filter(Boolean))) as string[];
+    const suppliers = supplierIds.length
+      ? await this.prisma.supplier.findMany({
+          where: { id: { in: supplierIds }, companyId: ctx.companyId },
+          select: { id: true, name: true },
+        })
+      : [];
+    const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
+    const byKey = new Map<string, PurchaseEntrySourceMeta>();
+
+    for (const receipt of receipts) {
+      byKey.set(`procurement_receipt:${receipt.id}`, {
+        supplierId: receipt.supplierId,
+        supplierName: receipt.supplier?.name ?? null,
+        documentLabel: receipt.invoiceNumber ?? receipt.invoiceKey ?? null,
+        receivedAt: receipt.receivedAt ?? receipt.createdAt ?? null,
+      });
+    }
+
+    for (const document of documents) {
+      byKey.set(`purchase_fiscal_document:${document.id}`, {
+        supplierId: document.supplierId ?? null,
+        supplierName: document.supplierId ? supplierById.get(document.supplierId) ?? document.issuerName ?? null : document.issuerName ?? null,
+        documentLabel: document.accessKey ?? null,
+        receivedAt: document.emittedAt ?? document.confirmedAt ?? document.createdAt ?? null,
+      });
+    }
+
+    return byKey;
+  }
+
+  private purchaseEntrySourceKey(row: { sourceModule?: string | null; sourceId?: string | null }) {
+    return `${row.sourceModule ?? 'manual'}:${row.sourceId ?? ''}`;
+  }
+
   private assertDocumentEditable(status: string) {
     if (['CONFIRMED', 'CANCELED'].includes(status)) {
       throw new BadRequestException('Documento fiscal nao pode mais ser alterado.');
@@ -1105,6 +1226,60 @@ export class ProcurementService {
       throw new BadRequestException('Insumo inativo nao pode ser usado em compras.');
     }
     return stockItem;
+  }
+
+  private quantityInStockUnit(quantityValue: unknown, unitValue: unknown, stockItem: any) {
+    const quantity = Number(quantityValue ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+
+    const fromUnit = this.normalizeUnit(unitValue);
+    const stockUnit = this.normalizeUnit(stockItem?.stockUnit ?? stockItem?.productionUnit ?? stockItem?.purchaseUnit);
+    if (!fromUnit || !stockUnit || fromUnit === stockUnit) return quantity;
+
+    const converted = this.convertBasicUnit(quantity, fromUnit, stockUnit);
+    if (converted !== null) return converted;
+
+    const purchaseUnit = this.normalizeUnit(stockItem?.purchaseUnit);
+    const conversionFactor = Number(stockItem?.conversionFactor ?? 1);
+    if (purchaseUnit && fromUnit === purchaseUnit && Number.isFinite(conversionFactor) && conversionFactor > 0) {
+      return quantity * conversionFactor;
+    }
+
+    return quantity;
+  }
+
+  private convertBasicUnit(quantity: number, fromUnit: string, toUnit: string) {
+    const mass: Record<string, number> = { mg: 0.001, g: 1, kg: 1000, t: 1000000 };
+    const volume: Record<string, number> = { ml: 1, l: 1000 };
+    const count: Record<string, number> = { un: 1, dz: 12 };
+    for (const group of [mass, volume, count]) {
+      if (group[fromUnit] && group[toUnit]) return (quantity * group[fromUnit]) / group[toUnit];
+    }
+    return null;
+  }
+
+  private normalizeUnit(value: unknown) {
+    const unit = String(value ?? '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const aliases: Record<string, string> = {
+      quilo: 'kg',
+      kilos: 'kg',
+      quilograma: 'kg',
+      quilogramas: 'kg',
+      grama: 'g',
+      gramas: 'g',
+      litro: 'l',
+      litros: 'l',
+      unidade: 'un',
+      unidades: 'un',
+      und: 'un',
+      duzia: 'dz',
+      duzias: 'dz',
+    };
+    return aliases[unit] ?? unit;
   }
 
   private async assertSupplierDocumentAvailable(ctx: RequestContext, document: string | null, ignoreId?: string) {

@@ -48,7 +48,7 @@ export class TablesService {
     });
   }
 
-  async updateTable(ctx: RequestContext, id: string, input: { name?: string; capacity?: number; status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' }) {
+  async updateTable(ctx: RequestContext, id: string, input: { name?: string; capacity?: number; status?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'BLOCKED' }) {
     const branchId = assertBranch(ctx);
     const table = await this.prisma.tableRestaurant.findFirst({ where: { id, branchId, branch: { companyId: ctx.companyId } } });
     if (!table) throw new NotFoundException('Mesa nao encontrada.');
@@ -215,4 +215,3 @@ export class TablesService {
     };
   }
 }
-

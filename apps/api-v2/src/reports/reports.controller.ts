@@ -33,6 +33,18 @@ export class ReportsController {
     return this.reportsService.getDashboard(ctx, query);
   }
 
+  @Get('premium')
+  @RequirePermissions(
+    TENANT_PERMISSIONS.REPORTS_READ,
+    TENANT_PERMISSIONS.REPORTS_BI,
+    TENANT_PERMISSIONS.REPORTS_FINANCE,
+    TENANT_PERMISSIONS.REPORTS_INVENTORY,
+    TENANT_PERMISSIONS.REPORTS_SALES,
+  )
+  premium(@CurrentContext() ctx: RequestContext, @Query() query: ReportsOverviewQuery) {
+    return this.reportsService.getPremium(ctx, query);
+  }
+
   @Get('operational')
   @RequirePermissions(TENANT_PERMISSIONS.ORDERS_READ, TENANT_PERMISSIONS.ORDERS_MANAGE)
   operational(@CurrentContext() ctx: RequestContext, @Query() query: ReportsOverviewQuery) {
@@ -73,6 +85,18 @@ export class ReportsController {
   @RequirePermissions(TENANT_PERMISSIONS.INVENTORY_READ, TENANT_PERMISSIONS.INVENTORY_MANAGE)
   inventory(@CurrentContext() ctx: RequestContext, @Query() query: ReportsOverviewQuery) {
     return this.reportsService.getInventory(ctx, query);
+  }
+
+  @Get('abc-stock-items')
+  @RequirePermissions(TENANT_PERMISSIONS.REPORTS_INVENTORY, TENANT_PERMISSIONS.INVENTORY_REPORTS, TENANT_PERMISSIONS.INVENTORY_READ)
+  abcStockItems(@CurrentContext() ctx: RequestContext, @Query() query: ReportsOverviewQuery) {
+    return this.reportsService.getAbcStockItems(ctx, query);
+  }
+
+  @Get('abc-products')
+  @RequirePermissions(TENANT_PERMISSIONS.REPORTS_SALES, TENANT_PERMISSIONS.REPORTS_BI, TENANT_PERMISSIONS.ORDERS_READ)
+  abcProducts(@CurrentContext() ctx: RequestContext, @Query() query: ReportsOverviewQuery) {
+    return this.reportsService.getAbcProducts(ctx, query);
   }
 
   @Get('cmv')

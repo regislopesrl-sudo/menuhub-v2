@@ -3,6 +3,7 @@
 export interface DeliveryQuoteResponse {
   available: boolean;
   areaId: string | null;
+  deliveryZoneId?: string | null;
   areaName: string | null;
   fee: number;
   distanceMeters: number | null;
@@ -18,8 +19,8 @@ export interface DeliveryQuoteResponse {
     neighborhood: string;
     city: string;
     state: string;
-    lat: number;
-    lng: number;
+    lat: number | null;
+    lng: number | null;
   };
 }
 
@@ -64,4 +65,3 @@ async function safeReadError(res: Response): Promise<string | null> {
     return null;
   }
 }
-
