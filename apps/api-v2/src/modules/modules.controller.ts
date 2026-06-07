@@ -45,11 +45,11 @@ export class ModulesController {
   @RequirePermissions(TENANT_PERMISSIONS.MODULES_MANAGE, PLATFORM_PERMISSIONS.MODULES_MANAGE)
   async updateCurrentCompanyModule(
     @Param('moduleKey') moduleKey: ModuleKey,
-    @Body() body: { enabled: boolean },
+    @Body() body: { enabled: boolean | null },
     @CurrentContext() ctx: RequestContext,
   ) {
-    if (typeof body?.enabled !== 'boolean') {
-      throw new BadRequestException('enabled deve ser boolean.');
+    if (typeof body?.enabled !== 'boolean' && body?.enabled !== null) {
+      throw new BadRequestException('enabled deve ser boolean ou null para remover override.');
     }
     return this.modulesService.updateCurrentCompanyModule({
       companyId: ctx.companyId,

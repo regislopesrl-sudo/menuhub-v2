@@ -321,7 +321,7 @@ export class ModulesService {
   async updateCompanyModuleOverride(input: {
     companyId: string;
     moduleKey: ModuleKey;
-    enabled: boolean;
+    enabled: boolean | null;
   }): Promise<CompanyModuleAccess> {
     const moduleDef = MODULE_META[input.moduleKey];
     if (!moduleDef) {
@@ -333,22 +333,31 @@ export class ModulesService {
       throw new BadRequestException('Empresa sem assinatura ativa para aplicar override.');
     }
 
-    await this.prisma.companyModuleOverride.upsert({
-      where: {
-        companyId_moduleKey: {
+    if (input.enabled === null) {
+      await this.prisma.companyModuleOverride.deleteMany({
+        where: {
           companyId: input.companyId,
           moduleKey: input.moduleKey,
         },
-      },
-      create: {
-        companyId: input.companyId,
-        moduleKey: input.moduleKey,
-        enabled: input.enabled,
-      },
-      update: {
-        enabled: input.enabled,
-      },
-    });
+      });
+    } else {
+      await this.prisma.companyModuleOverride.upsert({
+        where: {
+          companyId_moduleKey: {
+            companyId: input.companyId,
+            moduleKey: input.moduleKey,
+          },
+        },
+        create: {
+          companyId: input.companyId,
+          moduleKey: input.moduleKey,
+          enabled: input.enabled,
+        },
+        update: {
+          enabled: input.enabled,
+        },
+      });
+    }
 
     const list = await this.listCurrentCompanyModules(input.companyId);
     const updated = list.find((item) => item.moduleKey === input.moduleKey);
@@ -361,7 +370,7 @@ export class ModulesService {
   async updateCurrentCompanyModule(input: {
     companyId: string;
     moduleKey: ModuleKey;
-    enabled: boolean;
+    enabled: boolean | null;
   }): Promise<CompanyModuleAccess> {
     return this.updateCompanyModuleOverride(input);
   }
