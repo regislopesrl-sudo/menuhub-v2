@@ -63,6 +63,36 @@ describe('ModulesService', () => {
     expect(updated.enabled).toBe(true);
   });
 
+  it('enabled null remove override e volta para plano', async () => {
+    const prismaMock = {
+      companySubscription: {
+        findFirst: jest.fn().mockResolvedValue({
+          planId: 'plan_pro',
+          plan: { key: 'pro' },
+        }),
+      },
+      companyModuleOverride: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        upsert: jest.fn(),
+      },
+      planModule: {
+        findMany: jest.fn().mockResolvedValue([{ moduleKey: 'orders' }]),
+      },
+      plan: { findMany: jest.fn() },
+    } as any;
+
+    const service = new ModulesService(prismaMock);
+    const updated = await service.updateCompanyModuleOverride({ companyId: 'c1', moduleKey: 'orders', enabled: null });
+
+    expect(prismaMock.companyModuleOverride.deleteMany).toHaveBeenCalledWith({
+      where: { companyId: 'c1', moduleKey: 'orders' },
+    });
+    expect(prismaMock.companyModuleOverride.upsert).not.toHaveBeenCalled();
+    expect(updated.enabled).toBe(true);
+    expect(updated.source).toBe('plan');
+  });
+
   it('listCurrentCompanyModules retorna planKey da chave do plano', async () => {
     const prismaMock = {
       companySubscription: {
